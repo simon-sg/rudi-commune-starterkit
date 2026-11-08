@@ -11,84 +11,125 @@ Contrairement à `moissonneuse-batteuse` (territoire fixe, 43 communes de Rennes
 Métropole codées en dur), cet outil est **générique** : aucune table de communes, juste
 une résolution dynamique du code INSEE donné.
 
-## État actuel
-
-En cours de construction par lots. Déjà en place :
+## Fonctionnalités
 
 | Module | Rôle |
 |---|---|
-| `rudi_commune_starterkit.organisations` | Table curée des producteurs réels des 13 JDD qui en ont un propre (DGFiP, INSEE, Ministère de l'Intérieur...) + `organisation_commune()` (producteur "la commune publie ses données") + `resoudre_producer()` (bascule entre les 3 modes `source`/`commune`/`par-jdd`, avec le cas particulier des délibérations, où la commune est toujours sa propre productrice). |
-| `rudi_commune_starterkit.agregation_scrutin` | Agrégation bureau de vote → commune pour un scrutin électoral (format large) : normalisation du code commune (padding incohérent selon les millésimes, Corse-safe), unpivot candidat↔voix, sommation des totaux (inscrits/votants/exprimés...). |
+| `datasets/*.py` (13 modules) + `_commun.py` | Un module par JDD (voir liste ci-dessus) — construction des métadonnées RUDI et des contacts, publication via `rudi_harvest_toolkit`. |
+| `organisations.py` | Table curée des producteurs réels des 13 JDD qui en ont un propre (DGFiP, INSEE, Ministère de l'Intérieur...) ; `organisation_commune()` (producteur « la commune publie ses données ») ; `resoudre_producer()` (bascule entre les 3 modes `source`/`commune`/`par-jdd`, avec le cas particulier des délibérations, où la commune est toujours sa propre productrice). |
+| `agregation_scrutin.py` | Agrégation bureau de vote → commune pour un scrutin électoral (format large) : normalisation du code commune (padding incohérent selon les millésimes, Corse-safe), unpivot candidat↔voix, sommation des totaux (inscrits/votants/exprimés...). |
+| `registre.py` | Liste des 14 modules JDD, point d'entrée de la moisson complète. |
+| `profils_communes.py` | Registre multi-communes (`.rudi_commune_starterkit/profils.json`) : mémorise code INSEE, URL/identifiants de nœud, mode producteur, email de contact — évite de tout ressaisir à chaque run. |
+| `vidage.py` | « Vider une commune » : supprime les JDD déjà publiés par ce socle (voir plus bas). |
+| `securite.py` | `email_suspect()` — avertit (sans bloquer) si un contact utilise un domaine sur un TLD réservé (`.local`/`.test`/`.example`/`.invalid`). |
+| `cli.py` | Assistant interactif + mode scriptable, point d'entrée (`python3 -m rudi_commune_starterkit.cli`). |
 
-Les 13 modules `datasets/*.py`, `cli.py` (assistant interactif + mode scriptable) et
-`registre.py` (liste des modules JDD) sont désormais en place.
+### Garde-fou organisation
 
-## Nouveautés v2 (registre de communes, garde-fous, nettoyage)
+Avant de lancer la moisson, vérifie si l'organisation de la commune existe et est
+validée sur le nœud. Si absente : propose de la créer (ou la crée directement en
+mode scriptable) puis s'arrête en attendant la validation de l'animateur du portail
+— sans bloquer les JDD qui n'en dépendent pas. Code de sortie dédié
+`EXIT_EN_ATTENTE_VALIDATION` (3), prioritaire sur les échecs partiels.
 
-- **Registre multi-communes** (`profils_communes.py`, fichier
-  `.rudi_commune_starterkit/profils.json`) : l'assistant interactif propose de repartir
-  d'une commune déjà enregistrée (code INSEE, URL/identifiants de nœud, mode producteur,
-  email de contact) plutôt que de tout ressaisir à chaque run. Mode scriptable :
-  `--depuis-registre` (+ `--url-noeud` pour désambiguïser si plusieurs nœuds existent
-  pour le même code INSEE).
-- **Garde-fou organisation** : avant de lancer la moisson, vérifie si l'organisation de
-  la commune existe et est validée sur le nœud. Si absente : propose de la créer (ou la
-  crée directement en scriptable) puis s'arrête en attendant la validation de
-  l'animateur du portail — sans bloquer les JDD qui n'en dépendent pas. Nouveau code de
-  sortie `EXIT_EN_ATTENTE_VALIDATION` (3), prioritaire sur les échecs partiels.
-  L'assistant interactif demande désormais aussi l'URL du portail (optionnelle) dès la
-  saisie initiale d'une commune, pour que `--vider-commune` reste disponible plus tard
-  sans avoir à la ressaisir via le registre.
-- **Contact du producteur source** : désormais inclus même en mode `commune` (il
-  disparaissait auparavant complètement dès qu'on publiait au nom de la commune).
-- **Avertissement email suspect** (`securite.email_suspect()`) : signale un domaine de
-  contact sur un TLD réservé (`.local`/`.test`/`.example`/`.invalid`, RFC 2606/6761) sans
-  jamais bloquer — un repli d'hygiène, pas une garantie.
-- **Em-dash → trait d'union** dans tout le contenu publié (titres/captions).
-- **`--vider-commune`** [`--supprimer-organisation`] [`--confirmer SUPPRIMER`] : supprime
-  les JDD d'une commune déjà publiés par ce socle (nœud, avec relais automatique du
-  nœud vers le portail — confirmé par le code source du nœud, aucun appel portail
-  séparé nécessaire), avec suppression de l'organisation en option (détachement
-  producteur d'abord si nécessaire, arrêt en attente de validation sinon). Nécessite
-  `conf["url_portail"]`/`--url-portail`. Aussi disponible depuis l'assistant
-  interactif : en reprenant une commune du registre, un choix *« Lancer la moisson /
-  Vider cette commune »* propose le vidage sans passer par le mode scriptable. Avec
-  `--supprimer-organisation` : si d'autres JDD référencent encore l'organisation sans
-  être suivis par ce socle (publiés par un autre outil sur le même nœud, ou un test
-  manuel), leur suppression est détectée et **proposée** séparément (confirmation
-  `SUPPRIMER` dédiée) plutôt que de bloquer sans recours — en scriptable, couverte par
-  le même `--confirmer SUPPRIMER`. Une fois le producteur détaché (et validé par
-  l'animateur du portail), **la suppression de l'organisation elle-même côté portail
-  n'est jamais automatisée** — aucun relais nœud n'existe pour cette opération précise
-  et aucun compte applicatif séparé n'a jamais existé pour ce socle (401 systématique,
-  testé 3 façons) : seul l'animateur (l'utilisateur) peut la faire, dans l'UI
-  Strukture. Une fois cette suppression portail faite à la main, relancer en
-  confirmant le mot distinct `SUPPRIME_PORTAIL` pour nettoyer la copie locale du nœud —
-  tant que cette confirmation n'est pas donnée, l'organisation reste détachée mais
-  présente des deux côtés (état dégradé acceptable, jamais d'orpheline créée).
+### Vider une commune (`--vider-commune`)
 
-## Dépendance
+```bash
+python3 -m rudi_commune_starterkit.cli \
+  --depuis-registre --code-insee 35120 \
+  --vider-commune --supprimer-organisation --confirmer SUPPRIMER
+```
 
-Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (chemin local), en particulier
-des modules ajoutés pour ce projet : `commune` (résolution code INSEE → nom/géographie/
-SIREN), `fichier_hybride` (média `FILE` dont l'URL reste distante), `tabular` (lecteur CSV
-streaming), `datagouv` (résolution dataset → ressource), `download_cache` (téléchargement
-avec cache disque).
+Supprime les JDD d'une commune déjà publiés par ce socle (nœud, avec relais
+automatique du nœud vers le portail — aucun appel portail séparé nécessaire) et,
+avec `--supprimer-organisation`, l'organisation de la commune :
 
-## Installation en mode éditable
+1. Si d'autres JDD référencent encore l'organisation sans être suivis par ce socle
+   (publiés par un autre outil sur le même nœud, ou un test manuel), leur
+   suppression est détectée et **proposée** séparément (confirmation `SUPPRIMER`
+   dédiée) plutôt que de bloquer sans recours.
+2. Si le producteur est encore rattaché (`linked_producer_status: VALIDATED`), un
+   détachement est demandé — la suite nécessite la validation de l'animateur du
+   portail dans l'UI Strukture, puis un nouveau run.
+3. Une fois détaché, **la suppression de l'organisation côté portail n'est jamais
+   automatisée** : aucun relais nœud n'existe pour cette opération précise (seuls
+   les actes attacher/détacher existent), et aucun compte applicatif séparé n'a
+   jamais existé pour ce socle. Seul l'animateur (l'utilisateur) peut la faire, dans
+   l'UI Strukture. Une fois cette suppression portail faite à la main, relancer en
+   tapant `SUPPRIME_PORTAIL` (mot distinct de `SUPPRIMER`) pour nettoyer la copie
+   locale du nœud — tant que ce n'est pas confirmé, l'organisation reste détachée
+   mais présente des deux côtés (état dégradé acceptable, jamais d'orpheline créée).
+
+Aussi disponible depuis l'assistant interactif : en reprenant une commune du
+registre, un choix *« Lancer la moisson / Vider cette commune »* propose le vidage
+sans passer par le mode scriptable.
+
+## Installation
+
+Layout `src/`, backend `setuptools`. Environnement Debian « externally-managed »,
+d'où `--break-system-packages` :
 
 ```bash
 pip install --user --break-system-packages -e /media/simon/DATA4T/Dev/rudi-commune-starterkit
 ```
 
-Si l'import échoue après coup avec un module manquant du toolkit alors qu'il existe bien
-dans le code source, c'est le piège classique du cache wheel pip figeant une ancienne
-version éditable — réinstaller en forçant :
+Si l'import échoue après coup avec un module manquant du toolkit alors qu'il existe
+bien dans le code source, c'est le piège classique du cache wheel pip figeant une
+ancienne version éditable — réinstaller en forçant :
 
 ```bash
 pip install --user --break-system-packages --no-cache-dir --force-reinstall \
   --no-deps -e /media/simon/DATA4T/Dev/rudi-harvest-toolkit
 ```
+
+## Configuration du nœud RUDI cible
+
+Voir `conf/rudi_node.example.json` — à copier en `conf/rudi_node.json` (gitignoré)
+pour un usage non-interactif (`--rudi-conf`), ou à saisir via l'assistant interactif,
+qui propose le trousseau système (`keyring`) avant tout repli en clair.
+
+## Utilisation
+
+**Assistant interactif** (recommandé pour une première commune ou une suppression) :
+
+```bash
+python3 -m rudi_commune_starterkit.cli
+```
+
+Propose de repartir d'une commune du registre ou d'en saisir une nouvelle ; demande
+ensuite le mot de passe (trousseau système en priorité), le mode de publication
+(`source`/`commune`/`par-jdd`), l'email de contact si nécessaire.
+
+**Mode scriptable** (non interactif, pour l'automatisation) — principaux flags :
+
+| Flag | Rôle |
+|---|---|
+| `--code-insee` | Requis. Code INSEE de la commune cible. |
+| `--depuis-registre` [`--url-noeud`] | Résout nœud/identifiants/mode/contact depuis le registre local plutôt que depuis les flags suivants ; `--url-noeud` désambiguïse si plusieurs nœuds existent pour le même code INSEE. |
+| `--url-noeud` / `--usr` / `--rudi-conf` / `--utiliser-trousseau` | Identifiants du nœud, en alternative au registre. |
+| `--organisation-producteur {source,commune,par-jdd}` | Mode de publication (défaut `source`). |
+| `--organisation-par-jdd` | Fichier JSON JDD → `commune`\|`source`, pour le mode `par-jdd`. |
+| `--contact-commune` | Email de contact, obligatoire si au moins un JDD publie au nom de la commune. |
+| `--only` / `--skip` | Clés de JDD séparées par des virgules, pour limiter la moisson. |
+| `--forcer-maj` | Republie même les JDD inchangés. |
+| `--dry-run` | Aucun appel réseau mutant (RUDI) — rapporte ce qui serait fait. |
+| `--etat` | Fichier d'état JSON (hash par `local_id`), par défaut `.etat_rudi_commune_starterkit/<code_insee>.json`. |
+| `--url-portail` | URL du portail — requis par `--vider-commune`/`--supprimer-organisation`. |
+| `--vider-commune` [`--supprimer-organisation`] [`--confirmer SUPPRIMER`] | Voir « Vider une commune » ci-dessus. |
+
+Exemple, moisson complète d'une commune déjà enregistrée :
+
+```bash
+python3 -m rudi_commune_starterkit.cli --depuis-registre --code-insee 35120
+```
+
+## Dépendance
+
+Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (chemin local), en
+particulier des modules ajoutés pour ce projet : `commune` (résolution code INSEE →
+nom/géographie/SIREN), `fichier_hybride` (média `FILE` dont l'URL reste distante),
+`tabular` (lecteur CSV streaming), `datagouv` (résolution dataset → ressource),
+`download_cache` (téléchargement avec cache disque).
 
 ## Tests
 
@@ -98,8 +139,6 @@ python3 -m pytest tests/
 
 Logique pure, zéro réseau (fixtures en dur).
 
-## Configuration du nœud RUDI cible
+## Historique
 
-Voir `conf/rudi_node.example.json` — à copier en `conf/rudi_node.json` (gitignoré) pour un
-usage non-interactif, ou à saisir via l'assistant CLI (à venir) qui ne l'écrit en clair
-qu'en dernier recours (repli sur le trousseau système `keyring` en priorité).
+Voir [`CHANGELOG.md`](CHANGELOG.md).
