@@ -1,6 +1,15 @@
 """« Vider une commune » — supprime les JDD publiés par ce socle (nœud + portail), avec
 suppression de l'organisation de la commune en option.
 
+**Un seul appel par JDD, pas deux** : ``supprimer_dataset()`` (nœud) suffit — confirmé
+par le code source du nœud (2026-11-08,
+``rudi-catalog/genericController.js::deleteSingleObject``) que la suppression nœud
+déclenche déjà, automatiquement et avec sa propre identité, le relais de suppression
+portail (Kalim) — exactement le même principe que le relais de
+``demander_creation_organisation()``/``demander_detachement_producteur()``. Un appel
+direct au portail (``supprimer_dataset_portail()``, écarté ici) nécessiterait un vrai
+compte ROBOT enregistré côté ACL du portail, que ce socle n'a jamais eu besoin d'avoir.
+
 **Pas de journal persistant** : le nœud/portail est la source de vérité, la reprise se
 fait en redemandant simplement l'état courant à chaque appel — une suppression déjà
 faite répond ``404`` côté nœud, traité comme un succès par
@@ -35,7 +44,6 @@ from rudi_harvest_toolkit.rudi_client import (
     demander_suppression_organisation,
     global_id_pour_local_id,
     supprimer_dataset,
-    supprimer_dataset_portail,
     supprimer_organisation as supprimer_organisation_noeud,
     toutes_metadonnees_rudi,
 )
@@ -116,9 +124,12 @@ def vider_commune(
             etat.pop(local_id, None)
             continue
 
-        ok_noeud = supprimer_dataset(conf, global_id)
-        ok_portail = supprimer_dataset_portail(conf, global_id)
-        if ok_noeud and ok_portail is not False:
+        if supprimer_dataset(conf, global_id):
+            # Pas d'appel séparé au portail : confirmé par le code source du nœud
+            # (rudi-catalog/genericController.js::deleteSingleObject) que cette
+            # suppression déclenche déjà le relais portail automatiquement, avec
+            # l'identité propre du nœud — supprimer_dataset_portail() (OAuth2 direct,
+            # nécessite un vrai compte ROBOT portail) est redondante ici.
             rapport["jdd_supprimes"].append(local_id)
             etat.pop(local_id, None)
         else:
@@ -175,9 +186,7 @@ def vider_commune(
             if not global_id:
                 rapport["jdd_tiers_echecs"].append(identifiant)
                 continue
-            ok_noeud = supprimer_dataset(conf, global_id)
-            ok_portail = supprimer_dataset_portail(conf, global_id)
-            if ok_noeud and ok_portail is not False:
+            if supprimer_dataset(conf, global_id):
                 rapport["jdd_tiers_supprimes"].append(identifiant)
             else:
                 rapport["jdd_tiers_echecs"].append(identifiant)

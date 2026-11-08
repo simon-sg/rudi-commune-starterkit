@@ -87,13 +87,12 @@ class TestViderCommuneSuppressionJdd(unittest.TestCase):
     def setUp(self):
         self.etat = {"lid-1": {"hash": "a"}, "lid-2": {"hash": "b"}}
 
-    def test_succes_noeud_et_portail(self):
+    def test_succes_suppression_noeud(self):
         with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value=dict(self.etat)), \
              mock.patch("rudi_commune_starterkit.vidage.sauvegarder_etat") as m_save, \
              mock.patch("rudi_commune_starterkit.vidage.global_id_pour_local_id",
                          side_effect=lambda conf, lid: f"g-{lid}"), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True):
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True):
             rapport = vidage.vider_commune(_CONF, "35120", confirmer_fn=_toujours_confirmer)
         self.assertEqual(set(rapport["jdd_supprimes"]), {"lid-1", "lid-2"})
         self.assertEqual(rapport["jdd_echecs"], [])
@@ -105,12 +104,10 @@ class TestViderCommuneSuppressionJdd(unittest.TestCase):
         with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value=dict(self.etat)), \
              mock.patch("rudi_commune_starterkit.vidage.sauvegarder_etat"), \
              mock.patch("rudi_commune_starterkit.vidage.global_id_pour_local_id", return_value=None), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset") as m_sup, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail") as m_sup_p:
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset") as m_sup:
             rapport = vidage.vider_commune(_CONF, "35120", confirmer_fn=_toujours_confirmer)
         self.assertEqual(set(rapport["jdd_supprimes"]), {"lid-1", "lid-2"})
         m_sup.assert_not_called()
-        m_sup_p.assert_not_called()
 
     def test_echec_noeud_rapporte_et_garde_en_etat(self):
         with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value=dict(self.etat)), \
@@ -118,23 +115,13 @@ class TestViderCommuneSuppressionJdd(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.vidage.global_id_pour_local_id",
                          side_effect=lambda conf, lid: f"g-{lid}"), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset",
-                         side_effect=lambda conf, gid: gid != "g-lid-1"), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True):
+                         side_effect=lambda conf, gid: gid != "g-lid-1"):
             rapport = vidage.vider_commune(_CONF, "35120", confirmer_fn=_toujours_confirmer)
         self.assertEqual(rapport["jdd_echecs"], ["lid-1"])
         self.assertEqual(rapport["jdd_supprimes"], ["lid-2"])
         etat_sauve = m_save.call_args[0][1]
         self.assertIn("lid-1", etat_sauve)
         self.assertNotIn("lid-2", etat_sauve)
-
-    def test_portail_echec_bloque_meme_si_noeud_ok(self):
-        with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value={"lid-1": {"hash": "a"}}), \
-             mock.patch("rudi_commune_starterkit.vidage.sauvegarder_etat"), \
-             mock.patch("rudi_commune_starterkit.vidage.global_id_pour_local_id", return_value="g-1"), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=False):
-            rapport = vidage.vider_commune(_CONF, "35120", confirmer_fn=_toujours_confirmer)
-        self.assertEqual(rapport["jdd_echecs"], ["lid-1"])
 
 
 class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
@@ -144,7 +131,6 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
             mock.patch("rudi_commune_starterkit.vidage.sauvegarder_etat"),
             mock.patch("rudi_commune_starterkit.vidage.global_id_pour_local_id", return_value="g-1"),
             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True),
-            mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True),
             mock.patch("rudi_commune_starterkit.vidage.resoudre_commune", return_value=_GEVEZE),
         ]
         for p in self._base_patches:
@@ -186,23 +172,22 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
                 "producer": {"organization_name": "Commune de Gévezé"},
             }],
         ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset") as m_sup_noeud, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail") as m_sup_portail:
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset") as m_sup_noeud:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True,
                 confirmer_fn=self._confirmer_sauf_non_suivis,
             )
         self.assertEqual(rapport["organisation"], "refus_jdd_restants")
         self.assertIn("g-sans-local-id", rapport["message"])
-        # supprimer_dataset/supprimer_dataset_portail sont bien appelés une fois pour le
-        # JDD suivi (lid-1 -> g-1, boucle principale) mais jamais pour l'orphelin refusé.
+        # supprimer_dataset est bien appelé une fois pour le JDD suivi (lid-1 -> g-1,
+        # boucle principale) mais jamais pour l'orphelin refusé.
         self.assertNotIn(mock.call(_CONF, "g-sans-local-id"), m_sup_noeud.call_args_list)
-        self.assertNotIn(mock.call(_CONF, "g-sans-local-id"), m_sup_portail.call_args_list)
         m_org.assert_not_called()
 
     def test_jdd_restant_propose_et_supprime_avec_succes_puis_continue(self):
-        """L'utilisateur accepte la proposition : le JDD non suivi est supprimé
-        (nœud + portail) et le traitement de l'organisation continue normalement."""
+        """L'utilisateur accepte la proposition : le JDD non suivi est supprimé (le
+        relais portail suit automatiquement) et le traitement de l'organisation
+        continue normalement."""
         with mock.patch(
             "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
             return_value=[{
@@ -210,8 +195,7 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
                 "producer": {"organization_name": "Commune de Gévezé"},
             }],
         ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=None), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True) as m_sup_noeud, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True) as m_sup_portail:
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True) as m_sup_noeud:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
@@ -219,7 +203,6 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         self.assertEqual(rapport["jdd_tiers_supprimes"], ["g-sans-local-id"])
         self.assertEqual(rapport["jdd_tiers_echecs"], [])
         m_sup_noeud.assert_any_call(_CONF, "g-sans-local-id")
-        m_sup_portail.assert_any_call(_CONF, "g-sans-local-id")
 
     def test_jdd_restant_propose_et_echec_de_suppression_refuse(self):
         """L'utilisateur accepte, mais la suppression échoue réellement (ex. réseau) :
@@ -231,8 +214,7 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
                 "producer": {"organization_name": "Commune de Gévezé"},
             }],
         ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=False), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True):
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=False):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
