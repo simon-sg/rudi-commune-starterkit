@@ -48,7 +48,10 @@ Les 13 modules `datasets/*.py`, `cli.py` (assistant interactif + mode scriptable
 - **`--vider-commune`** [`--supprimer-organisation`] [`--confirmer SUPPRIMER`] : supprime
   les JDD d'une commune déjà publiés par ce socle (nœud + portail), avec suppression de
   l'organisation en option (détachement producteur d'abord si nécessaire, arrêt en
-  attente de validation sinon). Nécessite `conf["url_portail"]`/`--url-portail`.
+  attente de validation sinon). Nécessite `conf["url_portail"]`/`--url-portail`. Aussi
+  disponible depuis l'assistant interactif : en reprenant une commune du registre, un
+  choix *« Lancer la moisson / Vider cette commune »* propose le vidage sans passer par
+  le mode scriptable.
 
 ## Dépendance
 

@@ -579,16 +579,67 @@ class TestExecuterInteractifRegistre(unittest.TestCase):
              mock.patch(
                  "rudi_commune_starterkit.cli._executer_depuis_profil", return_value=0,
              ) as m_reprise, \
-             mock.patch("builtins.input", side_effect=["1"]):
+             mock.patch("builtins.input", side_effect=["1", "1"]):
             code = cli.executer_interactif()
         self.assertEqual(code, 0)
         m_reprise.assert_called_once_with(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+
+    def test_choix_dindex_puis_action_2_route_vers_le_vidage(self):
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[_PROFIL_GEVEZE]), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli._vider_commune_interactif", return_value=0,
+             ) as m_vidage, \
+             mock.patch("rudi_commune_starterkit.cli._executer_depuis_profil") as m_reprise, \
+             mock.patch("builtins.input", side_effect=["1", "2"]):
+            code = cli.executer_interactif()
+        self.assertEqual(code, 0)
+        m_vidage.assert_called_once_with(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        m_reprise.assert_not_called()
 
     def test_profils_json_corrompu_arrete_proprement(self):
         with mock.patch(
             "rudi_commune_starterkit.cli.charger_profils", side_effect=ValueError("corrompu"),
         ):
             self.assertEqual(cli.executer_interactif(), cli.EXIT_ECHEC_TOTAL)
+
+
+class TestViderCommuneInteractif(unittest.TestCase):
+    def test_mot_de_passe_trousseau_et_conf_correcte(self):
+        rapport = {"message": "ok", "jdd_supprimes": ["lid-1"], "jdd_echecs": [], "organisation": None}
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport) as m_vider, \
+             mock.patch("builtins.input", side_effect=["n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_vider.assert_called_once_with(
+            {"url": "https://noeud", "usr": "u", "pwd": "pwd"}, "35120",
+            supprimer_organisation=False,
+        )
+
+    def test_mot_de_passe_absent_du_trousseau_sans_tty_echoue(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe",
+                         side_effect=cli.AbsenceTerminalError("pas de TTY")):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
+    def test_organisation_supprimee_propose_de_loublier_et_accepte(self):
+        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": [], "organisation": "supprimee"}
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport), \
+             mock.patch("rudi_commune_starterkit.cli.oublier_profil") as m_oublier, \
+             mock.patch("builtins.input", side_effect=["o", "o"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_oublier.assert_called_once_with("35120", "https://noeud", cli.CHEMIN_PROFILS_DEFAUT)
+
+    def test_jdd_en_echec_renvoie_echecs_partiels(self):
+        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": ["lid-1"], "organisation": None}
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport), \
+             mock.patch("builtins.input", side_effect=["n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_ECHECS_PARTIELS)
 
 
 class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):

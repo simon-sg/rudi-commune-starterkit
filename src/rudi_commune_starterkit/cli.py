@@ -38,7 +38,7 @@ from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 from . import organisations, registre
 from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
-from .profils_communes import charger_profils, enregistrer_profil
+from .profils_communes import charger_profils, enregistrer_profil, oublier_profil
 from .resolution_noeud import (
     organisation_existante,
     resoudre_organisations_producteurs,
@@ -482,6 +482,57 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     )
 
 
+def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
+    """Vide une commune déjà enregistrée (JDD + organisation en option) — même
+    résolution de ``conf`` que :func:`_executer_depuis_profil`, mais route vers
+    :func:`vider_commune` au lieu de relancer la moisson."""
+    print(f"\n→ Vidage de {profil['nom']} ({profil['code_insee']}) sur {profil['url_noeud']}\n")
+
+    url_noeud, usr = profil["url_noeud"], profil["usr"]
+    try:
+        pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
+    except TrousseauEnClairError as e:
+        print(f"  {e}")
+        pwd = None
+    if pwd is None:
+        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
+        try:
+            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
+        except AbsenceTerminalError as e:
+            print(f"  {e}")
+            return EXIT_ECHEC_TOTAL
+
+    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
+    if profil.get("url_catalog"):
+        conf["url_catalog"] = profil["url_catalog"]
+    if profil.get("url_portail"):
+        conf["url_portail"] = profil["url_portail"]
+
+    supprimer_organisation = _demander_oui_non(
+        "Supprimer aussi l'organisation de la commune (si plus aucun JDD du nœud ne la "
+        "référence)", defaut=False,
+    )
+
+    rapport = vider_commune(conf, profil["code_insee"], supprimer_organisation=supprimer_organisation)
+    print(f"\n[cli] {rapport['message']}" if rapport["message"] else "\n[cli] Vidage terminé.")
+    if rapport["jdd_supprimes"]:
+        print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
+    if rapport["jdd_echecs"]:
+        print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
+
+    if rapport["organisation"] == "supprimee" and _demander_oui_non(
+        f"Retirer {profil['nom']} du registre de communes", defaut=False,
+    ):
+        oublier_profil(profil["code_insee"], profil["url_noeud"], chemin_profils)
+        print("  Profil retiré du registre.")
+
+    if rapport["jdd_echecs"] or rapport["organisation"] in (
+        "refus_jdd_restants", "echec_suppression_portail", "echec_suppression_noeud",
+    ):
+        return EXIT_ECHECS_PARTIELS
+    return EXIT_SUCCES
+
+
 def executer_interactif() -> int:
     print("=== rudi-commune-starterkit — assistant ===\n")
 
@@ -502,7 +553,13 @@ def executer_interactif() -> int:
             if choix in ("0", ""):
                 break
             if choix.isdigit() and 1 <= int(choix) <= len(profils):
-                return _executer_depuis_profil(profils[int(choix) - 1], chemin_profils)
+                profil = profils[int(choix) - 1]
+                action = _demander(
+                    "  1) Lancer la moisson  2) Vider cette commune — Action", defaut="1",
+                )
+                if action == "2":
+                    return _vider_commune_interactif(profil, chemin_profils)
+                return _executer_depuis_profil(profil, chemin_profils)
             print("  Choix invalide.")
         print()
 
