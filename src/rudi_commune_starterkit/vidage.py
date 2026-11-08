@@ -59,14 +59,19 @@ def vider_commune(
     nœud ne la référence.
 
     Retourne un rapport ``dict`` : ``jdd_supprimes``/``jdd_echecs`` (listes de
-    ``local_id``), ``organisation`` (``None`` si non demandé, sinon un statut parmi
-    ``"supprimee"``/``"deja_absente"``/``"detachement_demande"``/
-    ``"refus_jdd_restants"``/``"echec_suppression_portail"``/``"echec_suppression_noeud"``)
-    et ``message`` (texte explicatif, toujours renseigné sauf succès silencieux).
+    ``local_id``, les JDD connus de l'état local), ``jdd_tiers_supprimes``/
+    ``jdd_tiers_echecs`` (listes de ``local_id``/``global_id``, les JDD **non suivis**
+    par ce socle mais référençant l'organisation — proposés à la suppression
+    séparément, uniquement si ``supprimer_organisation``), ``organisation`` (``None`` si
+    non demandé, sinon un statut parmi ``"supprimee"``/``"deja_absente"``/
+    ``"detachement_demande"``/``"refus_jdd_restants"``/``"echec_suppression_portail"``/
+    ``"echec_suppression_noeud"``) et ``message`` (texte explicatif, toujours renseigné
+    sauf succès silencieux).
     """
     chemin_etat = chemin_etat or f".etat_rudi_commune_starterkit/{code_insee}.json"
     rapport: dict = {
         "code_insee": code_insee, "jdd_supprimes": [], "jdd_echecs": [],
+        "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
         "organisation": None, "message": None,
     }
 
@@ -135,20 +140,56 @@ def vider_commune(
     nom_org_commune = organisations.organisation_commune(commune)["organization_name"]
 
     # .get("local_id") plutôt que d["local_id"] : le nœud héberge aussi des JDD d'autres
-    # outils (ex. moissonneuse-batteuse, même nœud local partagé) qui n'ont pas forcément
-    # ce champ — optionnel dans le schéma RUDI, contrairement à global_id (toujours
-    # présent) utilisé en repli pour que le message reste identifiant quand même.
+    # outils (ex. moissonneuse-batteuse, même nœud local partagé, ou un test manuel) qui
+    # n'ont pas forcément ce champ — optionnel dans le schéma RUDI, contrairement à
+    # global_id (toujours présent), seul identifiant garanti pour les supprimer.
     restants = [
-        d.get("local_id") or d.get("global_id", "?") for d in toutes_metadonnees_rudi(conf)
+        d for d in toutes_metadonnees_rudi(conf)
         if (d.get("producer") or {}).get("organization_name") == nom_org_commune
     ]
     if restants:
-        rapport["organisation"] = "refus_jdd_restants"
-        rapport["message"] = (
-            f"Suppression d'organisation refusée : {len(restants)} JDD référencent "
-            f"encore « {nom_org_commune} » sur le nœud : {', '.join(restants)}."
-        )
-        return rapport
+        print(f"[vidage] {len(restants)} JDD non suivis par ce socle référencent encore "
+              f"« {nom_org_commune} » sur le nœud :")
+        for d in restants:
+            identifiant = d.get("local_id") or d.get("global_id", "?")
+            titre = d.get("resource_title") or "(titre inconnu)"
+            print(f"  - {identifiant} — {titre}")
+
+        if not confirmer_fn(
+            f"Supprimer ces {len(restants)} JDD non suivis (nœud + portail) pour "
+            f"pouvoir traiter l'organisation « {nom_org_commune} ».",
+            mot_attendu="SUPPRIMER",
+        ):
+            rapport["organisation"] = "refus_jdd_restants"
+            rapport["message"] = (
+                f"Suppression d'organisation refusée : {len(restants)} JDD non suivis "
+                f"référencent encore « {nom_org_commune} » sur le nœud : " + ", ".join(
+                    d.get("local_id") or d.get("global_id", "?") for d in restants
+                ) + "."
+            )
+            return rapport
+
+        for d in restants:
+            global_id = d.get("global_id")
+            identifiant = d.get("local_id") or global_id or "?"
+            if not global_id:
+                rapport["jdd_tiers_echecs"].append(identifiant)
+                continue
+            ok_noeud = supprimer_dataset(conf, global_id)
+            ok_portail = supprimer_dataset_portail(conf, global_id)
+            if ok_noeud and ok_portail is not False:
+                rapport["jdd_tiers_supprimes"].append(identifiant)
+            else:
+                rapport["jdd_tiers_echecs"].append(identifiant)
+
+        if rapport["jdd_tiers_echecs"]:
+            rapport["organisation"] = "refus_jdd_restants"
+            rapport["message"] = (
+                f"Suppression d'organisation refusée : échec de la suppression de "
+                f"{len(rapport['jdd_tiers_echecs'])} JDD non suivis référençant encore "
+                f"« {nom_org_commune} » : {', '.join(rapport['jdd_tiers_echecs'])}."
+            )
+            return rapport
 
     organisation = organisation_existante(conf, nom_org_commune)
     if organisation is None:

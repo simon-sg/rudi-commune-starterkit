@@ -51,7 +51,11 @@ Les 13 modules `datasets/*.py`, `cli.py` (assistant interactif + mode scriptable
   attente de validation sinon). Nécessite `conf["url_portail"]`/`--url-portail`. Aussi
   disponible depuis l'assistant interactif : en reprenant une commune du registre, un
   choix *« Lancer la moisson / Vider cette commune »* propose le vidage sans passer par
-  le mode scriptable.
+  le mode scriptable. Avec `--supprimer-organisation` : si d'autres JDD référencent
+  encore l'organisation sans être suivis par ce socle (publiés par un autre outil sur le
+  même nœud, ou un test manuel), leur suppression est détectée et **proposée**
+  séparément (confirmation `SUPPRIMER` dédiée) plutôt que de bloquer sans recours — en
+  scriptable, couverte par le même `--confirmer SUPPRIMER`.
 
 ## Dépendance
 

@@ -519,6 +519,10 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
     if rapport["jdd_echecs"]:
         print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
+    if rapport["jdd_tiers_supprimes"]:
+        print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+    if rapport["jdd_tiers_echecs"]:
+        print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
 
     if rapport["organisation"] == "supprimee" and _demander_oui_non(
         f"Retirer {profil['nom']} du registre de communes", defaut=False,
@@ -819,6 +823,11 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
         if rapport["jdd_echecs"]:
             print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}", file=sys.stderr)
+        if rapport["jdd_tiers_supprimes"]:
+            print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+        if rapport["jdd_tiers_echecs"]:
+            print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}",
+                  file=sys.stderr)
         if rapport["organisation"] == "supprimee" and profil:
             # Jamais automatique (voir le plan, § 6) : en scriptable, pas de prompt
             # possible, donc on se contente de signaler que le profil est périmé.

@@ -151,35 +151,94 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def test_refus_si_jdd_restants_sur_le_noeud(self):
+    @staticmethod
+    def _confirmer_sauf_non_suivis(message: str, *, mot_attendu: str) -> bool:
+        """Confirme tout sauf la proposition de suppression des JDD non suivis — pour
+        tester le cas où l'utilisateur la refuse explicitement."""
+        return "non suivis" not in message
+
+    def test_refus_si_jdd_restants_sans_global_id_ni_local_id(self):
+        """Un JDD restant sans global_id (jamais censé arriver, mais le nœud est une
+        source externe) ne peut pas être proposé à la suppression — refusé directement,
+        jamais de plantage."""
         with mock.patch(
             "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
-            return_value=[{"local_id": "autre-lid", "producer": {"organization_name": "Commune de Gévezé"}}],
+            return_value=[{"producer": {"organization_name": "Commune de Gévezé"}}],
         ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
         self.assertEqual(rapport["organisation"], "refus_jdd_restants")
+        self.assertEqual(rapport["jdd_tiers_echecs"], ["?"])
         m_org.assert_not_called()
 
-    def test_refus_si_jdd_restant_sans_local_id(self):
+    def test_jdd_restant_propose_puis_refuse_par_lutilisateur(self):
         """Bug réel (2026-11-08, nœud source partagé) : un JDD référençant encore
         l'organisation mais publié par un autre outil (ex. moissonneuse-batteuse, même
-        nœud local) peut n'avoir aucun local_id (champ optionnel du schéma RUDI, pas
-        garanti côté nœud) — ne doit plus planter, repli sur global_id (toujours
-        présent) pour que le message reste identifiant."""
+        nœud local, ou un test manuel) peut n'avoir aucun local_id (champ optionnel du
+        schéma RUDI) — ne doit plus planter (repli sur global_id), et sa suppression est
+        désormais proposée plutôt que de bloquer sans recours. Ici l'utilisateur refuse
+        cette proposition spécifique : toujours refusé, comme avant."""
         with mock.patch(
             "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
             return_value=[{
                 "global_id": "g-sans-local-id",
                 "producer": {"organization_name": "Commune de Gévezé"},
             }],
-        ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org:
+        ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org, \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset") as m_sup_noeud, \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail") as m_sup_portail:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True,
+                confirmer_fn=self._confirmer_sauf_non_suivis,
+            )
+        self.assertEqual(rapport["organisation"], "refus_jdd_restants")
+        self.assertIn("g-sans-local-id", rapport["message"])
+        # supprimer_dataset/supprimer_dataset_portail sont bien appelés une fois pour le
+        # JDD suivi (lid-1 -> g-1, boucle principale) mais jamais pour l'orphelin refusé.
+        self.assertNotIn(mock.call(_CONF, "g-sans-local-id"), m_sup_noeud.call_args_list)
+        self.assertNotIn(mock.call(_CONF, "g-sans-local-id"), m_sup_portail.call_args_list)
+        m_org.assert_not_called()
+
+    def test_jdd_restant_propose_et_supprime_avec_succes_puis_continue(self):
+        """L'utilisateur accepte la proposition : le JDD non suivi est supprimé
+        (nœud + portail) et le traitement de l'organisation continue normalement."""
+        with mock.patch(
+            "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
+            return_value=[{
+                "global_id": "g-sans-local-id", "resource_title": "Test manuel",
+                "producer": {"organization_name": "Commune de Gévezé"},
+            }],
+        ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=None), \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=True) as m_sup_noeud, \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True) as m_sup_portail:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "deja_absente")
+        self.assertEqual(rapport["jdd_tiers_supprimes"], ["g-sans-local-id"])
+        self.assertEqual(rapport["jdd_tiers_echecs"], [])
+        m_sup_noeud.assert_any_call(_CONF, "g-sans-local-id")
+        m_sup_portail.assert_any_call(_CONF, "g-sans-local-id")
+
+    def test_jdd_restant_propose_et_echec_de_suppression_refuse(self):
+        """L'utilisateur accepte, mais la suppression échoue réellement (ex. réseau) :
+        refus de toucher l'organisation, message distinct de la simple détection."""
+        with mock.patch(
+            "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
+            return_value=[{
+                "global_id": "g-sans-local-id",
+                "producer": {"organization_name": "Commune de Gévezé"},
+            }],
+        ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org, \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset", return_value=False), \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_dataset_portail", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
         self.assertEqual(rapport["organisation"], "refus_jdd_restants")
-        self.assertIn("g-sans-local-id", rapport["message"])
+        self.assertEqual(rapport["jdd_tiers_echecs"], ["g-sans-local-id"])
+        self.assertIn("échec", rapport["message"])
         m_org.assert_not_called()
 
     def test_organisation_deja_absente(self):

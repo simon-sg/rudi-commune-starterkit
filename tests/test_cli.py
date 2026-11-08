@@ -376,7 +376,7 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
             "--url-portail", "https://portail", "--confirmer", "SUPPRIMER",
         ])
-        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "organisation": None,
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": None,
                    "message": "ok"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport) as m_vider:
@@ -391,7 +391,7 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
             "--url-portail", "https://portail",
         ])
-        rapport = {"jdd_supprimes": [], "jdd_echecs": ["lid-1"], "organisation": None,
+        rapport = {"jdd_supprimes": [], "jdd_echecs": ["lid-1"], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": None,
                    "message": "échec"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
@@ -404,7 +404,7 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             "--supprimer-organisation", "--url-portail", "https://portail",
             "--confirmer", "SUPPRIMER",
         ])
-        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [],
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
                    "organisation": "detachement_demande", "message": "en attente"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
@@ -417,7 +417,7 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             "--supprimer-organisation", "--url-portail", "https://portail",
             "--confirmer", "SUPPRIMER",
         ])
-        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [],
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
                    "organisation": "supprimee", "message": "ok"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
@@ -431,7 +431,7 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
         ])
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune") as m_vider:
-            m_vider.return_value = {"jdd_supprimes": [], "jdd_echecs": [], "organisation": None, "message": None}
+            m_vider.return_value = {"jdd_supprimes": [], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": None, "message": None}
             cli.executer_scriptable(args)
         confirmer_fn = m_vider.call_args.kwargs["confirmer_fn"]
         with mock.patch("rudi_commune_starterkit.cli.confirmer", return_value="appelé") as m_confirmer:
@@ -604,8 +604,23 @@ class TestExecuterInteractifRegistre(unittest.TestCase):
 
 
 class TestViderCommuneInteractif(unittest.TestCase):
+    def test_affiche_les_jdd_tiers(self):
+        rapport = {
+            "message": "ok", "jdd_supprimes": [], "jdd_echecs": [],
+            "jdd_tiers_supprimes": ["g-sans-local-id"], "jdd_tiers_echecs": ["g-autre"],
+            "organisation": None,
+        }
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport), \
+             mock.patch("builtins.input", side_effect=["n"]), \
+             mock.patch("builtins.print") as m_print:
+            cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        sortie = "\n".join(str(a[0]) if a else "" for a, _ in m_print.call_args_list)
+        self.assertIn("g-sans-local-id", sortie)
+        self.assertIn("g-autre", sortie)
+
     def test_mot_de_passe_trousseau_et_conf_correcte(self):
-        rapport = {"message": "ok", "jdd_supprimes": ["lid-1"], "jdd_echecs": [], "organisation": None}
+        rapport = {"message": "ok", "jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": None}
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport) as m_vider, \
              mock.patch("builtins.input", side_effect=["n"]):
@@ -624,7 +639,7 @@ class TestViderCommuneInteractif(unittest.TestCase):
         self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
 
     def test_organisation_supprimee_propose_de_loublier_et_accepte(self):
-        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": [], "organisation": "supprimee"}
+        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": "supprimee"}
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport), \
              mock.patch("rudi_commune_starterkit.cli.oublier_profil") as m_oublier, \
@@ -634,7 +649,7 @@ class TestViderCommuneInteractif(unittest.TestCase):
         m_oublier.assert_called_once_with("35120", "https://noeud", cli.CHEMIN_PROFILS_DEFAUT)
 
     def test_jdd_en_echec_renvoie_echecs_partiels(self):
-        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": ["lid-1"], "organisation": None}
+        rapport = {"message": "ok", "jdd_supprimes": [], "jdd_echecs": ["lid-1"], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": None}
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport), \
              mock.patch("builtins.input", side_effect=["n"]):
