@@ -124,6 +124,26 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         self.assertEqual(rapport["organisation"], "refus_jdd_restants")
         m_org.assert_not_called()
 
+    def test_refus_si_jdd_restant_sans_local_id(self):
+        """Bug réel (2026-11-08, nœud source partagé) : un JDD référençant encore
+        l'organisation mais publié par un autre outil (ex. moissonneuse-batteuse, même
+        nœud local) peut n'avoir aucun local_id (champ optionnel du schéma RUDI, pas
+        garanti côté nœud) — ne doit plus planter, repli sur global_id (toujours
+        présent) pour que le message reste identifiant."""
+        with mock.patch(
+            "rudi_commune_starterkit.vidage.toutes_metadonnees_rudi",
+            return_value=[{
+                "global_id": "g-sans-local-id",
+                "producer": {"organization_name": "Commune de Gévezé"},
+            }],
+        ), mock.patch("rudi_commune_starterkit.vidage.organisation_existante") as m_org:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "refus_jdd_restants")
+        self.assertIn("g-sans-local-id", rapport["message"])
+        m_org.assert_not_called()
+
     def test_organisation_deja_absente(self):
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=None):

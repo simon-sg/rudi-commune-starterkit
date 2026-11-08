@@ -121,8 +121,12 @@ def vider_commune(
 
     nom_org_commune = organisations.organisation_commune(commune)["organization_name"]
 
+    # .get("local_id") plutôt que d["local_id"] : le nœud héberge aussi des JDD d'autres
+    # outils (ex. moissonneuse-batteuse, même nœud local partagé) qui n'ont pas forcément
+    # ce champ — optionnel dans le schéma RUDI, contrairement à global_id (toujours
+    # présent) utilisé en repli pour que le message reste identifiant quand même.
     restants = [
-        d["local_id"] for d in toutes_metadonnees_rudi(conf)
+        d.get("local_id") or d.get("global_id", "?") for d in toutes_metadonnees_rudi(conf)
         if (d.get("producer") or {}).get("organization_name") == nom_org_commune
     ]
     if restants:
