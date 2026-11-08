@@ -46,16 +46,26 @@ Les 13 modules `datasets/*.py`, `cli.py` (assistant interactif + mode scriptable
   jamais bloquer — un repli d'hygiène, pas une garantie.
 - **Em-dash → trait d'union** dans tout le contenu publié (titres/captions).
 - **`--vider-commune`** [`--supprimer-organisation`] [`--confirmer SUPPRIMER`] : supprime
-  les JDD d'une commune déjà publiés par ce socle (nœud + portail), avec suppression de
-  l'organisation en option (détachement producteur d'abord si nécessaire, arrêt en
-  attente de validation sinon). Nécessite `conf["url_portail"]`/`--url-portail`. Aussi
-  disponible depuis l'assistant interactif : en reprenant une commune du registre, un
-  choix *« Lancer la moisson / Vider cette commune »* propose le vidage sans passer par
-  le mode scriptable. Avec `--supprimer-organisation` : si d'autres JDD référencent
-  encore l'organisation sans être suivis par ce socle (publiés par un autre outil sur le
-  même nœud, ou un test manuel), leur suppression est détectée et **proposée**
-  séparément (confirmation `SUPPRIMER` dédiée) plutôt que de bloquer sans recours — en
-  scriptable, couverte par le même `--confirmer SUPPRIMER`.
+  les JDD d'une commune déjà publiés par ce socle (nœud, avec relais automatique du
+  nœud vers le portail — confirmé par le code source du nœud, aucun appel portail
+  séparé nécessaire), avec suppression de l'organisation en option (détachement
+  producteur d'abord si nécessaire, arrêt en attente de validation sinon). Nécessite
+  `conf["url_portail"]`/`--url-portail`. Aussi disponible depuis l'assistant
+  interactif : en reprenant une commune du registre, un choix *« Lancer la moisson /
+  Vider cette commune »* propose le vidage sans passer par le mode scriptable. Avec
+  `--supprimer-organisation` : si d'autres JDD référencent encore l'organisation sans
+  être suivis par ce socle (publiés par un autre outil sur le même nœud, ou un test
+  manuel), leur suppression est détectée et **proposée** séparément (confirmation
+  `SUPPRIMER` dédiée) plutôt que de bloquer sans recours — en scriptable, couverte par
+  le même `--confirmer SUPPRIMER`. Une fois le producteur détaché (et validé par
+  l'animateur du portail), **la suppression de l'organisation elle-même côté portail
+  n'est jamais automatisée** — aucun relais nœud n'existe pour cette opération précise
+  et aucun compte applicatif séparé n'a jamais existé pour ce socle (401 systématique,
+  testé 3 façons) : seul l'animateur (l'utilisateur) peut la faire, dans l'UI
+  Strukture. Une fois cette suppression portail faite à la main, relancer en
+  confirmant le mot distinct `SUPPRIME_PORTAIL` pour nettoyer la copie locale du nœud —
+  tant que cette confirmation n'est pas donnée, l'organisation reste détachée mais
+  présente des deux côtés (état dégradé acceptable, jamais d'orpheline créée).
 
 ## Dépendance
 

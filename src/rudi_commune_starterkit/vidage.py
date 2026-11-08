@@ -41,7 +41,6 @@ from rudi_harvest_toolkit.commune import (
 )
 from rudi_harvest_toolkit.rudi_client import (
     demander_detachement_producteur,
-    demander_suppression_organisation,
     global_id_pour_local_id,
     supprimer_dataset,
     supprimer_organisation as supprimer_organisation_noeud,
@@ -72,9 +71,9 @@ def vider_commune(
     par ce socle mais référençant l'organisation — proposés à la suppression
     séparément, uniquement si ``supprimer_organisation``), ``organisation`` (``None`` si
     non demandé, sinon un statut parmi ``"supprimee"``/``"deja_absente"``/
-    ``"detachement_demande"``/``"refus_jdd_restants"``/``"echec_suppression_portail"``/
-    ``"echec_suppression_noeud"``) et ``message`` (texte explicatif, toujours renseigné
-    sauf succès silencieux).
+    ``"detachement_demande"``/``"refus_jdd_restants"``/
+    ``"attente_suppression_portail_manuelle"``/``"echec_suppression_noeud"``) et
+    ``message`` (texte explicatif, toujours renseigné sauf succès silencieux).
     """
     chemin_etat = chemin_etat or f".etat_rudi_commune_starterkit/{code_insee}.json"
     rapport: dict = {
@@ -216,17 +215,39 @@ def vider_commune(
         )
         return rapport
 
-    ok_portail = demander_suppression_organisation(conf, organization_id)
-    if not ok_portail:
-        rapport["organisation"] = "echec_suppression_portail"
-        rapport["message"] = f"Échec de la suppression portail de « {nom_org_commune} »."
+    # Pas d'appel automatisé à demander_suppression_organisation() : la suppression
+    # d'une organisation côté portail (Strukture, OrganizationServiceImpl.
+    # deleteOrganization) exige un rôle PROVIDER applicatif — contrairement à la
+    # création/au détachement, il n'existe aucun relais nœud pour cette opération
+    # précise (seuls les actes "attach"/"detach"/"has_task" existent côté nœud), et
+    # aucun compte ROBOT séparé n'a jamais existé pour ce socle (testé 3 façons,
+    # toujours 401 — voir mémoire project_rudi_organisation_validation_workflow).
+    # Seul l'animateur du portail (l'utilisateur lui-même) peut la supprimer, dans
+    # l'UI Strukture — mot de confirmation distinct de SUPPRIMER pour qu'un lancement
+    # scriptable habituel (--confirmer SUPPRIMER) ne puisse jamais prétendre
+    # faussement que cette action manuelle a eu lieu.
+    if not confirmer_fn(
+        f"Organisation « {nom_org_commune} » détachée. Sa suppression côté portail "
+        "(Strukture) nécessite ton accès animateur — à faire toi-même dans l'UI "
+        "Strukture. Une fois cette suppression portail faite, retape "
+        "SUPPRIME_PORTAIL pour nettoyer aussi la copie locale du nœud.",
+        mot_attendu="SUPPRIME_PORTAIL",
+    ):
+        rapport["organisation"] = "attente_suppression_portail_manuelle"
+        rapport["message"] = (
+            f"Organisation « {nom_org_commune} » détachée, suppression portail "
+            "manuelle non confirmée — copie locale du nœud conservée (pas "
+            "d'orpheline créée). Supprime-la toi-même dans l'UI Strukture, puis "
+            "relance en confirmant SUPPRIME_PORTAIL."
+        )
         return rapport
 
     ok_noeud = supprimer_organisation_noeud(conf, organization_id)
     if not ok_noeud:
         rapport["organisation"] = "echec_suppression_noeud"
         rapport["message"] = (
-            f"Organisation « {nom_org_commune} » supprimée côté portail, échec côté nœud."
+            f"Organisation « {nom_org_commune} » supprimée côté portail (confirmé "
+            "manuellement), échec de la suppression côté nœud."
         )
         return rapport
 

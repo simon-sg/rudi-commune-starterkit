@@ -530,8 +530,11 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         oublier_profil(profil["code_insee"], profil["url_noeud"], chemin_profils)
         print("  Profil retiré du registre.")
 
+    # "attente_suppression_portail_manuelle" n'est pas un échec, comme
+    # "detachement_demande" plus haut dans le flux : une attente normale d'une action
+    # humaine (ici côté portail), pas un refus ni une erreur.
     if rapport["jdd_echecs"] or rapport["organisation"] in (
-        "refus_jdd_restants", "echec_suppression_portail", "echec_suppression_noeud",
+        "refus_jdd_restants", "echec_suppression_noeud",
     ):
         return EXIT_ECHECS_PARTIELS
     return EXIT_SUCCES

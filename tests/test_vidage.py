@@ -58,7 +58,6 @@ class TestViderCommuneEtatAbsentMaisOrganisationDemandee(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.vidage.resoudre_commune", return_value=_GEVEZE), \
              mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation", return_value=True), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
@@ -236,39 +235,47 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
              mock.patch("rudi_commune_starterkit.vidage.demander_detachement_producteur") as m_det, \
-             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation") as m_sup_org, \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
         self.assertEqual(rapport["organisation"], "detachement_demande")
         m_det.assert_called_once_with(_CONF, "org-1")
-        m_sup_org.assert_not_called()
         m_sup_noeud.assert_not_called()
 
-    def test_detachee_supprime_portail_puis_noeud(self):
+    def test_detachee_et_suppression_portail_confirmee_supprime_le_noeud(self):
+        """Pas d'appel portail automatisé (bug réel 2026-11-08, voir mémoire
+        project_rudi_organisation_validation_workflow : aucun compte ROBOT n'existe pour
+        ce socle, testé 3 façons, toujours 401) — seule une confirmation explicite
+        distincte (SUPPRIME_PORTAIL) attestant que l'utilisateur l'a fait lui-même en
+        tant qu'animateur du portail déclenche la suppression de la copie locale."""
         org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation", return_value=True) as m_sup_org, \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True) as m_sup_noeud:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
         self.assertEqual(rapport["organisation"], "supprimee")
-        m_sup_org.assert_called_once_with(_CONF, "org-1")
         m_sup_noeud.assert_called_once_with(_CONF, "org-1")
 
-    def test_echec_suppression_portail_narrete_avant_noeud(self):
+    def test_detachee_sans_confirmation_portail_narrete_avant_noeud(self):
+        """L'utilisateur n'a pas (encore) confirmé avoir supprimé l'organisation côté
+        portail lui-même : état dégradé mais acceptable (détachée, présente des deux
+        côtés) — jamais de suppression nœud sans cette confirmation explicite, pour ne
+        jamais créer d'orpheline inverse (portail vide, nœud qui pointe vers du vide)."""
+        def _confirmer_sauf_portail_manuel(message: str, *, mot_attendu: str) -> bool:
+            return mot_attendu != "SUPPRIME_PORTAIL"
+
         org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation", return_value=False), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
             rapport = vidage.vider_commune(
-                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+                _CONF, "35120", supprimer_organisation=True,
+                confirmer_fn=_confirmer_sauf_portail_manuel,
             )
-        self.assertEqual(rapport["organisation"], "echec_suppression_portail")
+        self.assertEqual(rapport["organisation"], "attente_suppression_portail_manuelle")
         m_sup_noeud.assert_not_called()
 
     def test_statut_linked_producer_manquant_traite_comme_detache(self):
@@ -277,7 +284,6 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         org = {"organization_id": "org-1"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation", return_value=True), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
