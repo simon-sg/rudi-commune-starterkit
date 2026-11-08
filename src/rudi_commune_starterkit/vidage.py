@@ -9,8 +9,14 @@ pas besoin d'un fichier séparé pour savoir où on en est.
 
 **Source de la liste à supprimer** : le fichier d'état local de ce socle
 (``.etat_rudi_commune_starterkit/<code_insee>.json``), pas une liste reconstruite depuis
-le nœud — si l'état est absent, il n'y a rien à faire ici (republier normalement
-reconstituera l'état si besoin, pas de mode de reconstruction spécial).
+le nœud — si l'état est absent *et* que l'organisation n'est pas demandée, il n'y a rien
+à faire ici (republier normalement reconstituera l'état si besoin, pas de mode de
+reconstruction spécial). Avec ``supprimer_organisation=True``, un état absent ne
+raccourcit **pas** l'appel : l'organisation peut légitimement être la seule chose encore
+à traiter (ex. tous les JDD déjà supprimés lors d'un appel précédent, suppression
+d'organisation elle-même refusée à ce moment-là par un JDD tiers encore présent sur le
+nœud — un second appel, une fois ce JDD traité, doit pouvoir réessayer l'organisation
+seule).
 
 Zéro dépendance vers ``cli.py`` : ``cli.py`` importe ce module, jamais l'inverse.
 """
@@ -74,19 +80,25 @@ def vider_commune(
         return rapport
 
     etat = charger_etat(chemin_etat)
-    if not etat:
+    local_ids = list(etat.keys()) if etat else []
+    if not local_ids and not supprimer_organisation:
         rapport["message"] = f"Rien à supprimer : aucun état local pour {code_insee} ({chemin_etat})."
         return rapport
 
-    local_ids = list(etat.keys())
-    print(f"[vidage] {len(local_ids)} JDD trouvés dans l'état local pour {code_insee} :")
-    for local_id in local_ids:
-        print(f"  - {local_id}")
+    if local_ids:
+        print(f"[vidage] {len(local_ids)} JDD trouvés dans l'état local pour {code_insee} :")
+        for local_id in local_ids:
+            print(f"  - {local_id}")
+        message_confirmation = f"Supprimer {len(local_ids)} JDD de la commune {code_insee} (nœud + portail)."
+    else:
+        # État local déjà vide (ex. tout supprimé lors d'un appel précédent) mais
+        # supprimer_organisation=True : l'organisation peut légitimement être la seule
+        # chose qui reste à traiter — ne pas sauter la confirmation pour autant.
+        message_confirmation = (
+            f"Aucun JDD local pour {code_insee} — traiter uniquement l'organisation."
+        )
 
-    if not confirmer_fn(
-        f"Supprimer {len(local_ids)} JDD de la commune {code_insee} (nœud + portail).",
-        mot_attendu="SUPPRIMER",
-    ):
+    if not confirmer_fn(message_confirmation, mot_attendu="SUPPRIMER"):
         rapport["message"] = "Annulé (confirmation non obtenue)."
         return rapport
 
@@ -107,7 +119,8 @@ def vider_commune(
         else:
             rapport["jdd_echecs"].append(local_id)
 
-    sauvegarder_etat(chemin_etat, etat)
+    if local_ids:
+        sauvegarder_etat(chemin_etat, etat)
 
     if not supprimer_organisation:
         return rapport

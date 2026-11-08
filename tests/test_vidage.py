@@ -45,6 +45,44 @@ class TestViderCommuneConfirmation(unittest.TestCase):
         m_save.assert_not_called()
 
 
+class TestViderCommuneEtatAbsentMaisOrganisationDemandee(unittest.TestCase):
+    """Bug réel (2026-11-08) : un 1er appel qui supprime tous les JDD vide l'état local
+    — un 2e appel avec supprimer_organisation=True (ex. pour réessayer l'organisation
+    une fois le JDD tiers bloquant traité) ne doit plus court-circuiter avant d'avoir
+    essayé quoi que ce soit côté organisation."""
+
+    def test_etat_absent_et_organisation_demandee_continue(self):
+        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
+        with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value={}), \
+             mock.patch("rudi_commune_starterkit.vidage.sauvegarder_etat") as m_save, \
+             mock.patch("rudi_commune_starterkit.vidage.resoudre_commune", return_value=_GEVEZE), \
+             mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
+             mock.patch("rudi_commune_starterkit.vidage.demander_suppression_organisation", return_value=True), \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "supprimee")
+        self.assertEqual(rapport["jdd_supprimes"], [])
+        m_save.assert_not_called()
+
+    def test_etat_absent_et_organisation_non_demandee_court_circuite_toujours(self):
+        with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value={}):
+            rapport = vidage.vider_commune(_CONF, "35120", confirmer_fn=_toujours_confirmer)
+        self.assertIn("Rien à supprimer", rapport["message"])
+        self.assertIsNone(rapport["organisation"])
+
+    def test_etat_absent_et_organisation_demandee_respecte_le_refus_de_confirmation(self):
+        with mock.patch("rudi_commune_starterkit.vidage.charger_etat", return_value={}), \
+             mock.patch("rudi_commune_starterkit.vidage.resoudre_commune") as m_resoudre:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_refuser,
+            )
+        self.assertIn("Annulé", rapport["message"])
+        m_resoudre.assert_not_called()
+
+
 class TestViderCommuneSuppressionJdd(unittest.TestCase):
     def setUp(self):
         self.etat = {"lid-1": {"hash": "a"}, "lid-2": {"hash": "b"}}
