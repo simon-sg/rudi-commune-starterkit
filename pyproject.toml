@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rudi-commune-starterkit"
+version = "0.1.0"
+description = "Moissonneur générique : à partir d'un code INSEE, peuple un nœud RUDI avec un socle de 14 JDD communaux de base."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.28",
+    "rudi-harvest-toolkit @ file:///media/simon/DATA4T/Dev/rudi-harvest-toolkit",
+    "keyring>=24",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+rudi-commune-starterkit = "rudi_commune_starterkit.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

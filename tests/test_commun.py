@@ -1,0 +1,187 @@
+"""Tests de datasets/_commun.py — local_id déterministe, pagination, simplification."""
+import unittest
+from unittest import mock
+
+from rudi_commune_starterkit.datasets._commun import (
+    RECHERCHE_ENTREPRISES_API,
+    contacts_pour_producer,
+    local_id_jdd,
+    recherche_entreprises,
+    simplifier_resultat_entreprise,
+)
+
+_RESULTAT_BRUT = {
+    "siren": "775685506",
+    "nom_complet": "GROUPE SOS JEUNESSE",
+    "sigle": None,
+    "activite_principale": "88.99B",
+    "categorie_entreprise": "ETI",
+    "tranche_effectif_salarie": "51",
+    "date_creation": "1900-01-01",
+    "etat_administratif": "A",
+    "nature_juridique": "9220",
+    "dirigeants": [{"nom": "Dupont", "date_de_naissance": "1970-01-01"}],
+    "finances": {"ca": 1000000},
+    "matching_etablissements": [
+        {
+            "siret": "35600000005434",
+            "adresse": "2 RUE DE RENNES 35850 GEVEZE",
+            "code_postal": "35850",
+            "libelle_commune": "GEVEZE",
+            "est_siege": False,
+            "activite_principale": "53.10Z",
+            "etat_administratif": "A",
+        }
+    ],
+}
+
+
+def _reponse_page(resultats, page, total_pages):
+    r = mock.Mock()
+    r.raise_for_status = mock.Mock()
+    r.json.return_value = {"results": resultats, "page": page, "total_pages": total_pages}
+    return r
+
+
+class TestLocalIdJdd(unittest.TestCase):
+    def test_deterministe(self):
+        a = local_id_jdd("entreprises", "35120")
+        b = local_id_jdd("entreprises", "35120")
+        self.assertEqual(a, b)
+
+    def test_independant_du_mode_producer(self):
+        # Rappel du plan : local_id ne doit JAMAIS dépendre du mode producer — ce test
+        # documente que la fonction ne prend même pas ce paramètre, par construction.
+        a = local_id_jdd("entreprises", "35120")
+        self.assertEqual(a, local_id_jdd("entreprises", "35120"))
+
+    def test_differe_selon_cle_ou_code_insee(self):
+        a = local_id_jdd("entreprises", "35120")
+        b = local_id_jdd("associations", "35120")
+        c = local_id_jdd("entreprises", "35238")
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(a, c)
+
+
+class TestContactsPourProducer(unittest.TestCase):
+    _COMMUNE = {"nom": "Gévezé"}
+
+    def test_mode_source_donne_seulement_le_contact_source(self):
+        # entreprises.py -> producteur_reel("entreprises") == {"organization_name": "INSEE"}
+        producer = {"organization_name": "INSEE"}
+        contacts = contacts_pour_producer("entreprises", producer, self._COMMUNE)
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["contact_name"], "INSEE")
+        self.assertTrue(contacts[0]["email"])
+
+    def test_mode_commune_contient_aussi_le_contact_source(self):
+        producer = {"organization_name": "Commune de Gévezé"}
+        contacts = contacts_pour_producer(
+            "entreprises", producer, self._COMMUNE, email_commune="mairie@geveze.fr",
+        )
+        self.assertEqual(
+            contacts[0], {"contact_name": "Commune de Gévezé", "email": "mairie@geveze.fr"},
+        )
+        self.assertEqual(len(contacts), 2)
+        self.assertEqual(contacts[1]["contact_name"], "INSEE")
+
+    def test_mode_commune_sans_email_commune_retombe_sur_la_source(self):
+        # Pas d'email_commune (ex. deliberations.py, producteur toujours la commune) :
+        # pas de contact commune explicite ici, publier_dataset() gère son repli
+        # générique ; seul le contact source apparaît s'il y en a un.
+        producer = {"organization_name": "Commune de Gévezé"}
+        contacts = contacts_pour_producer("entreprises", producer, self._COMMUNE)
+        self.assertEqual(contacts, [{"contact_name": "INSEE", "email": "insee@example.org"}])
+
+    def test_deliberations_mode_commune_pas_de_contact_source(self):
+        # DELIBERATIONS n'a pas d'entrée dans organisations.ORGANISATIONS (producteur
+        # toujours la commune) -> producteur_reel() lève KeyError -> pas de 2e contact.
+        producer = {"organization_name": "Commune de Gévezé"}
+        contacts = contacts_pour_producer(
+            "deliberations", producer, self._COMMUNE, email_commune="mairie@geveze.fr",
+        )
+        self.assertEqual(
+            contacts, [{"contact_name": "Commune de Gévezé", "email": "mairie@geveze.fr"}],
+        )
+
+    def test_mode_par_jdd_jdd_source_ignore_email_commune_dun_autre_jdd(self):
+        # Bug latent corrigé : un JDD resté en mode source ne doit PAS récupérer le
+        # contact commune simplement parce qu'un email_commune est fourni au run (cas
+        # d'un run --organisation-par-jdd mixte).
+        producer = {"organization_name": "INSEE"}
+        contacts = contacts_pour_producer(
+            "entreprises", producer, self._COMMUNE, email_commune="mairie@geveze.fr",
+        )
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["contact_name"], "INSEE")
+
+
+class TestRechercheEntreprises(unittest.TestCase):
+    def test_une_seule_page(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([_RESULTAT_BRUT], 1, 1)
+        resultats = recherche_entreprises("35120", session_http=session)
+        self.assertEqual(len(resultats), 1)
+        session.get.assert_called_once()
+        args, kwargs = session.get.call_args
+        self.assertEqual(args[0], f"{RECHERCHE_ENTREPRISES_API}/search")
+        self.assertEqual(kwargs["params"]["code_commune"], "35120")
+        self.assertEqual(kwargs["params"]["page"], 1)
+
+    def test_pagine_jusqu_a_total_pages(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_page([_RESULTAT_BRUT], 1, 3),
+            _reponse_page([_RESULTAT_BRUT], 2, 3),
+            _reponse_page([_RESULTAT_BRUT], 3, 3),
+        ]
+        resultats = recherche_entreprises("35120", session_http=session)
+        self.assertEqual(len(resultats), 3)
+        self.assertEqual(session.get.call_count, 3)
+
+    def test_plafond_pages_arrete_la_pagination(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([_RESULTAT_BRUT], 1, 1000)
+        resultats = recherche_entreprises("35120", session_http=session, plafond_pages=2)
+        self.assertEqual(session.get.call_count, 2)
+
+    def test_transmet_nature_juridique_et_etat_administratif(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([], 1, 1)
+        recherche_entreprises(
+            "35120", nature_juridique="9220", etat_administratif="A", session_http=session,
+        )
+        _, kwargs = session.get.call_args
+        self.assertEqual(kwargs["params"]["nature_juridique"], "9220")
+        self.assertEqual(kwargs["params"]["etat_administratif"], "A")
+
+    def test_echec_reseau_propage(self):
+        session = mock.Mock()
+        session.get.side_effect = RuntimeError("DNS")
+        with self.assertRaises(RuntimeError):
+            recherche_entreprises("35120", session_http=session)
+
+
+class TestSimplifierResultatEntreprise(unittest.TestCase):
+    def test_ne_contient_aucune_donnee_personnelle(self):
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        self.assertNotIn("dirigeants", simplifie)
+        self.assertNotIn("finances", simplifie)
+
+    def test_conserve_les_champs_utiles(self):
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        self.assertEqual(simplifie["siren"], "775685506")
+        self.assertEqual(simplifie["nom_complet"], "GROUPE SOS JEUNESSE")
+
+    def test_aplati_l_etablissement_correspondant(self):
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        self.assertEqual(len(simplifie["etablissements"]), 1)
+        self.assertEqual(simplifie["etablissements"][0]["siret"], "35600000005434")
+
+    def test_sans_etablissement_correspondant(self):
+        simplifie = simplifier_resultat_entreprise({"siren": "123"})
+        self.assertEqual(simplifie["etablissements"], [])
+
+
+if __name__ == "__main__":
+    unittest.main()

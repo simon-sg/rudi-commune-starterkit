@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Configuration locale (ne pas versionner — identifiants nœud RUDI)
+conf/rudi_node*.json
+conf/organisation_par_jdd*.json
+!conf/rudi_node.example.json
+
+# État d'exécution (hash de contenu publié, par commune) et sortie locale des connecteurs
+.etat_rudi_commune_starterkit/
+.sortie_rudi_commune_starterkit/
+
+# Registre de communes (emails de contact, pas de mot de passe — reste local quand même)
+.rudi_commune_starterkit/
+
+.pytest_cache/

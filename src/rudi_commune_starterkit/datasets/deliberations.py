@@ -1,0 +1,145 @@
+"""JDD « Délibérations » — Mégalis Bretagne, filtré par SIREN de la commune.
+
+Confirmé le 2026-11-07 : ``data-publication.megalis.bretagne.bzh/mq_apis/actes/v1/search``
+accepte ``siren`` et pagine par curseur opaque (``page_suivante``, **jamais** un numéro de
+page) — 1039 actes pour Gévezé sur un seul run. **Piège trouvé en testant** : le jeton de
+curseur contient des caractères (``+``/``=``) qui cassent silencieusement la pagination
+s'ils ne sont pas correctement pourcent-encodés dans l'URL (une requête `curl` brute
+renvoyait la même page indéfiniment) — ``requests``/``session.get(..., params=...)`` encode
+correctement, mais c'est un piège à connaître pour toute ré-implémentation.
+
+Chaque acte référence un PDF déjà public à une URL stable (``data.megalis.bretagne.bzh``) :
+pas question de retélécharger/réheberger 1000+ PDF nous-mêmes. Le **FILE combiné** est donc
+un index JSON (date, objet, classification, URL du PDF par acte), pas une fusion de
+contenu — une seule requête ne suffit jamais (pagination), donc jamais un FILE hybride.
+
+**Hors Bretagne, Mégalis ne couvre rien** — détecté sans aucun appel réseau
+(``commune["code_region"]``), avant même de résoudre le SIREN.
+
+**Producteur toujours la commune, jamais Mégalis** (voir ``organisations.py`` —
+``resoudre_producer()`` retourne systématiquement :func:`organisation_commune` pour cette
+clé, quel que soit ``mode_producer``) : Mégalis n'est qu'une plateforme de republication,
+la commune est déjà la productrice réelle de ses propres délibérations.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+
+from rudi_harvest_toolkit.commune import resoudre_siren_commune
+from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
+from rudi_harvest_toolkit.http import session
+
+from .. import organisations
+from ..resultat import ResultatConnecteur, StatutConnecteur
+from ._commun import contacts_pour_producer, local_id_jdd
+
+CLE = organisations.DELIBERATIONS
+THEME = "citizenship"
+TITRE = "Délibérations"
+SYNOPSIS_PATRON = "Index des délibérations de la commune de {commune} ({code_insee})"
+DESCRIPTION_PATRON = (
+    "Index des délibérations du conseil municipal de la commune de {commune} "
+    "({code_insee}), diffusées via la plateforme Mégalis Bretagne - chaque entrée pointe "
+    "vers le document PDF original, hébergé par Mégalis, jamais recopié ici. Instantané "
+    "figé à la date de moisson - pas une vue live ni mise à jour en continu."
+)
+FREQUENCE_MAJ = "mensuelle"
+
+_MEGALIS_API = "https://data-publication.megalis.bretagne.bzh/mq_apis/actes/v1/search"
+CODE_REGION_BRETAGNE = "53"
+PLAFOND_PAGES_DEFAUT = 500
+
+_CHAMPS_ACTE = (
+    "id", "date_acte", "date_publication", "objet", "classification_code",
+    "classification_libelle", "typologie", "content_type", "url",
+)
+
+
+def _simplifier_acte(acte: dict) -> dict:
+    return {champ: acte.get(champ) for champ in _CHAMPS_ACTE}
+
+
+def moissonner(
+    code_insee: str,
+    commune: dict,
+    *,
+    dossier_sortie: str,
+    mode_producer: str = "source",
+    contact_email_commune: str | None = None,
+    session_http=None,
+) -> ResultatConnecteur:
+    if commune.get("code_region") != CODE_REGION_BRETAGNE:
+        return ResultatConnecteur(
+            StatutConnecteur.HORS_COUVERTURE,
+            message="Mégalis Bretagne ne couvre que les communes de la région Bretagne.",
+        )
+
+    session_http = session_http or session
+
+    try:
+        siren = resoudre_siren_commune(code_insee, session_http=session_http)
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
+    actes: list[dict] = []
+    page_suivante: str | None = None
+    try:
+        for _ in range(PLAFOND_PAGES_DEFAUT):
+            params = {"siren": siren}
+            if page_suivante:
+                params["page_suivante"] = page_suivante
+            reponse = session_http.get(_MEGALIS_API, params=params, timeout=30)
+            reponse.raise_for_status()
+            donnees = reponse.json()
+            resultats = donnees.get("resultats", [])
+            actes.extend(_simplifier_acte(a) for a in resultats)
+            nb_resultats = donnees.get("nb_resultats", len(actes))
+            page_suivante = donnees.get("page_suivante")
+            if not resultats or not page_suivante or len(actes) >= nb_resultats:
+                break
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
+    if not actes:
+        return ResultatConnecteur(StatutConnecteur.VIDE)
+
+    local_id = local_id_jdd(CLE, code_insee)
+    nom_fichier = f"deliberations_{code_insee}.json"
+    chemin = os.path.join(dossier_sortie, nom_fichier)
+    os.makedirs(dossier_sortie, exist_ok=True)
+    with open(chemin, "w", encoding="utf-8") as f:
+        json.dump(actes, f, ensure_ascii=False, indent=2)
+
+    producer = organisations.resoudre_producer(CLE, mode_producer, commune)
+    contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
+
+    media = media_filtre(
+        local_id, nom_fichier, commune["nom"],
+        caption=f"Index des délibérations - {commune['nom']} (JSON)",
+    )
+
+    rudi_metadata = construire_rudi_metadata(
+        local_id=local_id,
+        titre=f"{TITRE} - {commune['nom']} ({code_insee})",
+        synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
+        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        theme=THEME,
+        keywords=["délibérations", "conseil municipal", commune["nom"], "Mégalis Bretagne"],
+        producer=producer,
+        url_source=f"{_MEGALIS_API}?siren={siren}",
+        url_fiche="https://data-publication.megalis.bretagne.bzh/",
+        medias=[media],
+        contacts_source=contacts,
+    )
+
+    return ResultatConnecteur(
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
+    )
+
+
+__all__ = [
+    "CLE", "CODE_REGION_BRETAGNE", "DESCRIPTION_PATRON", "FREQUENCE_MAJ",
+    "PLAFOND_PAGES_DEFAUT", "SYNOPSIS_PATRON", "THEME", "TITRE", "moissonner",
+]
