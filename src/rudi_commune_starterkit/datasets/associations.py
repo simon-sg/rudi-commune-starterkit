@@ -47,6 +47,7 @@ def moissonner(
     mode_producer: str = "source",
     contact_email_commune: str | None = None,
     session_http=None,
+    description_commune: dict | None = None,
 ) -> ResultatConnecteur:
     try:
         resultats = recherche_entreprises(
@@ -69,7 +70,9 @@ def moissonner(
         writer.writeheader()
         writer.writerows(lignes_csv_entreprises(associations))
 
-    producer = organisations.resoudre_producer(CLE, mode_producer, commune)
+    producer = organisations.resoudre_producer(
+        CLE, mode_producer, commune, description_commune=description_commune,
+    )
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
     media = media_filtre(

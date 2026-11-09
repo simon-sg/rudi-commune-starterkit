@@ -36,6 +36,7 @@ from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
 from . import organisations, registre
+from .description_commune import construire_description_commune
 from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
 from .profils_communes import charger_profils, enregistrer_profil, oublier_profil
@@ -59,6 +60,11 @@ from .securite import (
     verifier_permissions_conf,
 )
 from .vidage import vider_commune
+
+# Cache Wikipédia partagé entre toutes les communes (pas à l'intérieur d'un
+# dossier_sortie par commune, sinon le TTL de resumer_commune_wikipedia() ne sert à
+# rien) — à la racine, à côté de ``.sortie_rudi_commune_starterkit/``.
+DOSSIER_CACHE_WIKIPEDIA = ".cache_wikipedia"
 
 EXIT_SUCCES = 0
 EXIT_ECHECS_PARTIELS = 1
@@ -153,11 +159,23 @@ def executer_run(
         if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
     ]
 
+    # Résolu UNE SEULE FOIS par run (pas par module), avant producteurs_candidats, et
+    # réutilisé aux deux sites qui construisent l'organisation de la commune — voir le
+    # plan, § Axe 1 (sinon l'organisation créée sur le nœud et le producer publié avec
+    # chaque JDD pourraient porter des résumés différents).
+    description_commune = construire_description_commune(
+        commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+    )
+    if description_commune["source"] == "repli_generique":
+        print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
+              "— description générique utilisée pour l'organisation de la commune.")
+
     producteurs_candidats = {}
     producteur_par_module: dict[str, dict] = {}
     for module in modules:
         producteur = organisations.resoudre_producer(
             module.CLE, modes_par_jdd[module.CLE], commune,
+            description_commune=description_commune,
         )
         producteur_par_module[module.CLE] = producteur
         producteurs_candidats[producteur["organization_name"]] = producteur
@@ -199,7 +217,9 @@ def executer_run(
                           "les JDD qui en dépendent sont sautés ce run.")
                     organisation_en_attente = True
                 else:
-                    organisation = organisations.organisation_commune(commune)
+                    organisation = organisations.organisation_commune(
+                        commune, description_commune=description_commune,
+                    )
                     organisation_id = demander_creation_organisation(conf, organisation)
                     if organisation_id is None:
                         print(f"[cli] [organisation] Échec de la création de « {nom_org_commune} » "
@@ -239,6 +259,7 @@ def executer_run(
             dossier_sortie=dossier_sortie,
             mode_producer=modes_par_jdd[module.CLE],
             contact_email_commune=contact_email_commune,
+            description_commune=description_commune,
         )
 
         if resultat.statut == StatutConnecteur.HORS_COUVERTURE:

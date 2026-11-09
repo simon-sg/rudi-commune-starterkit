@@ -48,6 +48,7 @@ def moissonner(
     mode_producer: str = "source",
     contact_email_commune: str | None = None,
     session_http=None,
+    description_commune: dict | None = None,
 ) -> ResultatConnecteur:
     session_http = session_http or session
     date_min = datetime.date.today().replace(year=datetime.date.today().year - _FENETRE_ANNEES)
@@ -67,7 +68,9 @@ def moissonner(
         return ResultatConnecteur(StatutConnecteur.VIDE)
 
     local_id = local_id_jdd(CLE, code_insee)
-    producer = organisations.resoudre_producer(CLE, mode_producer, commune)
+    producer = organisations.resoudre_producer(
+        CLE, mode_producer, commune, description_commune=description_commune,
+    )
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
     media = construire_media_hybride(

@@ -59,6 +59,26 @@ class TestOrganisationCommune(unittest.TestCase):
         org = organisation_commune(_GEVEZE)
         self.assertIn("organization_caption", org)
 
+    def test_sans_description_commune_comportement_inchange(self):
+        org = organisation_commune(_GEVEZE, description_commune=None)
+        self.assertEqual(
+            org["organization_summary"], "Collectivité territoriale, commune de Gévezé (35120)."
+        )
+        self.assertNotIn("organization_url", org)
+
+    def test_description_commune_remplace_la_phrase_generique(self):
+        desc = {"organization_summary": "Résumé Wikipédia.", "source": "wikipedia",
+                "url": "https://fr.wikipedia.org/wiki/Gévezé"}
+        org = organisation_commune(_GEVEZE, description_commune=desc)
+        self.assertEqual(org["organization_summary"], "Résumé Wikipédia.")
+        self.assertEqual(org["organization_url"], desc["url"])
+
+    def test_description_commune_repli_generique_sans_url(self):
+        desc = {"organization_summary": "Collectivité territoriale, commune de Gévezé (35120).",
+                "source": "repli_generique", "url": None}
+        org = organisation_commune(_GEVEZE, description_commune=desc)
+        self.assertNotIn("organization_url", org)
+
 
 class TestResoudreProducer(unittest.TestCase):
     def test_mode_source_retourne_le_vrai_producteur(self):
@@ -88,6 +108,22 @@ class TestResoudreProducer(unittest.TestCase):
     def test_adresses_mode_source(self):
         producer = resoudre_producer(ADRESSES, "source", _GEVEZE)
         self.assertIn("Base Adresse Nationale", producer["organization_name"])
+
+    def test_mode_commune_propage_description_commune(self):
+        desc = {"organization_summary": "Résumé Wikipédia.", "source": "wikipedia",
+                "url": "https://fr.wikipedia.org/wiki/Gévezé"}
+        producer = resoudre_producer(ENTREPRISES, "commune", _GEVEZE, description_commune=desc)
+        self.assertEqual(producer["organization_summary"], "Résumé Wikipédia.")
+
+    def test_mode_source_ignore_description_commune(self):
+        desc = {"organization_summary": "Résumé Wikipédia.", "source": "wikipedia", "url": None}
+        producer = resoudre_producer(ENTREPRISES, "source", _GEVEZE, description_commune=desc)
+        self.assertEqual(producer["organization_name"], "INSEE")
+
+    def test_deliberations_propage_description_commune(self):
+        desc = {"organization_summary": "Résumé Wikipédia.", "source": "wikipedia", "url": None}
+        producer = resoudre_producer(DELIBERATIONS, "source", _GEVEZE, description_commune=desc)
+        self.assertEqual(producer["organization_summary"], "Résumé Wikipédia.")
 
 
 if __name__ == "__main__":

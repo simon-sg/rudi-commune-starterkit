@@ -1,4 +1,5 @@
 """Tests de registre.py — énumération des modules JDD, sans duplication de métadonnées."""
+import inspect
 import unittest
 
 from rudi_commune_starterkit import registre
@@ -28,6 +29,14 @@ class TestRegistre(unittest.TestCase):
     def test_module_par_cle_inconnu(self):
         with self.assertRaises(KeyError):
             registre.module_par_cle("inexistant")
+
+    def test_tous_les_modules_acceptent_description_commune(self):
+        # Test de contrat de signature (v3, Axe 1) — le vrai risque des 13 modules
+        # touchés n'est pas un état partagé (il n'y en a aucun), mais une dérive de
+        # contrat qu'aucun test de module isolé ne détecte.
+        for module in registre.lister_modules():
+            params = inspect.signature(module.moissonner).parameters
+            self.assertIn("description_commune", params, module.CLE)
 
 
 if __name__ == "__main__":

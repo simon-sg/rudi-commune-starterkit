@@ -181,25 +181,39 @@ def producteur_reel(cle_jdd: str) -> dict:
         ) from None
 
 
-def organisation_commune(commune: dict) -> dict:
+def organisation_commune(commune: dict, *, description_commune: dict | None = None) -> dict:
     """Producteur « la commune publie ses données » — construit explicitement le nom.
 
     Ni ``geo.api.gouv.fr`` (``"Gévezé"``, sans « Commune de ») ni la fiche SIRENE de la
     commune (``"COMMUNE DE GEVEZE"``, en majuscules) ne donnent la forme voulue : ce nom
     est la source de vérité, pas un repli flou.
+
+    ``description_commune`` (optionnel, keyword-only — voir
+    ``description_commune.construire_description_commune()``) : si fourni et porteur
+    d'un ``organization_summary`` (résumé Wikipédia ou repli générique déjà résolu par
+    l'appelant), remplace la phrase générique codée en dur ici et, si une ``url`` est
+    présente, l'ajoute en ``organization_url``. Rétrocompatible : sans cet argument,
+    comportement strictement inchangé.
     """
     nom = f"Commune de {commune['nom']}"
-    return {
+    resume = description_commune or {}
+    summary = resume.get("organization_summary") or (
+        f"Collectivité territoriale, commune de {commune['nom']}"
+        f" ({commune.get('code_insee', '')})."
+    )
+    organisation = {
         "organization_name": nom,
         "organization_caption": "Collectivité territoriale",
-        "organization_summary": (
-            f"Collectivité territoriale, commune de {commune['nom']}"
-            f" ({commune.get('code_insee', '')})."
-        ),
+        "organization_summary": summary,
     }
+    if resume.get("url"):
+        organisation["organization_url"] = resume["url"]
+    return organisation
 
 
-def resoudre_producer(cle_jdd: str, mode: str, commune: dict) -> dict:
+def resoudre_producer(
+    cle_jdd: str, mode: str, commune: dict, *, description_commune: dict | None = None,
+) -> dict:
     """Résout le ``producer`` RUDI d'un JDD selon le mode effectif pour ce JDD.
 
     ``mode`` : ``"source"`` ou ``"commune"`` (le mode ``"par-jdd"`` de l'assistant CLI se
@@ -207,12 +221,14 @@ def resoudre_producer(cle_jdd: str, mode: str, commune: dict) -> dict:
     déjà résolu pour ce JDD précis).
 
     Les délibérations ignorent ``mode`` et retournent toujours :func:`organisation_commune`
-    — voir la docstring du module.
+    — voir la docstring du module. ``description_commune`` (keyword-only) n'a d'effet
+    que dans les branches qui retournent :func:`organisation_commune` — ignoré en mode
+    ``"source"``, puisque ``producteur_reel()`` ne décrit jamais la commune elle-même.
     """
     if cle_jdd == DELIBERATIONS:
-        return organisation_commune(commune)
+        return organisation_commune(commune, description_commune=description_commune)
     if mode == "commune":
-        return organisation_commune(commune)
+        return organisation_commune(commune, description_commune=description_commune)
     if mode == "source":
         return producteur_reel(cle_jdd)
     raise ValueError(f"mode de producteur inconnu : {mode!r} (attendu 'source' ou 'commune')")

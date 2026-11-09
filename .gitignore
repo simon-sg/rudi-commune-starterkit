@@ -13,6 +13,9 @@ conf/organisation_par_jdd*.json
 .etat_rudi_commune_starterkit/
 .sortie_rudi_commune_starterkit/
 
+# Cache Wikipédia partagé entre communes (v3, Axe 1) — local, pas de contenu à versionner
+.cache_wikipedia/
+
 # Registre de communes (emails de contact, pas de mot de passe — reste local quand même)
 .rudi_commune_starterkit/
 
