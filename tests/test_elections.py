@@ -1,7 +1,6 @@
 """Tests de datasets/elections.py — format large, blocs de liste dynamiques."""
 import csv
 import io
-import json
 import tempfile
 import unittest
 from unittest import mock
@@ -92,11 +91,11 @@ class TestMoissonnerElections(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            donnees = json.load(f)
-        self.assertEqual(len(donnees["listes"]), 2)
-        self.assertEqual(donnees["totaux"]["Inscrits"], "4487")
-        noms = {l["libelle_liste"] for l in donnees["listes"]}
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(lignes[0]["totaux_Inscrits"], "4487")
+        noms = {l["libelle_liste"] for l in lignes}
         self.assertEqual(noms, {"GEVEZE, L'AVENIR EN CONFIANCE", "VIVRE ENSEMBLE A GEVEZE"})
 
     def test_metadonnees_sans_em_dash(self):
@@ -121,10 +120,10 @@ class TestMoissonnerElections(unittest.TestCase):
         resultat = elections.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            donnees = json.load(f)
-        for liste in donnees["listes"]:
-            self.assertTrue(liste["libelle_liste"])
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        for ligne in lignes:
+            self.assertTrue(ligne["libelle_liste"])
 
     def test_vide_sans_ligne_pour_la_commune(self):
         session = mock.Mock()

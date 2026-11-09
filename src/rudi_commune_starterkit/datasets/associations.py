@@ -8,14 +8,21 @@ suffisante (pas de repli fichier RNA, reporté en v2 si besoin constaté). Sourc
 
 from __future__ import annotations
 
-import json
+import csv
 import os
 
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
 from .. import organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd, recherche_entreprises, simplifier_resultat_entreprise
+from ._commun import (
+    COLONNES_CSV_ENTREPRISES,
+    contacts_pour_producer,
+    lignes_csv_entreprises,
+    local_id_jdd,
+    recherche_entreprises,
+    simplifier_resultat_entreprise,
+)
 
 CLE = organisations.ASSOCIATIONS
 THEME = "citizenship"
@@ -54,18 +61,20 @@ def moissonner(
     associations = [simplifier_resultat_entreprise(r) for r in resultats]
 
     local_id = local_id_jdd(CLE, code_insee)
-    nom_fichier = f"associations_{code_insee}.json"
+    nom_fichier = f"associations_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
     os.makedirs(dossier_sortie, exist_ok=True)
-    with open(chemin, "w", encoding="utf-8") as f:
-        json.dump(associations, f, ensure_ascii=False, indent=2)
+    with open(chemin, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=COLONNES_CSV_ENTREPRISES, delimiter=";")
+        writer.writeheader()
+        writer.writerows(lignes_csv_entreprises(associations))
 
     producer = organisations.resoudre_producer(CLE, mode_producer, commune)
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
-        caption=f"Associations déclarées à {commune['nom']} (JSON)",
+        caption=f"Associations déclarées à {commune['nom']} (CSV)",
     )
 
     rudi_metadata = construire_rudi_metadata(

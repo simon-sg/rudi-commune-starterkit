@@ -1,5 +1,25 @@
 # Changelog
 
+## Non publié — entreprises/associations/élections/délibérations : CSV au lieu de JSON
+
+Ces 4 JDD n'avaient jamais d'onglet « tableau » sur le portail : leur seul média
+`FILE` était en `application/json`, format que le front-office ne reconnaît pas pour
+l'aperçu tabulaire (seuls CSV/XLS/XLSX le sont). Republiés en CSV `;` :
+
+- `entreprises.py`/`associations.py` : nouvelle `lignes_csv_entreprises()`
+  (`_commun.py`) — dénormalise une ligne par établissement, champs entreprise
+  répétés ; champs établissement préfixés `etablissement_` (collision de noms avec
+  `activite_principale`/`etat_administratif`, présents aux deux niveaux).
+- `elections.py` : dénormalise une ligne par liste candidate, totaux de la commune
+  (`Inscrits`/`Votants`/...) répétés sous `totaux_*`.
+- `deliberations.py` : déjà une liste plate d'actes, conversion directe.
+
+`population.py` et `eau_potable.py` restent en JSON hybride (URL externe jamais
+retéléchargée, décision déjà actée) — ni Hub'eau ni l'API Melodi n'offrent d'export
+CSV natif (testé `format=csv` et `Accept: text/csv`, les deux ignorent/rejettent),
+et basculer en CSV supposerait d'abandonner le hybride pour ces deux JDD. Laissé tel
+quel pour l'instant, sujet distinct.
+
 ## Non publié — organisation : plus d'appel portail automatisé à la suppression
 
 Suite directe de l'entrée précédente : une fois le producteur détaché et validé par

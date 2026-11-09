@@ -1,5 +1,5 @@
 """Tests de datasets/deliberations.py — hors Bretagne sans réseau, pagination par curseur."""
-import json
+import csv
 import tempfile
 import unittest
 from unittest import mock
@@ -56,8 +56,8 @@ class TestMoissonnerDeliberations(unittest.TestCase):
         )
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
         self.assertEqual(len(resultat.fichiers_filtres), 1)
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            actes = json.load(f)
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            actes = list(csv.DictReader(f, delimiter=";"))
         self.assertEqual(len(actes), 2)
 
     def test_metadonnees_sans_em_dash(self):
@@ -86,8 +86,8 @@ class TestMoissonnerDeliberations(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            actes = json.load(f)
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            actes = list(csv.DictReader(f, delimiter=";"))
         self.assertEqual([a["id"] for a in actes], ["a1", "a2"])
 
     def test_vide_sans_acte(self):

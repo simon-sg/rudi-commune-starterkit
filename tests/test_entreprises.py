@@ -1,5 +1,5 @@
 """Tests de datasets/entreprises.py — statuts, alignement média/fichier, modes producer."""
-import json
+import csv
 import os
 import tempfile
 import unittest
@@ -28,7 +28,7 @@ class TestMoissonnerEntreprises(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.dossier = self._tmp.name
 
-    def test_publiable_ecrit_un_fichier_json_et_un_media_aligne(self):
+    def test_publiable_ecrit_un_fichier_csv_et_un_media_aligne(self):
         session = mock.Mock()
         session.get.return_value = _reponse_page([_RESULTAT])
 
@@ -39,9 +39,10 @@ class TestMoissonnerEntreprises(unittest.TestCase):
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
         self.assertEqual(len(resultat.fichiers_filtres), 1)
         self.assertTrue(os.path.isfile(resultat.fichiers_filtres[0]))
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            contenu = json.load(f)
-        self.assertEqual(contenu[0]["siren"], "775685506")
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        self.assertEqual(lignes[0]["siren"], "775685506")
+        self.assertEqual(lignes[0]["etablissement_siret"], "77568550600010")
 
         medias = resultat.rudi_metadata["available_formats"]
         self.assertEqual(medias[0]["media_type"], "FILE")

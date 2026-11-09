@@ -24,7 +24,7 @@ la commune est déjà la productrice réelle de ses propres délibérations.
 
 from __future__ import annotations
 
-import json
+import csv
 import os
 
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
@@ -106,18 +106,20 @@ def moissonner(
         return ResultatConnecteur(StatutConnecteur.VIDE)
 
     local_id = local_id_jdd(CLE, code_insee)
-    nom_fichier = f"deliberations_{code_insee}.json"
+    nom_fichier = f"deliberations_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
     os.makedirs(dossier_sortie, exist_ok=True)
-    with open(chemin, "w", encoding="utf-8") as f:
-        json.dump(actes, f, ensure_ascii=False, indent=2)
+    with open(chemin, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_CHAMPS_ACTE, delimiter=";")
+        writer.writeheader()
+        writer.writerows(actes)
 
     producer = organisations.resoudre_producer(CLE, mode_producer, commune)
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
-        caption=f"Index des délibérations - {commune['nom']} (JSON)",
+        caption=f"Index des délibérations - {commune['nom']} (CSV)",
     )
 
     rudi_metadata = construire_rudi_metadata(

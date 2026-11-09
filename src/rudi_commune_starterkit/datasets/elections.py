@@ -19,7 +19,7 @@ acté avec l'utilisateur sur le multi-scrutins.
 
 from __future__ import annotations
 
-import json
+import csv
 import os
 import re
 
@@ -52,6 +52,24 @@ _RE_BLOC = re.compile(r"^Libellé de liste (\d+)$")
 _CHAMPS_TOTAUX = (
     "Inscrits", "Votants", "Abstentions", "Exprimés", "Blancs", "Nuls",
 )
+_CHAMPS_BLOC = (
+    "numero_panneau", "libelle_liste", "libelle_abrege", "nuance", "voix",
+    "pourcentage_exprimes", "elu", "sieges_conseil_municipal", "sieges_conseil_communautaire",
+)
+_COLONNES_CSV = (
+    ("code_insee", "commune")
+    + tuple(f"totaux_{champ}" for champ in _CHAMPS_TOTAUX)
+    + _CHAMPS_BLOC
+)
+
+
+def _lignes_csv(resultat_commune: dict) -> list[dict]:
+    """Dénormalise le résultat d'une commune en lignes CSV : une ligne par liste
+    candidate, totaux de la commune répétés sur chaque ligne (onglet tableau du portail —
+    ``application/json`` n'y est pas reconnu)."""
+    entete = {"code_insee": resultat_commune["code_insee"], "commune": resultat_commune["commune"]}
+    entete.update({f"totaux_{champ}": v for champ, v in resultat_commune["totaux"].items()})
+    return [{**entete, **bloc} for bloc in resultat_commune["listes"]]
 
 
 def _blocs_liste(entetes: list[str], ligne: dict) -> list[dict]:
@@ -119,18 +137,20 @@ def moissonner(
     }
 
     local_id = local_id_jdd(CLE, code_insee)
-    nom_fichier = f"elections_municipales_2026_t1_{code_insee}.json"
+    nom_fichier = f"elections_municipales_2026_t1_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
     os.makedirs(dossier_sortie, exist_ok=True)
-    with open(chemin, "w", encoding="utf-8") as f:
-        json.dump(resultat_commune, f, ensure_ascii=False, indent=2)
+    with open(chemin, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_COLONNES_CSV, delimiter=";")
+        writer.writeheader()
+        writer.writerows(_lignes_csv(resultat_commune))
 
     producer = organisations.resoudre_producer(CLE, mode_producer, commune)
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
-        caption=f"Résultats municipales 2026, 1er tour - {commune['nom']} (JSON)",
+        caption=f"Résultats municipales 2026, 1er tour - {commune['nom']} (CSV)",
     )
 
     rudi_metadata = construire_rudi_metadata(

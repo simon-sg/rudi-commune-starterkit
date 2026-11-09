@@ -5,6 +5,7 @@ from unittest import mock
 from rudi_commune_starterkit.datasets._commun import (
     RECHERCHE_ENTREPRISES_API,
     contacts_pour_producer,
+    lignes_csv_entreprises,
     local_id_jdd,
     recherche_entreprises,
     simplifier_resultat_entreprise,
@@ -181,6 +182,37 @@ class TestSimplifierResultatEntreprise(unittest.TestCase):
     def test_sans_etablissement_correspondant(self):
         simplifie = simplifier_resultat_entreprise({"siren": "123"})
         self.assertEqual(simplifie["etablissements"], [])
+
+
+class TestLignesCsvEntreprises(unittest.TestCase):
+    def test_une_ligne_par_etablissement_champs_entreprise_repetes(self):
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        lignes = lignes_csv_entreprises([simplifie])
+        self.assertEqual(len(lignes), 1)
+        self.assertEqual(lignes[0]["siren"], "775685506")
+        self.assertEqual(lignes[0]["etablissement_siret"], "35600000005434")
+
+    def test_prefixe_evite_collision_de_noms_de_champs(self):
+        # activite_principale/etat_administratif existent aux deux niveaux : le
+        # préfixe etablissement_* doit garder les deux valeurs distinctes.
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        lignes = lignes_csv_entreprises([simplifie])
+        self.assertEqual(lignes[0]["activite_principale"], "88.99B")
+        self.assertEqual(lignes[0]["etablissement_activite_principale"], "53.10Z")
+
+    def test_sans_etablissement_une_seule_ligne_vide(self):
+        simplifie = simplifier_resultat_entreprise({"siren": "123"})
+        lignes = lignes_csv_entreprises([simplifie])
+        self.assertEqual(len(lignes), 1)
+        self.assertIsNone(lignes[0]["etablissement_siret"])
+
+    def test_plusieurs_entreprises_plusieurs_etablissements(self):
+        deux = simplifier_resultat_entreprise({
+            **_RESULTAT_BRUT,
+            "matching_etablissements": _RESULTAT_BRUT["matching_etablissements"] * 2,
+        })
+        lignes = lignes_csv_entreprises([deux])
+        self.assertEqual(len(lignes), 2)
 
 
 if __name__ == "__main__":

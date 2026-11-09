@@ -142,10 +142,37 @@ def simplifier_resultat_entreprise(resultat: dict) -> dict:
     return simplifie
 
 
+COLONNES_CSV_ENTREPRISES = _CHAMPS_ENTREPRISE + tuple(
+    f"etablissement_{champ}" for champ in _CHAMPS_ETABLISSEMENT
+)
+
+
+def lignes_csv_entreprises(entreprises: list[dict]) -> list[dict]:
+    """Dénormalise une liste de résultats ``simplifier_resultat_entreprise`` en lignes
+    CSV : une ligne par établissement, champs entreprise répétés sur chaque ligne.
+
+    Nécessaire pour que le JDD ait un onglet tableau sur le portail (``application/json``
+    n'y est pas reconnu) — préfixe les champs établissement (``etablissement_*``) car
+    certains noms (``activite_principale``, ``etat_administratif``) existent aux deux
+    niveaux et s'écraseraient sinon dans une ligne dénormalisée.
+    """
+    lignes = []
+    for entreprise in entreprises:
+        champs_entreprise = {champ: entreprise.get(champ) for champ in _CHAMPS_ENTREPRISE}
+        for etablissement in entreprise.get("etablissements") or [{}]:
+            ligne = dict(champs_entreprise)
+            for champ in _CHAMPS_ETABLISSEMENT:
+                ligne[f"etablissement_{champ}"] = etablissement.get(champ)
+            lignes.append(ligne)
+    return lignes
+
+
 __all__ = [
+    "COLONNES_CSV_ENTREPRISES",
     "PLAFOND_PAGES_DEFAUT",
     "RECHERCHE_ENTREPRISES_API",
     "contacts_pour_producer",
+    "lignes_csv_entreprises",
     "local_id_jdd",
     "recherche_entreprises",
     "simplifier_resultat_entreprise",
