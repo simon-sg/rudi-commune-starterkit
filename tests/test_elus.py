@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from rudi_commune_starterkit import licences
 from rudi_commune_starterkit.datasets import elus
 from rudi_commune_starterkit.resultat import StatutConnecteur
 
@@ -46,13 +47,16 @@ def _csv_rne(lignes=_LIGNES_RNE):
     return tampon.getvalue().encode("utf-8")
 
 
-def _reponse_metadata():
+def _reponse_metadata(license="lov2"):
     r = mock.Mock()
     r.raise_for_status = mock.Mock()
     r.json.return_value = {
+        "license": license,
+        "page": "https://www.data.gouv.fr/fr/datasets/repertoire-national-des-elus-1/",
         "resources": [
             {"id": "1", "title": "elus-conseiller-municipal-cm.csv",
-             "url": "https://static.data.gouv.fr/elus-conseiller-municipal-cm.csv"},
+             "url": "https://static.data.gouv.fr/elus-conseiller-municipal-cm.csv",
+             "last_modified": "2026-10-01T00:00:00Z"},
             {"id": "2", "title": "elus-maires-mai.csv",
              "url": "https://static.data.gouv.fr/elus-maires-mai.csv"},
         ]
@@ -131,6 +135,47 @@ class TestMoissonnerElus(unittest.TestCase):
         resultat = elus.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
+        self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+
+    def test_licence_dynamique_depuis_datagouv(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_metadata(license="lov2"), _reponse_telechargement(_csv_rne())]
+        resultat = elus.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        self.assertEqual(
+            resultat.rudi_metadata["access_condition"]["licence"]["licence_label"], "etalab-2.0",
+        )
+
+    def test_dates_resolues_depuis_last_modified_ressource(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_metadata(), _reponse_telechargement(_csv_rne())]
+        resultat = elus.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertIn("dataset_dates", resultat.rudi_metadata)
+
+    def test_licence_absente_retombe_sur_la_table_curee(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_metadata(license=None), _reponse_telechargement(_csv_rne())]
+        resultat = elus.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        self.assertEqual(
+            resultat.rudi_metadata["access_condition"]["licence"]["licence_label"], "etalab-2.0",
+        )
+
+    def test_licence_inconnue_est_un_echec_isole(self):
+        # Chemin d'échec : ni licence dynamique ni entrée curée disponible.
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_metadata(license=None), _reponse_telechargement(_csv_rne())]
+        table_sans_elus = {k: v for k, v in licences.LICENCES_CUREES.items() if k != elus.CLE}
+        with mock.patch.object(licences, "LICENCES_CUREES", table_sans_elus):
+            resultat = elus.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
 

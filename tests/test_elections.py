@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+from rudi_commune_starterkit import licences
 from rudi_commune_starterkit.datasets import elections
 from rudi_commune_starterkit.resultat import StatutConnecteur
 
@@ -53,13 +54,16 @@ def _csv_national(lignes):
     return tampon.getvalue().encode("utf-8")
 
 
-def _reponse_metadata():
+def _reponse_metadata(license="lov2"):
     r = mock.Mock()
     r.raise_for_status = mock.Mock()
     r.json.return_value = {
+        "license": license,
+        "page": "https://www.data.gouv.fr/fr/datasets/elections-municipales-2026-resultats-du-premier-tour/",
         "resources": [
             {"id": "1", "title": "Municipales 2026 - Résultats - Communes_2026-03-20.csv",
-             "url": "https://static.data.gouv.fr/municipales-communes.csv"},
+             "url": "https://static.data.gouv.fr/municipales-communes.csv",
+             "last_modified": "2026-03-21T00:00:00Z"},
             {"id": "2",
              "title": "Municipales Polynésie française 2026 - Résultats - Communes_2026-03-20.csv",
              "url": "https://static.data.gouv.fr/polynesie-communes.csv"},
@@ -140,6 +144,44 @@ class TestMoissonnerElections(unittest.TestCase):
         resultat = elections.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
+        self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+
+    def test_licence_dynamique_depuis_datagouv(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_metadata(license="lov2"),
+            _reponse_telechargement(_csv_national([_LIGNE_GEVEZE])),
+        ]
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        self.assertEqual(
+            resultat.rudi_metadata["access_condition"]["licence"]["licence_label"], "etalab-2.0",
+        )
+
+    def test_licence_absente_retombe_sur_la_table_curee(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_metadata(license=None),
+            _reponse_telechargement(_csv_national([_LIGNE_GEVEZE])),
+        ]
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+
+    def test_licence_inconnue_est_un_echec_isole(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_metadata(license=None),
+            _reponse_telechargement(_csv_national([_LIGNE_GEVEZE])),
+        ]
+        table_sans_elections = {k: v for k, v in licences.LICENCES_CUREES.items() if k != elections.CLE}
+        with mock.patch.object(licences, "LICENCES_CUREES", table_sans_elections):
+            resultat = elections.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
 

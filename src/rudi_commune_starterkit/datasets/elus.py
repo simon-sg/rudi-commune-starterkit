@@ -20,10 +20,15 @@ import os
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
-from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
+from rudi_harvest_toolkit.pivot import (
+    LICENCES_DATAGOUV_CONNUES,
+    construire_licence,
+    construire_rudi_metadata,
+    media_filtre,
+)
 from rudi_harvest_toolkit.tabular import lire_csv_filtre
 
-from .. import organisations
+from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, local_id_jdd
 
@@ -75,6 +80,14 @@ def moissonner(
     if not lignes:
         return ResultatConnecteur(StatutConnecteur.VIDE)
 
+    try:
+        licence_dynamique = construire_licence(
+            metadata.get("license"), metadata.get("page"), LICENCES_DATAGOUV_CONNUES,
+        )
+        licence = licences.licence_pour_jdd(CLE, licence_dynamique=licence_dynamique)
+    except licences.LicenceInconnueError as e:
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
     lignes_allegees = [
         {colonne: ligne.get(colonne) for colonne in _COLONNES_CONSERVEES} for ligne in lignes
     ]
@@ -110,6 +123,8 @@ def moissonner(
         url_fiche=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
         medias=[media],
         contacts_source=contacts,
+        licence=licence,
+        date_source=ressource.get("last_modified"),
     )
 
     return ResultatConnecteur(
