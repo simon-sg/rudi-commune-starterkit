@@ -28,6 +28,13 @@ def _reponse_streaming(contenu=b"id;nom\n1;Carrefour\n"):
     return r
 
 
+_CSV_AVEC_COORDONNEES = (
+    b"nom_station;nom_operateur;nbre_pdc;puissance_nominale;"
+    b"consolidated_longitude;consolidated_latitude\n"
+    b"Mairie;Operateur X;2;22;-1.788383609;48.220806213\n"
+)
+
+
 class TestMoissonnerIrve(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -36,7 +43,7 @@ class TestMoissonnerIrve(unittest.TestCase):
 
     def test_publiable_sans_fichier_local(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         resultat = irve.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -48,7 +55,7 @@ class TestMoissonnerIrve(unittest.TestCase):
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         resultat = irve.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -58,9 +65,39 @@ class TestMoissonnerIrve(unittest.TestCase):
         for media in resultat.rudi_metadata["available_formats"]:
             self.assertNotIn("—", media["media_caption"])
 
+    def test_geojson_construit_depuis_consolidated_lon_lat(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_records(4), _reponse_streaming(), _reponse_streaming(_CSV_AVEC_COORDONNEES),
+        ]
+        resultat = irve.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        medias_geojson = [m for m in medias if m["media_name"].endswith(".geojson")]
+        self.assertEqual(len(medias_geojson), 1)
+        self.assertEqual(len(resultat.fichiers_filtres), 1)
+        self.assertTrue(resultat.fichiers_filtres[0].endswith(".geojson"))
+
+    def test_media_geojson_precede_le_media_csv_hybride_dans_available_formats(self):
+        # Garde-fou valider_alignement_medias() : le média réellement à uploader
+        # (GeoJSON) doit précéder le média hybride déjà complet (CSV), jamais l'inverse.
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_records(4), _reponse_streaming(), _reponse_streaming(_CSV_AVEC_COORDONNEES),
+        ]
+        resultat = irve.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_file = [
+            m for m in resultat.rudi_metadata["available_formats"] if m["media_type"] == "FILE"
+        ]
+        self.assertTrue(medias_file[0]["media_name"].endswith(".geojson"))
+        self.assertTrue(medias_file[1]["media_name"].endswith(".csv"))
+
     def test_date_source_derivee_du_max_last_modified(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         resultat = irve.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -68,14 +105,14 @@ class TestMoissonnerIrve(unittest.TestCase):
 
     def test_requete_triee_par_last_modified_desc(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         irve.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
         premier_appel = session.get.call_args_list[0]
         self.assertEqual(premier_appel.kwargs["params"]["order_by"], "last_modified desc")
 
     def test_where_combine_nom_et_code_insee(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         irve.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
         premier_appel = session.get.call_args_list[0]
         self.assertEqual(
@@ -109,7 +146,7 @@ class TestMoissonnerIrve(unittest.TestCase):
 
     def test_description_riche_mise_en_page_et_contenu_metier(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming(), _reponse_streaming()]
         resultat = irve.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )

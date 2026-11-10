@@ -17,17 +17,30 @@ champ ne porte pas le département), le code INSEE seul est démontré peu fiabl
 combinaison élimine les deux risques à la fois, pas seulement le second.
 
 Export CSV filtré par cette combinaison en une seule URL stable : **FILE hybride**.
+
+**GeoJSON par ligne (Axe 3, v4) — piège confirmé, pas une hypothèse** : l'export
+GeoJSON natif de cette source renvoie les coordonnées **inversées** ([lat, lon] au
+lieu de [lon, lat]), vérifié sur plusieurs communes — jamais utilisé ici. Le GeoJSON
+est construit localement depuis les colonnes CSV ``consolidated_longitude``/
+``consolidated_latitude`` (jamais ``geo_point_borne``, suspect du même défaut).
+Second téléchargement du même CSV déjà utilisé par le média hybride (coût accepté,
+fichier filtré donc petit) — pas de réutilisation du flux d'empreinte de
+``construire_media_hybride()``, qui ne restitue jamais le contenu lu.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from urllib.parse import urlencode
 
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.http_dates import parser_date_iso_stricte
-from rudi_harvest_toolkit.pivot import construire_rudi_metadata
+from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
+from rudi_harvest_toolkit.tabular import iter_lignes_csv
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
@@ -133,6 +146,42 @@ def moissonner(
         file_type="text/csv",
         session_http=session_http,
     )
+    medias = [media]
+    fichiers_filtres: list[str] = []
+
+    try:
+        lignes = list(iter_lignes_csv(url, session_http=session_http))
+        fc = construire_feature_collection(
+            lignes, champ_lon="consolidated_longitude", champ_lat="consolidated_latitude",
+            proprietes=["nom_station", "nom_operateur", "nbre_pdc", "puissance_nominale"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+    except Exception as e:  # noqa: BLE001 — carte en bonus, jamais au prix du CSV déjà publiable
+        print(f"[irve] AVERTISSEMENT : construction du GeoJSON impossible ({commune['nom']}) : {e}")
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[irve] AVERTISSEMENT : {nb_omises} borne(s) sans coordonnées "
+                f"exploitables, absente(s) de la carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"irve_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        os.makedirs(dossier_sortie, exist_ok=True)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        # Ordre obligatoire pour valider_alignement_medias() : le média FILE réellement
+        # à uploader (GeoJSON) doit précéder le média FILE hybride déjà complet (CSV) —
+        # jamais l'inverse (corruption silencieuse, voir rudi_client.py).
+        media_geojson = media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Bornes de recharge électrique, {commune['nom']}",
+        )
+        medias = [media_geojson, media]
+        fichiers_filtres = [chemin_geojson]
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -153,14 +202,14 @@ def moissonner(
         url_source=url,
         url_fiche="https://www.data.gouv.fr/fr/datasets/bornes-de-recharge-pour-vehicules-electriques-3/",
         date_source=date_source,
-        medias=[media],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 
