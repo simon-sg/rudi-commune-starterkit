@@ -2,6 +2,7 @@
 import csv
 import gzip
 import io
+import json
 import tempfile
 import unittest
 from unittest import mock
@@ -13,9 +14,11 @@ _GEVEZE = {"nom": "Gévezé", "code_insee": "35120", "code_departement": "35"}
 
 _LIGNES_BAN = [
     {"id": "35120_0001", "numero": "1", "nom_voie": "Rue de la Mairie",
-     "code_postal": "35630", "code_insee": "35120", "nom_commune": "Gévezé"},
+     "code_postal": "35630", "code_insee": "35120", "nom_commune": "Gévezé",
+     "lon": "-1.6778", "lat": "48.1173"},
     {"id": "35002_0001", "numero": "1", "nom_voie": "Rue Autre",
-     "code_postal": "35150", "code_insee": "35002", "nom_commune": "Amanlis"},
+     "code_postal": "35150", "code_insee": "35002", "nom_commune": "Amanlis",
+     "lon": "-1.5", "lat": "48.0"},
 ]
 
 
@@ -82,6 +85,35 @@ class TestMoissonnerAdresses(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.VIDE)
+
+    def test_publie_un_second_media_file_geojson(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_telechargement(_gz_ban())
+        resultat = adresses.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        geojson = [m for m in medias if m["media_name"].endswith(".geojson")]
+        self.assertEqual(len(geojson), 1)
+        self.assertIn("GeoJSON", geojson[0]["media_caption"])
+        self.assertEqual(len(resultat.fichiers_filtres), 2)
+        with open(resultat.fichiers_filtres[1], encoding="utf-8") as f:
+            fc = json.load(f)
+        self.assertEqual(fc["type"], "FeatureCollection")
+        self.assertEqual(len(fc["features"]), 1)
+        self.assertEqual(fc["features"][0]["geometry"]["coordinates"], [-1.6778, 48.1173])
+
+    def test_geojson_absent_si_aucune_coordonnee_exploitable(self):
+        session = mock.Mock()
+        lignes_sans_coord = [{**l, "lon": "", "lat": ""} for l in _LIGNES_BAN]
+        session.get.return_value = _reponse_telechargement(_gz_ban(lignes_sans_coord))
+        resultat = adresses.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        medias = resultat.rudi_metadata["available_formats"]
+        self.assertFalse([m for m in medias if m["media_name"].endswith(".geojson")])
+        self.assertEqual(len(resultat.fichiers_filtres), 1)
 
     def test_echec_telechargement(self):
         session = mock.Mock()

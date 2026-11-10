@@ -12,15 +12,22 @@ tels quels, aucune traduction nécessaire.
 
 Le fichier départemental est mis en cache (``rudi_harvest_toolkit.download_cache``) pour
 ne pas le retélécharger à chaque run tant qu'il n'a pas changé.
+
+**GeoJSON par ligne (Axe 3, v4)** : second média FILE, construit localement depuis les
+colonnes natives ``lon``/``lat`` du CSV BAN (aucune inconnue technique — premier module
+câblé, zéro parsing local additionnel au-delà de ce qui existe déjà). Propriétés
+restreintes (pas toutes les colonnes BAN dupliquées dans chaque point).
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.tabular import lire_csv_filtre
@@ -112,6 +119,33 @@ def moissonner(
         local_id, nom_fichier, commune["nom"],
         caption=f"Voies et adresses - {commune['nom']} (CSV)",
     )
+    medias = [media]
+    fichiers_filtres = [chemin]
+
+    try:
+        fc = construire_feature_collection(
+            lignes, champ_lon="lon", champ_lat="lat",
+            proprietes=["nom_voie", "numero", "code_postal", "nom_commune"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[adresses] AVERTISSEMENT : {nb_omises} adresse(s) sans coordonnées "
+                f"exploitables, absentes de la carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"adresses_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        medias.append(media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Voies et adresses, {commune['nom']}",
+        ))
+        fichiers_filtres.append(chemin_geojson)
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -131,14 +165,14 @@ def moissonner(
         producer=producer,
         url_source=url_dep,
         url_fiche="https://adresse.data.gouv.fr/base-adresse-nationale",
-        medias=[media],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 
