@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.4.0 — 2026-11-10
+
+### Dates réelles pour 9 des 10 modules non-data.gouv (Axe 2, v4)
+
+Tous les JDD publiaient jusqu'ici soit une date dynamique data.gouv.fr (6 modules),
+soit rien (`date_source` absent, le nœud dérivant une date par défaut). Cette version
+câble une date réelle, dérivée de la source, pour les 9 modules restants où un
+mécanisme existe — jamais une date inventée (`rudi_harvest_toolkit.http_dates`,
+nouveau, garantit `None` plutôt qu'une date devinée sur toute entrée non parsable) :
+
+- `adresses.py`/`immobilier_dvf.py` : mtime du fichier en cache (cohérence
+  date/contenu garantie par construction, TTL 30 jours).
+- `irve.py` : MAX(`last_modified`) sur les enregistrements filtrés, triés (une seule
+  requête réutilisée, pas d'appel supplémentaire).
+- `etablissements_scolaires.py`/`budget.py` : `metas.default.modified` de la fiche
+  catalogue Opendatasoft (requête de métadonnées légère).
+- `entreprises.py`/`associations.py` : MAX sur `date_mise_a_jour`/
+  `date_mise_a_jour_insee`/`date_mise_a_jour_rne`, par établissement.
+- `deliberations.py` : MAX(`date_acte`, `date_publication`) sur les actes déjà
+  chargés.
+- `population.py` : fiche catalogue Melodi (`GET /melodi/catalog/{id}`, sans
+  authentification), best-effort.
+
+**Limite connue, documentée (pas une régression)** : `eau_potable.py` reste sans date
+réelle — aucun champ de mise à jour de jeu exploitable côté source (Hub'eau n'expose
+qu'une date de prélèvement par ligne).
+
+### GeoJSON par ligne pour 5 des 6 modules candidats (Axe 3, v4)
+
+Chaque JDD géolocalisé publie désormais, en plus de son CSV, un second média GeoJSON
+(`rudi_harvest_toolkit.geojson`, nouveau) pour une vue carte native sur le portail :
+
+- `adresses.py` : depuis les colonnes `lon`/`lat` natives du CSV BAN.
+- `etablissements_scolaires.py` : export GeoJSON natif de l'ODS (confirmé correct
+  pour ce dataset, pas de parsing local).
+- `entreprises.py`/`associations.py` : `latitude`/`longitude`, déjà fournis par
+  établissement par l'API `recherche-entreprises.api.gouv.fr` (pas de géocodage BAN
+  nécessaire).
+- `irve.py` : parsing local depuis `consolidated_longitude`/`consolidated_latitude` —
+  **l'export GeoJSON natif de cette source inverse les coordonnées** (confirmé sur
+  plusieurs communes), jamais utilisé.
+
+Une ligne sans coordonnée exploitable est silencieusement omise de la carte (pas une
+géométrie inventée) ; un avertissement console signale le nombre de lignes omises.
+
+**Limite connue, documentée (pas une régression)** : `eau_potable.py` reste sans
+GeoJSON — aucune coordonnée géographique disponible côté source. `entreprises.py`/
+`associations.py` : une entreprise/association sans établissement correspondant
+publié produit 0 point même si son siège est géolocalisé (conséquence de ce que
+publie déjà `simplifier_resultat_entreprise()`, pas un bug introduit ici).
+
 ## 0.3.1 — 2026-11-10
 
 ### Migration d'urgence de la source DVF (Axe 0, v4)

@@ -40,6 +40,18 @@ construction, jamais deviné — détail complet dans `CHANGELOG.md`/`BACKLOG.md
 - **Géolocalisation** (bbox) sur les 13 modules, calculée depuis le contour réel de
   la commune.
 
+### Dates et GeoJSON par ligne (v4)
+
+- **Dates réelles** sur tous les modules sauf `eau_potable.py` : dynamique
+  data.gouv.fr, mtime du cache, fiche catalogue ODS/Melodi, ou MAX sur les
+  enregistrements déjà chargés selon le module — jamais inventée (`eau_potable.py`
+  reste sans date, aucun mécanisme exploitable côté source, documenté en BACKLOG).
+- **GeoJSON par ligne** sur 5 des 13 modules (`adresses`, `etablissements_scolaires`,
+  `entreprises`, `associations`, `irve`) pour une vue carte native, en plus du CSV —
+  lignes sans coordonnée exploitable silencieusement omises, jamais une géométrie
+  inventée (`eau_potable.py` reste sans GeoJSON, aucune coordonnée disponible côté
+  source).
+
 ### Garde-fou organisation
 
 Avant de lancer la moisson, vérifie si l'organisation de la commune existe et est
