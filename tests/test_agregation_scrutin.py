@@ -2,9 +2,14 @@
 import unittest
 
 from rudi_commune_starterkit.agregation_scrutin import (
+    TYPES_ELECTION,
     CodeCommuneInvalide,
+    TypeElectionInconnu,
     agreger_bureau_vers_commune,
+    agreger_long_vers_commune,
+    decomposer_id_election,
     normaliser_code_commune,
+    recalculer_ratios,
     unpivot_candidats,
 )
 
@@ -121,6 +126,141 @@ class TestAgregerBureauVersCommune(unittest.TestCase):
             colonnes_candidats={"Candidat A": "Voix CandidatA"},
         )
         self.assertNotIn("inscrits", resultat)
+
+
+class TestDecomposerIdElection(unittest.TestCase):
+    def test_decompose_un_id_election_valide(self):
+        self.assertEqual(
+            decomposer_id_election("2026_muni_t2"),
+            {"annee": "2026", "type_election": "Municipales", "tour": 2},
+        )
+
+    def test_tous_les_types_connus_sont_couverts(self):
+        for code, libelle in TYPES_ELECTION.items():
+            self.assertEqual(
+                decomposer_id_election(f"2020_{code}_t1")["type_election"], libelle,
+            )
+
+    def test_type_inconnu_leve(self):
+        with self.assertRaises(TypeElectionInconnu):
+            decomposer_id_election("2026_inconnu_t1")
+
+    def test_format_mal_forme_leve(self):
+        with self.assertRaises(TypeElectionInconnu):
+            decomposer_id_election("pas-un-id-election")
+
+    def test_none_leve(self):
+        with self.assertRaises(TypeElectionInconnu):
+            decomposer_id_election(None)
+
+
+class TestRecalculerRatios(unittest.TestCase):
+    def test_ratios_corrects(self):
+        totaux = {
+            "inscrits": 4487, "abstentions": 1591, "votants": 2896,
+            "blancs": 42, "nuls": 26, "exprimes": 2828,
+        }
+        ratios = recalculer_ratios(totaux)
+        self.assertAlmostEqual(ratios["ratio_votants_inscrits"], 2896 / 4487, places=4)
+        self.assertAlmostEqual(ratios["ratio_exprimes_votants"], 2828 / 2896, places=4)
+
+    def test_division_par_zero_inscrits_retourne_none(self):
+        ratios = recalculer_ratios({"inscrits": 0, "votants": 0, "abstentions": 0,
+                                     "blancs": 0, "nuls": 0, "exprimes": 0})
+        self.assertIsNone(ratios["ratio_votants_inscrits"])
+        self.assertIsNone(ratios["ratio_abstentions_inscrits"])
+
+    def test_division_par_zero_votants_mais_pas_inscrits(self):
+        ratios = recalculer_ratios({"inscrits": 100, "votants": 0, "blancs": 0,
+                                     "nuls": 0, "exprimes": 0, "abstentions": 100})
+        self.assertIsNone(ratios["ratio_blancs_votants"])
+        self.assertEqual(ratios["ratio_abstentions_inscrits"], 1.0)
+
+    def test_champs_absents_traites_comme_zero(self):
+        ratios = recalculer_ratios({"inscrits": 100, "votants": 50})
+        self.assertEqual(ratios["ratio_blancs_inscrits"], 0.0)
+
+
+_LIGNES_GENERAL = [
+    {"id_election": "2022_pres_t1", "code_commune": "35120", "inscrits": "600",
+     "abstentions": "200", "votants": "400", "blancs": "10", "nuls": "5", "exprimes": "385"},
+    {"id_election": "2022_pres_t1", "code_commune": "35120", "inscrits": "400",
+     "abstentions": "100", "votants": "300", "blancs": "5", "nuls": "2", "exprimes": "293"},
+    {"id_election": "2026_muni_t1", "code_commune": "35120", "inscrits": "1000",
+     "abstentions": "300", "votants": "700", "blancs": "15", "nuls": "7", "exprimes": "678"},
+    {"id_election": "2022_pres_t1", "code_commune": "35238", "inscrits": "9999",
+     "abstentions": "0", "votants": "0", "blancs": "0", "nuls": "0", "exprimes": "0"},
+]
+
+_LIGNES_CANDIDATS = [
+    {"id_election": "2022_pres_t1", "code_commune": "35120", "no_panneau": "1",
+     "nuance": "LFI", "voix": "100"},
+    {"id_election": "2022_pres_t1", "code_commune": "35120", "no_panneau": "1",
+     "nuance": "LFI", "voix": "80"},
+    {"id_election": "2022_pres_t1", "code_commune": "35120", "no_panneau": "2",
+     "nuance": "LR", "voix": "200"},
+]
+
+
+class TestAgregerLongVersCommune(unittest.TestCase):
+    def test_totaux_une_entree_par_election_triee(self):
+        resultat = agreger_long_vers_commune(
+            _LIGNES_GENERAL, "35120",
+            champs_totaux=("inscrits", "abstentions", "votants", "blancs", "nuls", "exprimes"),
+        )
+        self.assertEqual([r["id_election"] for r in resultat], ["2022_pres_t1", "2026_muni_t1"])
+        pres = resultat[0]
+        self.assertEqual(pres["inscrits"], 1000)
+        self.assertEqual(pres["votants"], 700)
+
+    def test_totaux_ignore_une_autre_commune(self):
+        resultat = agreger_long_vers_commune(
+            _LIGNES_GENERAL, "35120",
+            champs_totaux=("inscrits",),
+        )
+        # 600+400 (pres t1, 2 bureaux) + 1000 (muni t1) — exclut la ligne 35238 (9999).
+        self.assertEqual(sum(r["inscrits"] for r in resultat), 600 + 400 + 1000)
+
+    def test_candidats_fusionne_meme_identite_sur_plusieurs_bureaux(self):
+        resultat = agreger_long_vers_commune(
+            _LIGNES_CANDIDATS, "35120",
+            champs_identite_candidat=("no_panneau", "nuance"),
+        )
+        self.assertEqual(len(resultat), 2)
+        candidat_1 = next(r for r in resultat if r["no_panneau"] == "1")
+        self.assertEqual(candidat_1["voix"], 180)
+
+    def test_candidats_avec_identites_differentes_ne_fusionnent_jamais(self):
+        resultat = agreger_long_vers_commune(
+            _LIGNES_CANDIDATS, "35120",
+            champs_identite_candidat=("no_panneau", "nuance"),
+        )
+        candidat_2 = next(r for r in resultat if r["no_panneau"] == "2")
+        self.assertEqual(candidat_2["voix"], 200)
+
+    def test_aucune_ligne_pour_la_commune_leve(self):
+        with self.assertRaises(CodeCommuneInvalide):
+            agreger_long_vers_commune(_LIGNES_GENERAL, "99999", champs_totaux=("inscrits",))
+
+    def test_id_election_inconnu_leve(self):
+        lignes = [{"id_election": "2026_inconnu_t1", "code_commune": "35120", "inscrits": "1"}]
+        with self.assertRaises(TypeElectionInconnu):
+            agreger_long_vers_commune(lignes, "35120", champs_totaux=("inscrits",))
+
+    def test_champs_totaux_et_identite_candidat_mutuellement_exclusifs(self):
+        with self.assertRaises(ValueError):
+            agreger_long_vers_commune(
+                _LIGNES_GENERAL, "35120",
+                champs_totaux=("inscrits",), champs_identite_candidat=("no_panneau",),
+            )
+
+    def test_tri_par_id_election_puis_code_insee(self):
+        lignes = [
+            {"id_election": "2026_muni_t1", "code_commune": "35120", "inscrits": "1"},
+            {"id_election": "2001_cant_t1", "code_commune": "35120", "inscrits": "1"},
+        ]
+        resultat = agreger_long_vers_commune(lignes, "35120", champs_totaux=("inscrits",))
+        self.assertEqual([r["id_election"] for r in resultat], ["2001_cant_t1", "2026_muni_t1"])
 
 
 if __name__ == "__main__":
