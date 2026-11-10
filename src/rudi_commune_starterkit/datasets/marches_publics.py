@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import (
@@ -91,6 +92,32 @@ def _avertir_si_source_figee(last_modified: str | None) -> None:
             f"[marches_publics] AVERTISSEMENT : source DECP (Colin Maudry) figée depuis "
             f"{age_jours} jours."
         )
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Données essentielles de la commande publique (DECP) notifiées par "
+            f"{commune['nom']} ({code_insee}) en tant qu'acheteur public. Marchés "
+            f"seulement (les concessions sont un dataset distinct, hors socle)."
+        ),
+        comment_construit=(
+            "Extraites du jeu consolidé indépendant de Colin Maudry (data.gouv.fr), "
+            "téléchargé intégralement puis filtré localement sur le SIRET de la "
+            "commune (pas un filtre serveur). Dépendre d'un consolidateur "
+            "indépendant pour ce JDD public est une réserve assumée, pas un abandon "
+            "du module : un avertissement est émis si la source venait à se figer."
+        ),
+        structure_variables=[
+            "Identification du marché (uid, id, nature, objet)",
+            "Acheteur et titulaire(s) (acheteur_id, titulaire_id)",
+            "Montant, durée et procédure de passation",
+            "Dates de notification et modifications éventuelles",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Données essentielles de la commande publique (Colin Maudry)",
+        url_source=f"https://www.data.gouv.fr/datasets/{_DATASET_ID}/",
+    )
 
 
 def moissonner(
@@ -174,9 +201,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["marchés publics", "DECP", "commande publique", commune["nom"]],
+        keywords=[
+            "marchés publics", "DECP", "commande publique", "achat public",
+            commune["nom"],
+        ],
         producer=producer,
         url_source=url_dataset,
         url_fiche=url_dataset,

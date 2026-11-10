@@ -228,6 +228,20 @@ class TestMoissonnerMarchesPublics(unittest.TestCase):
         messages = " ".join(str(appel) for appel in mock_print.call_args_list)
         self.assertIn("figée", messages)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        chemin_cache = self._ecrire_decp_cache([f"{_SIREN}00019"])
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_siren(), _reponse_metadata()]
+        with self._patch_telecharger(chemin_cache):
+            resultat = marches_publics.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("Colin Maudry", html)
+        self.assertIn("achat public", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
