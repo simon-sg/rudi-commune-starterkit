@@ -94,11 +94,11 @@ class TestContactsPourProducer(unittest.TestCase):
     _COMMUNE = {"nom": "Gévezé"}
 
     def test_mode_source_donne_seulement_le_contact_source(self):
-        # entreprises.py -> producteur_reel("entreprises") == {"organization_name": "INSEE"}
+        # entreprises.py -> contact curé confirmé (v3, Axe 2) : Support APIM / INSEE.
         producer = {"organization_name": "INSEE"}
         contacts = contacts_pour_producer("entreprises", producer, self._COMMUNE)
         self.assertEqual(len(contacts), 1)
-        self.assertEqual(contacts[0]["contact_name"], "INSEE")
+        self.assertEqual(contacts[0]["contact_name"], "Support APIM")
         self.assertTrue(contacts[0]["email"])
 
     def test_mode_commune_contient_aussi_le_contact_source(self):
@@ -110,7 +110,7 @@ class TestContactsPourProducer(unittest.TestCase):
             contacts[0], {"contact_name": "Commune de Gévezé", "email": "mairie@geveze.fr"},
         )
         self.assertEqual(len(contacts), 2)
-        self.assertEqual(contacts[1]["contact_name"], "INSEE")
+        self.assertEqual(contacts[1]["contact_name"], "Support APIM")
 
     def test_mode_commune_sans_email_commune_retombe_sur_la_source(self):
         # Pas d'email_commune (ex. deliberations.py, producteur toujours la commune) :
@@ -118,7 +118,9 @@ class TestContactsPourProducer(unittest.TestCase):
         # générique ; seul le contact source apparaît s'il y en a un.
         producer = {"organization_name": "Commune de Gévezé"}
         contacts = contacts_pour_producer("entreprises", producer, self._COMMUNE)
-        self.assertEqual(contacts, [{"contact_name": "INSEE", "email": "insee@example.org"}])
+        self.assertEqual(
+            contacts, [{"contact_name": "Support APIM", "email": "support-apim@insee.fr"}],
+        )
 
     def test_deliberations_mode_commune_pas_de_contact_source(self):
         # DELIBERATIONS n'a pas d'entrée dans organisations.ORGANISATIONS (producteur
@@ -140,7 +142,31 @@ class TestContactsPourProducer(unittest.TestCase):
             "entreprises", producer, self._COMMUNE, email_commune="mairie@geveze.fr",
         )
         self.assertEqual(len(contacts), 1)
-        self.assertEqual(contacts[0]["contact_name"], "INSEE")
+        self.assertEqual(contacts[0]["contact_name"], "Support APIM")
+
+    def test_contact_curate_confirme_remplace_le_repli_generique(self):
+        # v3, Axe 2 : adresses -> contact curé confirmé (Équipe BAN).
+        producer = {"organization_name": "DINUM / ANCT / IGN"}
+        contacts = contacts_pour_producer("adresses", producer, self._COMMUNE)
+        self.assertEqual(
+            contacts, [{"contact_name": "Équipe BAN", "email": "adresse@data.gouv.fr"}],
+        )
+
+    def test_contact_curate_a_confirmer_retombe_sur_le_repli_generique(self):
+        # eau_potable : contact_statut="a_confirmer" (introuvable malgré recherche) ->
+        # jamais traité comme confirmé, repli générique habituel (nom du producteur réel
+        # curé, organisations.ORGANISATIONS[EAU_POTABLE] -> ARS).
+        producer = {"organization_name": "ARS"}
+        contacts = contacts_pour_producer("eau_potable", producer, self._COMMUNE)
+        self.assertEqual(len(contacts), 1)
+        self.assertTrue(contacts[0]["email"].endswith("@example.org"))
+
+    def test_contact_curate_absent_retombe_sur_le_repli_generique(self):
+        # marches_publics n'a pas d'entrée curée (contact dynamique via contact_points,
+        # résolu ailleurs) -> contacts_pour_producer() retombe sur le repli générique.
+        producer = {"organization_name": "Ministère de l'Économie et des Finances"}
+        contacts = contacts_pour_producer("marches_publics", producer, self._COMMUNE)
+        self.assertEqual(contacts[0]["contact_name"], "Ministère de l'Économie et des Finances")
 
 
 class TestRechercheEntreprises(unittest.TestCase):

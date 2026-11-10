@@ -80,7 +80,7 @@ class TestMoissonnerEntreprises(unittest.TestCase):
         self.assertEqual(resultat.rudi_metadata["producer"]["organization_name"], "INSEE")
         self.assertEqual(
             resultat.rudi_metadata["contacts"],
-            [{"contact_name": "INSEE", "email": "insee@example.org"}],
+            [{"contact_name": "Support APIM", "email": "support-apim@insee.fr"}],
         )
 
     def test_mode_commune_producer_et_contact(self):
@@ -97,7 +97,7 @@ class TestMoissonnerEntreprises(unittest.TestCase):
             resultat.rudi_metadata["contacts"],
             [
                 {"contact_name": "Commune de Gévezé", "email": "mairie@geveze.fr"},
-                {"contact_name": "INSEE", "email": "insee@example.org"},
+                {"contact_name": "Support APIM", "email": "support-apim@insee.fr"},
             ],
         )
 

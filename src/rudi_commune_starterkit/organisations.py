@@ -170,6 +170,76 @@ ORGANISATIONS: dict[str, dict] = {
 }
 
 
+# Contacts producteurs réels confirmés par recherche web (v3, Axe 2) — table séparée,
+# **jamais fusionnée** dans ORGANISATIONS : producteur_reel() retourne son dict tel quel
+# (sans filtrage) jusque dans rudi_metadata["producer"] (passthrough intégral vérifié par
+# test_pivot.py::test_producer_pre_forme_conserve_tel_quel) ; des clés contact_* ajoutées
+# directement dans ORGANISATIONS seraient donc publiées telles quelles dans producer,
+# qui n'a pas vocation à porter un contact. contact_statut est obligatoire sur chaque
+# entrée ("confirme" ou "a_confirmer", jamais absent ni une autre valeur — vérifié par
+# test_organisations.py) : une recherche qui a échoué reste tracée, pas silencieusement
+# absente de la table.
+CONTACTS_ORGANISATIONS: dict[str, dict] = {
+    ENTREPRISES: {
+        "contact_name": "Support APIM", "contact_email": "support-apim@insee.fr",
+        "contact_statut": "confirme",
+    },
+    ASSOCIATIONS: {
+        "contact_name": "Support APIM", "contact_email": "support-apim@insee.fr",
+        "contact_statut": "confirme",
+    },
+    ADRESSES: {
+        "contact_name": "Équipe BAN", "contact_email": "adresse@data.gouv.fr",
+        "contact_statut": "confirme",
+    },
+    BUDGET: {
+        "contact_name": "DTNUM",
+        "contact_email": "dtnum.donnees.gouvernance@dgfip.finances.gouv.fr",
+        "contact_statut": "confirme",
+    },
+    IMMOBILIER_DVF: {
+        "contact_name": "DTNUM",
+        "contact_email": "dtnum.donnees.gouvernance@dgfip.finances.gouv.fr",
+        "contact_statut": "confirme",
+    },
+    ELUS: {
+        "contact_name": "Ministère de l'Intérieur",
+        "contact_email": "elections@interieur.gouv.fr", "contact_statut": "confirme",
+    },
+    ELECTIONS: {
+        "contact_name": "Ministère de l'Intérieur",
+        "contact_email": "elections@interieur.gouv.fr", "contact_statut": "confirme",
+    },
+    IRVE: {
+        "contact_name": "transport.data.gouv.fr",
+        "contact_email": "contact@transport.beta.gouv.fr", "contact_statut": "confirme",
+    },
+    # eau_potable, etablissements_scolaires : producteurs introuvables malgré recherche
+    # poussée (BRGM/Hub'eau : seul dpo@brgm.fr, hors-sujet ; Éducation nationale : seule
+    # adresse trouvée était celle de l'éditeur technique de la plateforme, pas du
+    # Ministère) — contact_statut explicitement "a_confirmer", jamais une entrée absente.
+    EAU_POTABLE: {"contact_statut": "a_confirmer"},
+    ETABLISSEMENTS_SCOLAIRES: {"contact_statut": "a_confirmer"},
+    # deliberations : PAS d'entrée ici. Ce JDD est le seul dont le producteur EST la
+    # commune elle-même (producteur_reel("deliberations") lève KeyError par construction,
+    # voir resoudre_producer()) ; son contact réel est donc contact_email_commune, déjà
+    # propagé par la branche email_commune existante de contacts_pour_producer(). Publier
+    # un repli générique ici publierait un email factice alors que le vrai contact est
+    # trivialement disponible.
+    # marches_publics : pas d'entrée curée ici — contact réel résolu dynamiquement via
+    # contact_points (Colin Maudry, colin@colmo.tech), priorité 1 de la chaîne de
+    # contacts_pour_producer(), toujours disponible donc jamais besoin d'un repli curé.
+}
+
+
+def contact_curated_pour_jdd(cle_jdd: str) -> dict | None:
+    """Entrée ``CONTACTS_ORGANISATIONS`` pour ce JDD, ou ``None`` si absente de la table
+    (accesseur tolérant — contrairement à ``licences.licence_pour_jdd()``, qui lève
+    volontairement : un contact confirmé manquant retombe sur le repli générique déjà
+    accepté, ce n'est jamais un échec du JDD)."""
+    return CONTACTS_ORGANISATIONS.get(cle_jdd)
+
+
 def producteur_reel(cle_jdd: str) -> dict:
     """Producteur réel curé pour ``cle_jdd`` (copie — l'appelant peut muter librement)."""
     try:
@@ -238,6 +308,7 @@ __all__ = [
     "ADRESSES",
     "ASSOCIATIONS",
     "BUDGET",
+    "CONTACTS_ORGANISATIONS",
     "DELIBERATIONS",
     "EAU_POTABLE",
     "ELECTIONS",
@@ -250,6 +321,7 @@ __all__ = [
     "MARCHES_PUBLICS",
     "ORGANISATIONS",
     "POPULATION",
+    "contact_curated_pour_jdd",
     "organisation_commune",
     "producteur_reel",
     "resoudre_producer",

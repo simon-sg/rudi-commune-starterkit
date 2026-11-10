@@ -1,11 +1,15 @@
 """Tests de organisations.py — table curée + résolution des 3 modes de producer."""
 import unittest
 
+from rudi_commune_starterkit import registre
 from rudi_commune_starterkit.organisations import (
     ADRESSES,
+    CONTACTS_ORGANISATIONS,
     DELIBERATIONS,
     ENTREPRISES,
+    MARCHES_PUBLICS,
     ORGANISATIONS,
+    contact_curated_pour_jdd,
     organisation_commune,
     producteur_reel,
     resoudre_producer,
@@ -40,6 +44,39 @@ class TestTableCuree(unittest.TestCase):
     def test_producteur_reel_deliberations_leve(self):
         with self.assertRaises(KeyError):
             producteur_reel(DELIBERATIONS)
+
+
+class TestContactsOrganisations(unittest.TestCase):
+    def test_tous_les_statuts_sont_des_valeurs_autorisees(self):
+        # Attrape une faute de frappe (ex. "confirmé" accentué) qui retomberait
+        # silencieusement sur le repli générique sans jamais être détectée (v3, Axe 2).
+        for cle, entree in CONTACTS_ORGANISATIONS.items():
+            self.assertIn(
+                entree.get("contact_statut"), ("confirme", "a_confirmer"), cle,
+            )
+
+    def test_entree_confirmee_porte_un_email(self):
+        for cle, entree in CONTACTS_ORGANISATIONS.items():
+            if entree.get("contact_statut") == "confirme":
+                self.assertTrue(entree.get("contact_email"), cle)
+
+    def test_contact_curated_pour_jdd_retourne_lentree(self):
+        self.assertEqual(
+            contact_curated_pour_jdd(ADRESSES)["contact_email"], "adresse@data.gouv.fr",
+        )
+
+    def test_contact_curated_pour_jdd_absent_retourne_none(self):
+        self.assertIsNone(contact_curated_pour_jdd(MARCHES_PUBLICS))
+        self.assertIsNone(contact_curated_pour_jdd(DELIBERATIONS))
+
+    def test_deliberations_sans_entree_curee(self):
+        # Mécanisme existant (contact_email_commune), pas une entrée curée — voir la
+        # docstring de CONTACTS_ORGANISATIONS.
+        self.assertNotIn(DELIBERATIONS, CONTACTS_ORGANISATIONS)
+
+    def test_toutes_les_cles_curees_correspondent_a_un_module(self):
+        cles_modules = {m.CLE for m in registre.lister_modules()}
+        self.assertTrue(set(CONTACTS_ORGANISATIONS) <= cles_modules)
 
 
 class TestOrganisationCommune(unittest.TestCase):

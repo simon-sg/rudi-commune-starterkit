@@ -39,9 +39,13 @@ def contacts_pour_producer(
     INSEE, DGFiP, Mégalis Bretagne) est désormais inclus dans les DEUX modes — avant ce
     changement, il disparaissait complètement en mode ``commune`` (``contacts_source``
     n'étant alors jamais vide, le repli générique de ``publier_dataset()`` ne se
-    déclenchait jamais). Pas de nouvelle table d'emails « curés » : on réutilise le même
-    repli déjà accepté en mode source (``email_par_defaut()``) plutôt que d'inventer des
-    adresses plausibles mais fausses dans un catalogue ouvert.
+    déclenchait jamais).
+
+    **Contact curé (v3, Axe 2)** : si ``organisations.contact_curated_pour_jdd(cle_jdd)``
+    retourne une entrée avec ``contact_statut="confirme"`` et un ``contact_email``, ce
+    contact réel (ex. ``support-apim@insee.fr``) remplace le repli générique
+    ``email_par_defaut()`` — jamais l'inverse (``"a_confirmer"`` ou entrée absente
+    retombe sur le repli, pas d'email confirmé à moitié inventé).
 
     - Si ``producer`` résout vers la commune (mode ``commune`` pour CE JDD précis — pas
       seulement ``email_commune is not None``, qui serait vrai aussi pour un JDD resté en
@@ -57,10 +61,17 @@ def contacts_pour_producer(
     """
     try:
         source = organisations.producteur_reel(cle_jdd)
-        contact_source: dict | None = {
-            "contact_name": source["organization_name"],
-            "email": email_par_defaut(source["organization_name"]),
-        }
+        curee = organisations.contact_curated_pour_jdd(cle_jdd)
+        if curee and curee.get("contact_statut") == "confirme" and curee.get("contact_email"):
+            contact_source: dict | None = {
+                "contact_name": curee.get("contact_name", source["organization_name"]),
+                "email": curee["contact_email"],
+            }
+        else:
+            contact_source = {
+                "contact_name": source["organization_name"],
+                "email": email_par_defaut(source["organization_name"]),
+            }
     except KeyError:
         contact_source = None  # délibérations : pas de source distincte
 
