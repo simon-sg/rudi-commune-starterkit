@@ -12,7 +12,8 @@ dernière mise à jour (pas seulement le Journal global).
 5. ~~Câblage licence des 10 modules non-data.gouv (Axe 4, étape 4)~~ — fait.
 6. ~~Axe 6 (bbox, tous les modules)~~ — fait.
 7. ~~Axe 2 (contacts)~~ — fait.
-8. Axe 3 (descriptions riches + mots-clés enrichis) — reste de la v3.
+8. ~~Axe 3 (descriptions riches + mots-clés enrichis)~~ — fait. V3 complète, reste la
+   vérification finale (tests + commits, voir Journal).
 
 ## 1. Descriptions des communes
 Statut global : **fait**. Dernière màj : 2026-11-10.
@@ -47,24 +48,32 @@ confirmé > repli générique. `rudi_harvest_toolkit.contacts` migré depuis
 6 appelants).
 
 ## 3. Descriptions riches des JDD (+ mots-clés enrichis, même commit)
+Statut global : **fait**. Dernière màj : 2026-11-10.
+
+`construire_description_structuree()` (nouveau, `rudi_harvest_toolkit.description` —
+assembleur de mise en page pur, zéro connaissance du domaine) câblé via une fonction
+`_description_enrichie()` par module, contenu quoi/comment construit/variables rédigé à
+la main pour chacun des 13 JDD. Vérifié forme ET contenu par module (`<ul>` + lien final
+dans le HTML rendu, et au moins un mot-clé métier propre au module).
+
 | Module | Helper câblé | Contenu rédigé | Mots-clés enrichis | Statut | Dernière màj |
 |---|---|---|---|---|---|
-| entreprises | | | | pas commencé | 2026-11-10 |
-| associations | | | | pas commencé | 2026-11-10 |
-| budget | | | | pas commencé | 2026-11-10 |
-| marches_publics | | | | pas commencé | 2026-11-10 |
-| deliberations | | | | pas commencé | 2026-11-10 |
-| population | | | | pas commencé | 2026-11-10 |
-| eau_potable | | | | pas commencé | 2026-11-10 |
-| etablissements_scolaires | | | | pas commencé | 2026-11-10 |
-| adresses | | | | pas commencé | 2026-11-10 |
-| elus | | | | pas commencé | 2026-11-10 |
-| elections | | | | pas commencé | 2026-11-10 |
-| immobilier_dvf | | | | pas commencé | 2026-11-10 |
-| irve | | | | pas commencé | 2026-11-10 |
+| population | oui | oui | oui | fait | 2026-11-10 |
+| entreprises | oui | oui | oui | fait | 2026-11-10 |
+| associations | oui | oui | oui | fait | 2026-11-10 |
+| budget | oui | oui | oui | fait | 2026-11-10 |
+| immobilier_dvf | oui | oui | oui | fait | 2026-11-10 |
+| deliberations | oui | oui | oui | fait | 2026-11-10 |
+| eau_potable | oui | oui | oui | fait | 2026-11-10 |
+| etablissements_scolaires | oui | oui | oui | fait | 2026-11-10 |
+| adresses | oui | oui | oui | fait | 2026-11-10 |
+| irve | oui | oui | oui | fait | 2026-11-10 |
+| elus | oui | oui | oui | fait | 2026-11-10 |
+| elections | oui | oui | oui | fait | 2026-11-10 |
+| marches_publics | oui | oui | oui | fait | 2026-11-10 |
 
 ## 4. Licence / dates / mots-clés / source
-Statut global : **fait** (licence + source — mots-clés enrichis reste lié à l'Axe 3).
+Statut global : **fait** (licence + source + mots-clés, ces derniers via l'Axe 3 ci-dessus).
 Dernière màj : 2026-11-10.
 
 | Module | Licence | Dates | Source | Statut | Dernière màj |
@@ -158,5 +167,11 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   migré depuis `moissonneuse-batteuse` (shim de réexportation côté origine, zéro
   changement pour ses 6 appelants), `CONTACTS_ORGANISATIONS` + chaîne de priorité
   (dynamique data.gouv > curé confirmé > repli générique) câblée dans
-  `contacts_pour_producer()`. Reste : Axe 3 (descriptions riches + mots-clés enrichis)
-  pour clore la v3.
+  `contacts_pour_producer()`.
+- 2026-11-10 : Axe 3 (descriptions riches + mots-clés enrichis) implémenté et testé —
+  `construire_description_structuree()` ajouté au toolkit, câblé par module (13 commits)
+  avec contenu quoi/comment construit/variables rédigé à la main pour chaque JDD,
+  mots-clés enrichis dans le même commit. **V3 fonctionnellement complète** : reste la
+  vérification finale (suite complète des deux dépôts, lecture manuelle d'un
+  `rudi_metadata.json` par famille de module) avant d'annoncer la republication groupée
+  des 13 JDD au CHANGELOG.
