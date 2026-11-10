@@ -97,6 +97,18 @@ def moissonner(
         session_http=session_http,
     )
 
+    # Export GeoJSON natif de l'ODS, confirmé correct pour ce dataset (contrairement à
+    # l'IRVE, voir irve.py) — pas de parsing local nécessaire, un second média hybride
+    # suffit.
+    url_geojson = f"{_EXPLORE_BASE}/exports/geojson?{urlencode({'where': where})}"
+    media_geojson = construire_media_hybride(
+        local_id, url_geojson,
+        media_name=f"etablissements_scolaires_{code_insee}.geojson",
+        media_caption=f"Fond de carte (GeoJSON) - Établissements scolaires - {commune['nom']}",
+        file_type="application/geo+json",
+        session_http=session_http,
+    )
+
     try:
         licence = licences.licence_pour_jdd(CLE)
     except licences.LicenceInconnueError as e:
@@ -116,7 +128,7 @@ def moissonner(
         url_source=url,
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
         date_source=date_dataset_ods(_EXPLORE_BASE, session_http=session_http),
-        medias=[media],
+        medias=[media, media_geojson],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,

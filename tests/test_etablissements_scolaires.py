@@ -40,7 +40,7 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
 
     def test_publiable_sans_fichier_local(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_dataset_meta()]
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -52,7 +52,7 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_dataset_meta()]
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -64,16 +64,31 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
 
     def test_where_utilise_code_commune_exact(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_dataset_meta()]
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta()]
         etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         premier_appel = session.get.call_args_list[0]
         self.assertEqual(premier_appel.kwargs["params"]["where"], "code_commune='35120'")
 
+    def test_second_media_geojson_hybride_present(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta(),
+        ]
+        resultat = etablissements_scolaires.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        medias_geojson = [m for m in medias if m["media_name"].endswith(".geojson")]
+        self.assertEqual(len(medias_geojson), 1)
+        self.assertEqual(medias_geojson[0]["media_type"], "FILE")
+        self.assertIn("GeoJSON", medias_geojson[0]["media_caption"])
+        self.assertEqual(resultat.fichiers_filtres, [])
+
     def test_date_source_derivee_de_metas_default_modified(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_dataset_meta()]
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -99,7 +114,7 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
 
     def test_description_riche_mise_en_page_et_contenu_metier(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_dataset_meta()]
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
