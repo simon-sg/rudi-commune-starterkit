@@ -6,10 +6,11 @@ dernière mise à jour (pas seulement le Journal global).
 
 ## Prochaines étapes
 1. ~~Axe 1 (descriptions communes)~~ — fait, voir ci-dessous.
-2. `licences.py` + table complète (Axe 4, étape 1).
-3. Câblage elus/elections (Axe 4, étape 2).
-4. Remplacement DECP (Axe 4, étape 3).
-5. Axe 2 (contacts), Axe 3 (descriptions riches + mots-clés), reste de l'Axe 4, Axe 6.
+2. ~~`licences.py` + table complète (Axe 4, étape 1)~~ — fait.
+3. ~~Câblage elus/elections (Axe 4, étape 2)~~ — fait.
+4. ~~Remplacement DECP (Axe 4, étape 3)~~ — fait.
+5. ~~Câblage licence des 10 modules non-data.gouv (Axe 4, étape 4)~~ — fait.
+6. Axe 2 (contacts), Axe 3 (descriptions riches + mots-clés), Axe 6 (bbox).
 
 ## 1. Descriptions des communes
 Statut global : **fait**. Dernière màj : 2026-11-10.
@@ -52,21 +53,30 @@ seule fois par run, avertissement CLI si repli générique utilisé.
 | irve | | | | pas commencé | 2026-11-10 |
 
 ## 4. Licence / dates / mots-clés / source
+Statut global : **fait** (licence + source — mots-clés enrichis reste lié à l'Axe 3).
+Dernière màj : 2026-11-10.
+
 | Module | Licence | Dates | Source | Statut | Dernière màj |
 |---|---|---|---|---|---|
-| elus | dynamique (data.gouv), repli curé disponible | à câbler | inchangée | pas commencé | 2026-11-10 |
-| elections | dynamique (data.gouv), repli curé disponible | à câbler | inchangée | pas commencé | 2026-11-10 |
-| marches_publics | confirmée (lov2 → etalab-2.0, Colin Maudry) | dynamique (last_modified) | **à changer → Colin Maudry (data.gouv)** | pas commencé | 2026-11-10 |
-| entreprises | CUSTOM (SIRENE + RNE) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| associations | CUSTOM (SIRENE + RNE) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| budget | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| deliberations | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| population | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| eau_potable | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| etablissements_scolaires | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| adresses | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| immobilier_dvf | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
-| irve | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | pas commencé | 2026-11-10 |
+| elus | dynamique (data.gouv), repli curé en place | dynamique (last_modified) | inchangée | fait | 2026-11-10 |
+| elections | dynamique (data.gouv), repli curé en place | dynamique (last_modified) | inchangée | fait | 2026-11-10 |
+| marches_publics | dynamique (data.gouv, lov2 → etalab-2.0, Colin Maudry) | dynamique (last_modified) | **changée → Colin Maudry (data.gouv)** | fait | 2026-11-10 |
+| entreprises | curée, CUSTOM (SIRENE + RNE) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| associations | curée, CUSTOM (SIRENE + RNE) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| budget | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| deliberations | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| population | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| eau_potable | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| etablissements_scolaires | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| adresses | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| immobilier_dvf | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+| irve | curée (etalab-2.0) | non disponible (voir point ouvert) | inchangée | fait | 2026-11-10 |
+
+Chaque module résout sa licence via `licences.licence_pour_jdd(CLE)` (jamais de repli
+silencieux Etalab) — complétude vérifiée par
+`test_licences.py::test_toutes_les_cles_de_modules_ont_une_licence_curee`. Les 3 modules
+data.gouv (`elus`, `elections`, `marches_publics`) ont en plus la licence/date dynamique
+résolue depuis la fiche source, avec repli curé si absente.
 
 **Point ouvert — dates des 10 modules non-data.gouv** : aucune date réelle disponible
 (limite technique documentée, Axe 4 : `download_cache.telecharger()` ne remonte pas les
@@ -119,3 +129,11 @@ les 13 modules.
   `description_commune.py` + câblage `organisations.py`/`cli.py`/13 modules) —
   `bbox_depuis_contour()` (Axe 6) ajouté en même temps au toolkit (même fichier,
   `commune.py`), câblage dans les modules restant à faire (voir § 5 ci-dessus).
+- 2026-11-10 : Axe 4 (licence/dates/source) implémenté et testé pour les 13 modules —
+  `licences.py` (table complète + point d'entrée unique), `elus`/`elections` câblés sur
+  la licence/date dynamique data.gouv avec repli curé, `LICENCES_DATAGOUV_CONNUES`
+  ajoutée au toolkit, 10 modules non-data.gouv câblés sur la table curée, remplacement de
+  la source DECP de `marches_publics.py` (Colin Maudry, data.gouv.fr, filtrage local en
+  flux avec le nouveau paramètre `prefixe=True` de `filtrer_csv()`/`lire_csv_filtre()`).
+  Reste : mots-clés enrichis (lié à l'Axe 3), point ouvert dates des 10 modules
+  non-data.gouv (bloqué — attend Simon).
