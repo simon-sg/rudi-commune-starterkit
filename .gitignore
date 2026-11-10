@@ -16,6 +16,9 @@ conf/organisation_par_jdd*.json
 # Cache Wikipédia partagé entre communes (v3, Axe 1) — local, pas de contenu à versionner
 .cache_wikipedia/
 
+# Cache DECP partagé (v3, Axe 4) — CSV.gz ~435 Mo, jamais par commune, jamais versionné
+.cache_decp/
+
 # Registre de communes (emails de contact, pas de mot de passe — reste local quand même)
 .rudi_commune_starterkit/
 

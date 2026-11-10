@@ -1,28 +1,57 @@
-"""JDD « Marchés publics (DECP) » — data.economie.gouv.fr, filtré par SIRET acheteur.
+"""JDD « Marchés publics (DECP) » — source remplacée le 2026-11-10 (v3 Axe 4).
 
-Source identifiée le 2026-11-07 (le plan la laissait « à confirmer en implémentation ») :
-dataset Opendatasoft ``decp-2022-marches-valides`` (le nom fige le millésime du schéma
-DECP, pas la période couverte — contient en réalité des marchés notifiés jusqu'en 2026).
-Filtré sur ``acheteur_id`` (SIRET = SIREN de la commune + NIC du siège) via
-``startswith(acheteur_id, '{siren}')`` — un ``like`` nu ne fait pas de préfixe sur cette
-plateforme, vérifié empiriquement (0 résultat avec ``like``, 13 avec ``startswith`` pour
-Gévezé). Export CSV filtré = une seule URL stable déjà pré-filtrée par la source : **FILE
-hybride**.
+**Changement de source, décision actée avec l'utilisateur.** L'ancienne source
+(``decp-2022-marches-valides`` sur ``data.economie.gouv.fr``) est touchée par un trou de
+remontée AIFE signalé le 18/11/2025, jamais confirmé résolu officiellement. Remplacée par
+le jeu consolidé indépendant de Colin Maudry sur data.gouv.fr (dataset
+``608c055b35eb4e6ee20eb325``, « Données essentielles de la commande publique
+consolidées, format tabulaire ») : mise à jour quasi quotidienne, Licence Ouverte 2.0
+confirmée (``license: lov2``), contact réel disponible via ``contact_points``
+(``colin@colmo.tech``, rôle « creator », organisation Colmo).
 
-Périmètre v1 : seuls les marchés (pas les concessions, dataset ``decp-2022-concessions-
-valides`` distinct, hors socle).
+**Dépendre d'un consolidateur indépendant pour un JDD public — réserve assumée et
+documentée, pas un abandon du module.** Le producteur RUDI reste « Ministère de
+l'Économie et des Finances » (responsable public des données sources, même
+consolidées par un tiers) ; si la source se figeait, un avertissement CLI
+(``_avertir_si_source_figee``) le signale sans bloquer la publication.
+
+**Changement de modèle de média** : pas de filtre serveur avec cette source (contrairement
+à l'export ODS précédent) → téléchargement intégral du CSV.gz (``decp.csv.gz``, ~435 Mo)
+puis filtrage local en flux (``filtrer_csv(..., prefixe=True)``, jamais
+``lire_csv_filtre()`` qui matérialiserait tout le fichier en mémoire) sur ``acheteur_id``
+(SIRET, 14 chiffres) préfixé par le SIREN (9 chiffres) de la commune — jamais de
+conversion en ``int`` (un SIRET peut commencer par ``0``). Conséquence : plus de
+pré-contrôle ``total_count`` gratuit (coût réseau plus élevé pour une commune sans
+marché) — régression de coût assumée, non optimisée dans cette v3.
+
+**Cache partagé, pas par commune** (``DOSSIER_CACHE_DECP``, à la racine du projet, pas
+sous ``dossier_sortie``) : 435 Mo par commune serait inacceptable pour un run
+multi-communes. TTL court (1 jour, pas les 30 jours par défaut du toolkit) — la source
+est mise à jour quasi quotidiennement.
+
+Périmètre v1 inchangé : seuls les marchés (pas les concessions, dataset distinct, hors
+socle).
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
+import csv
+import os
+from datetime import datetime, timezone
 
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
-from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
+from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
+from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
-from rudi_harvest_toolkit.pivot import construire_rudi_metadata
+from rudi_harvest_toolkit.pivot import (
+    LICENCES_DATAGOUV_CONNUES,
+    construire_licence,
+    construire_rudi_metadata,
+    media_filtre,
+)
+from rudi_harvest_toolkit.tabular import filtrer_csv
 
-from .. import organisations
+from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, local_id_jdd
 
@@ -32,13 +61,35 @@ TITRE = "Marchés publics"
 SYNOPSIS_PATRON = "Marchés publics notifiés par la commune de {commune} ({code_insee})"
 DESCRIPTION_PATRON = (
     "Données essentielles de la commande publique (DECP) notifiées par la commune de "
-    "{commune} ({code_insee}) en tant qu'acheteur public, sourcées via "
-    "data.economie.gouv.fr. Ne couvre que les marchés (pas les concessions)."
+    "{commune} ({code_insee}) en tant qu'acheteur public. Sourcées depuis le jeu "
+    "consolidé indépendant de Colin Maudry (data.gouv.fr), filtré localement sur le "
+    "SIRET de la commune, pas un export serveur. Ne couvre que les marchés (pas les "
+    "concessions). Réserve : source tierce consolidée, pas directement l'AIFE/DAE ; un "
+    "avertissement est émis si elle venait à se figer."
 )
-FREQUENCE_MAJ = "mensuelle"
+FREQUENCE_MAJ = "quasi quotidienne"
 
-_DATASET_ID = "decp-2022-marches-valides"
-_EXPLORE_BASE = f"https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{_DATASET_ID}"
+_DATASET_ID = "608c055b35eb4e6ee20eb325"
+_COLONNE_ACHETEUR = "acheteur_id"
+DOSSIER_CACHE_DECP = ".cache_decp"
+_SEUIL_FIGEE_JOURS = 15
+
+
+def _avertir_si_source_figee(last_modified: str | None) -> None:
+    if not last_modified:
+        return
+    try:
+        date = datetime.fromisoformat(str(last_modified).replace("Z", "+00:00"))
+    except ValueError:
+        return
+    if date.tzinfo is None:
+        date = date.replace(tzinfo=timezone.utc)
+    age_jours = (datetime.now(timezone.utc) - date).days
+    if age_jours > _SEUIL_FIGEE_JOURS:
+        print(
+            f"[marches_publics] AVERTISSEMENT : source DECP (Colin Maudry) figée depuis "
+            f"{age_jours} jours."
+        )
 
 
 def moissonner(
@@ -58,34 +109,62 @@ def moissonner(
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    where = f"startswith(acheteur_id, '{siren}')"
-
     try:
-        reponse = session_http.get(
-            f"{_EXPLORE_BASE}/records", params={"where": where, "limit": 1}, timeout=30,
+        metadata = get_dataset_metadata(_DATASET_ID, session_http=session_http)
+        ressource = selectionner_ressource(metadata, motif_nom=r"^decp\.csv\.gz$")
+        chemin_cache = telecharger(
+            ressource["url"], dossier=DOSSIER_CACHE_DECP, ttl_jours=1,
+            session_http=session_http,
         )
-        reponse.raise_for_status()
-        total_count = reponse.json().get("total_count", 0)
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    if not total_count:
-        return ResultatConnecteur(StatutConnecteur.VIDE)
+    _avertir_si_source_figee(ressource.get("last_modified"))
 
     local_id = local_id_jdd(CLE, code_insee)
+    nom_fichier = f"marches_publics_{code_insee}.csv"
+    chemin = os.path.join(dossier_sortie, nom_fichier)
+    os.makedirs(dossier_sortie, exist_ok=True)
+
+    nb_lignes = 0
+    try:
+        with open(chemin, "w", encoding="utf-8", newline="") as f:
+            writer = None
+            for ligne in filtrer_csv(chemin_cache, _COLONNE_ACHETEUR, siren, prefixe=True):
+                if writer is None:
+                    writer = csv.DictWriter(f, fieldnames=list(ligne.keys()), delimiter=";")
+                    writer.writeheader()
+                writer.writerow(ligne)
+                nb_lignes += 1
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
+    if not nb_lignes:
+        try:
+            os.remove(chemin)
+        except OSError:
+            pass
+        return ResultatConnecteur(StatutConnecteur.VIDE)
+
+    try:
+        licence_dynamique = construire_licence(
+            metadata.get("license"), metadata.get("page"), LICENCES_DATAGOUV_CONNUES,
+        )
+        licence = licences.licence_pour_jdd(CLE, licence_dynamique=licence_dynamique)
+    except licences.LicenceInconnueError as e:
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
     )
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
-    url = f"{_EXPLORE_BASE}/exports/csv?{urlencode({'where': where})}"
-    media = construire_media_hybride(
-        local_id, url,
-        media_name=f"marches_publics_{code_insee}.csv",
-        media_caption=f"Marchés publics notifiés par la commune - {commune['nom']} (CSV)",
-        file_type="text/csv",
-        session_http=session_http,
+    media = media_filtre(
+        local_id, nom_fichier, commune["nom"],
+        caption=f"Marchés publics notifiés par la commune - {commune['nom']} (CSV)",
     )
+
+    url_dataset = metadata.get("page") or f"https://www.data.gouv.fr/datasets/{_DATASET_ID}/"
 
     rudi_metadata = construire_rudi_metadata(
         local_id=local_id,
@@ -95,14 +174,16 @@ def moissonner(
         theme=THEME,
         keywords=["marchés publics", "DECP", "commande publique", commune["nom"]],
         producer=producer,
-        url_source=url,
-        url_fiche=f"https://data.economie.gouv.fr/explore/dataset/{_DATASET_ID}/",
+        url_source=url_dataset,
+        url_fiche=url_dataset,
         medias=[media],
         contacts_source=contacts,
+        licence=licence,
+        date_source=ressource.get("last_modified"),
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
     )
 
 
