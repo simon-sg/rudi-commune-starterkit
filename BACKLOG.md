@@ -147,9 +147,9 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   commencé (Axe 3).
 - **Dates réelles pour les 10 modules non-data.gouv** — pas commencé (Axe 2).
 - Contacts restant introuvables : Mégalis Bretagne, Hub'eau/BRGM, Éducation nationale
-- Faire pointer `moissonneuse-batteuse/datagouv_to_rudi.py` vers
-  `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale (Axe 1 — gain
-  rapide, pas commencé)
+- ~~Faire pointer `moissonneuse-batteuse/datagouv_to_rudi.py` vers
+  `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale~~ — **fait** (Axe 1),
+  voir Journal.
 
 ## Décisions actées v4
 
@@ -221,4 +221,8 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   `dvf.csv.gz`, résolution dynamique via `datagouv.get_dataset_metadata()`/
   `selectionner_ressource()`, dates dérivées de `date_mutation` (plus de sondage par
   année ni d'union de schéma). Suite complète des deux dépôts verte (357 + 321 tests).
-  À livrer en release **0.3.1** indépendamment du reste de la v4.
+  Livré en release **0.3.1**, poussé sur `main` + tag.
+- 2026-11-10 : Axe 1 (dédoublonnage licences) implémenté et testé dans
+  `moissonneuse-batteuse` (quota opencode épuisé, fait directement) — `LICENCES`
+  importe désormais `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale ;
+  test `odc-odbl` manquant ajouté. 233 tests verts, poussé sur `main`.
