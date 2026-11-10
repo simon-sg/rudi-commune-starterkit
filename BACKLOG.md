@@ -139,8 +139,10 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 ## Backlog v4 — en cours d'implémentation (plan détaillé, relu en 5 passes)
 - ~~Migration d'urgence de la source DVF (Axe 0)~~ — **fait**, voir « Décisions actées
   v4 » et Journal ci-dessous. Release 0.3.1.
-- Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré) — pas
-  commencé (Axe 5, 3 incréments A/B/C).
+- Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré) —
+  **incrément A fait** (fusion + Parquet, sans jointure élu/sièges), incréments B
+  (jointure élu/sièges 2026 T1) et C (glossaire nuance, mode d'emploi,
+  `sieges_disponibles`) restants. Voir Journal.
 - Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
   commencé (Axe 4).
 - ~~Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6)~~ —
@@ -165,6 +167,16 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 
 ## Décisions actées v4
 
+- **2026-11-11 (Axe 5, incrément A)** : périmètre régionales/départementales/
+  cantonales inclus dans la fusion (confirmé par comptage exhaustif du jeu source :
+  56 scrutins, 7 types, 1999-2026) malgré leur caractère local plutôt que national au
+  sens strict — cohérence avec l'esprit de la décision initiale (« toutes élections
+  nationales si le jeu les couvre ») et valeur réelle d'un historique électoral local
+  pour un catalogue communal. Choix Parquet confirmé (232 Mo par commune et par run,
+  ~12x moins que les CSV sources mais ~16x plus que l'ancien JDD mono-scrutin — un
+  coût assumé en échange de 56 scrutins, pas un gain net). Noms `ratio_*` natifs du
+  jeu agrégé retenus pour les colonnes de pourcentage (plutôt que
+  `pourcentage_exprimes` de l'ancien CSV, incompatibles en sens).
 - **2026-11-10 (Axe 0, urgence DVF)** : la ressource départementale consommée par
   `immobilier_dvf.py` (`files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/
   {dep}.csv.gz`) était explicitement annoncée pour suppression (« suppression au
@@ -187,6 +199,8 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 | Aucune coordonnée géographique disponible (`resultats_dis` : 32 champs, aucun n'est une géométrie ; `reseaux` n'est qu'une liste d'identifiants) — pas de GeoJSON possible | `eau_potable.py` | Aucune (idem, en attendant `limites`) | Revisiter si Hub'eau expose un jour une géométrie par point de prélèvement |
 | `entreprises.py`/`associations.py` : une entreprise/association sans établissement correspondant publié (`matching_etablissements` vide) produit 0 point sur la carte même si son siège est géolocalisé — conséquence de ce que publie `simplifier_resultat_entreprise()`, pas un bug | `entreprises.py`, `associations.py` | Aucune (idem) | — |
 | `adresses.py`/`immobilier_dvf.py` : date affichée = date de récupération locale (mtime du cache, TTL 30 j), pas la date de mise à jour réelle de la source — écart possible jusqu'à 30 jours | `adresses.py`, `immobilier_dvf.py` | `dataset_dates.updated` (date de cache, pas de source) | — |
+| Municipales 2008 partielles (communes >3500 hab. seulement) ; pas de second tour pour les européennes (1 seul tour pour ce type d'élection) | `elections.py` | Description riche (`limites`) | — |
+| Colonnes `elu`/`sieges_conseil_municipal`/`sieges_conseil_communautaire` absentes du jeu agrégé pour tous les scrutins (incrément A seul livré) | `elections.py` | Description riche (`limites`) | Incrément B : jointure avec la source municipales 2026 T1 |
 
 ## Point tranché (2026-11-10, décision Simon)
 - Test d'intégration `executer_run()` sur les 13 modules — **pas maintenant**. Les
@@ -274,3 +288,21 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   `valider_alignement_medias()`). `eau_potable.py` confirmé et documenté sans
   géométrie disponible. Suite complète verte à chaque étape, poussé sur `main`.
   **Axes 1, 2 et 3 désormais tous complets — release 0.4.0.**
+- 2026-11-11 : Axe 5 incrément A (fusion élections + Parquet, sans jointure
+  élu/sièges) implémenté et testé (quota opencode épuisé, fait directement) —
+  vérifié en direct sur le jeu réel (`general_results.parquet`/
+  `candidats_results.parquet` téléchargés intégralement une fois pour confirmer
+  schéma/56 scrutins/7 types/ex. Gévezé 2026 municipales T1 cohérent avec l'ancien
+  JDD mono-scrutin). Nouveau `agregation_scrutin.agreger_long_vers_commune()`
+  (+ `recalculer_ratios()`, `TYPES_ELECTION`, `TypeElectionInconnu`,
+  `decomposer_id_election()`), nouveau `rudi_harvest_toolkit.tabular.
+  lire_parquet_filtre()` (+ dépendance `pyarrow>=14` obligatoire), nouveaux
+  paramètres `glossaire`/`limites` sur `construire_description_structuree()`
+  (None par défaut, non-régression testée — infrastructure partagée avec l'Axe 4).
+  `datasets/elections.py` entièrement réécrit : résolution des 2 ressources Parquet
+  (motif + `format="parquet"` pour lever l'ambiguïté CSV/Parquet, même titre),
+  jointure canton/circonscription au niveau bureau avant agrégation commune, surface
+  publiée mise à jour (titre/synopsis/fréquence/nom de fichier/légende/mots-clés —
+  plus aucune mention de « municipales » seule). Fixtures de test : fichiers Parquet
+  réels écrits sur disque via `pyarrow.parquet.write_table()` (pas de mock de
+  `pyarrow`). Suite complète verte (407 tests), poussé sur `main`.

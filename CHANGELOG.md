@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.5.0 (en cours — Axe 5, incrément A)
+
+### Fusion des JDD élections : 56 scrutins, 1999-2026 (changement cassant)
+
+**Changement cassant** : `datasets/elections.py` ne publie plus un seul scrutin
+(« municipales 2026, 1er tour ») mais l'historique complet disponible dans le jeu
+agrégé data.gouv.fr « donnees-des-elections-agregees » — présidentielles,
+législatives, municipales, européennes, régionales, départementales et cantonales, de
+1999 à 2026 (vérifié par comptage exhaustif du fichier source : 56 élections
+distinctes, 7 types). Le fichier publié change de nom
+(`elections_{code_insee}.csv`, plus `elections_municipales_2026_t1_{code_insee}.csv`)
+et de schéma (colonnes `annee`/`type_election`/`tour` en tête, ratios natifs `ratio_*`
+du jeu agrégé à la place de `pourcentage_exprimes`). Titre, synopsis, fréquence de
+mise à jour, légende du média et mots-clés mis à jour en conséquence (plus aucune
+mention de « municipales » seule).
+
+Source basculée sur des fichiers **Parquet** (232 Mo par commune et par run, ~12x
+moins que les CSV sources du même jeu mais ~16x plus que l'ancien JDD mono-scrutin —
+un coût assumé, pas un gain net) via la nouvelle fonction toolkit
+`lire_parquet_filtre()`. Nouveau chemin d'agrégation `agregation_scrutin.
+agreger_long_vers_commune()` (format long, group by élection + identité candidat —
+distinct du chemin bureau→commune existant, qui reste disponible pour un futur
+scrutin publié en format large), plus `recalculer_ratios()`, `TYPES_ELECTION`,
+`TypeElectionInconnu`, `decomposer_id_election()`.
+
+Colonnes `code_canton`/`libelle_canton`/`code_circonscription`/
+`libelle_circonscription` préservées (jointure au niveau bureau de vote, avant
+l'agrégation commune).
+
+**Limites documentées (description riche, `limites`)** : municipales 2008 partielles
+(communes >3500 hab. seulement), pas de second tour pour les européennes, colonnes
+`elu`/`sieges_*` absentes de ce jeu pour l'instant (incrément B à venir : jointure
+avec la source municipales 2026 T1, communes pourvues dès le premier tour
+uniquement).
+
 ## 0.4.0 — 2026-11-10
 
 ### Dates réelles pour 9 des 10 modules non-data.gouv (Axe 2, v4)

@@ -1,27 +1,39 @@
-"""JDD « Résultats élections » — municipales 2026, 1er tour, fichier déjà agrégé par commune.
+"""JDD « Résultats élections » — jeu agrégé data.gouv.fr, 56 scrutins, 1999-2026.
 
-Scrutin choisi le 2026-11-07 (le plus récent disponible, le plan laissait le choix exact
-« à confirmer en implémentation ») : Ministère de l'Intérieur, dataset data.gouv.fr
-« Elections municipales 2026 - Résultats du premier tour », ressource « Résultats -
-Communes » (14 Mo, CSV ``;``, **déjà agrégée au niveau commune** — contrairement à
-l'hypothèse du plan, ce scrutin précis n'a pas besoin de
-``agregation_scrutin.agreger_bureau_vers_commune()`` : une commune = une ligne, le code
-``Code commune`` est déjà sur 5 caractères, aucun souci de padding rencontré). Format
-« large » confirmé : un bloc de 13 colonnes répété par liste candidate (jusqu'à 13 blocs
-dans le fichier national, la plupart vides pour une petite commune) — le passage large →
-long est fait ici directement (``_blocs_liste``), ``agregation_scrutin.py`` restant
-disponible pour un futur scrutin qui nécessiterait réellement une agrégation bureau→commune.
+**v4, incrément A (fusion + Parquet, sans jointure élu/sièges — voir incréments B/C,
+BACKLOG.md)** : remplace l'ancien JDD mono-scrutin (« municipales 2026, 1er tour »)
+par un historique complet, construit depuis le jeu agrégé data.gouv.fr
+« donnees-des-elections-agregees » (id ``6481e741d4cf002ec0efec9d``, producteur réel :
+l'équipe data.gouv.fr, pipeline ouvert à partir des fichiers du Ministère de
+l'Intérieur — pas le Ministère lui-même). Couvre municipales (2008 T1 seul puis
+2014/2020/2026 T1+T2), législatives, présidentielles, européennes (T1 seul, pas de
+second tour pour ce type), régionales, départementales et cantonales (précurseur des
+départementales) — 1999 à 2026, vérifié par comptage exhaustif du fichier source.
 
-**Second tour non inclus en v1** (toutes les communes n'en ont pas eu besoin ; une commune
-donnée peut ne pas apparaître dans le fichier du 2nd tour) — report v2 explicite, comme
-acté avec l'utilisateur sur le multi-scrutins.
+**Format long** (une ligne = un candidat dans un bureau de vote) — contrairement à
+l'ancien JDD, déjà agrégé commune par le Ministère. ``agregation_scrutin.
+agreger_long_vers_commune()`` fait l'agrégation bureau → commune (totaux et candidats
+séparément, les deux fichiers sources n'ayant pas la même granularité de colonnes).
+``agreger_bureau_vers_commune()``/``unpivot_candidats()`` (format large) ne sont pas
+utilisées ici : elles restent disponibles pour un éventuel futur scrutin publié dans ce
+format.
+
+**Volumétrie assumée, pas un gain** : 232 Mo téléchargés par commune et par run
+(Parquet, ~12x plus léger que les CSV sources — 2,38 Go — mais ~16x plus que l'ancien
+JDD mono-scrutin, 14 Mo). ``pyarrow`` est désormais une dépendance obligatoire du
+toolkit (``rudi_harvest_toolkit.tabular.lire_parquet_filtre()``).
+
+**Limites de couverture** (voir BACKLOG.md « Limites de couverture connues ») :
+municipales 2008 partielles (communes >3500 hab. seulement), pas de second tour pour
+les européennes, colonnes ``elu``/``sieges_*`` absentes de ce jeu (incrément B : jointure
+avec la source municipales 2026 T1 pour les communes pourvues dès le premier tour
+uniquement — second tour non couvert).
 """
 
 from __future__ import annotations
 
 import csv
 import os
-import re
 
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
@@ -34,96 +46,136 @@ from rudi_harvest_toolkit.pivot import (
     construire_rudi_metadata,
     media_filtre,
 )
-from rudi_harvest_toolkit.tabular import lire_csv_filtre
+from rudi_harvest_toolkit.tabular import lire_parquet_filtre
 
 from .. import licences, organisations
+from ..agregation_scrutin import agreger_long_vers_commune, decomposer_id_election, recalculer_ratios
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.ELECTIONS
 THEME = "citizenship"
-TITRE = "Résultats élections municipales"
-SYNOPSIS_PATRON = "Résultats du 1er tour des municipales 2026 à {commune} ({code_insee})"
+TITRE = "Résultats élections"
+SYNOPSIS_PATRON = "Résultats électoraux (toutes élections nationales et locales, 1999-2026) à {commune} ({code_insee})"
 DESCRIPTION_PATRON = (
-    "Résultats du premier tour des élections municipales 2026 pour la commune de "
-    "{commune} ({code_insee}), par liste candidate - inscrits, votants, abstention, "
-    "exprimés et voix par liste. Sourcé auprès du Ministère de l'Intérieur. Ne couvre que "
-    "le 1er tour ; limité à ce seul scrutin (pas d'historique multi-scrutins en v1)."
+    "Historique des résultats électoraux pour la commune de {commune} ({code_insee}) : "
+    "présidentielles, législatives, municipales, européennes, régionales, "
+    "départementales et cantonales, de 1999 à 2026, par liste ou candidat. Sourcé "
+    "auprès du jeu agrégé data.gouv.fr (pipeline construit à partir des données du "
+    "Ministère de l'Intérieur)."
 )
-FREQUENCE_MAJ = "ponctuelle (un scrutin)"
+FREQUENCE_MAJ = "à chaque élection"
 
-_DATASET_ID = "elections-municipales-2026-resultats-du-premier-tour"
-_COLONNE_COMMUNE = "Code commune"
-_RE_BLOC = re.compile(r"^Libellé de liste (\d+)$")
+_DATASET_ID = "donnees-des-elections-agregees"
+_COLONNE_COMMUNE = "code_commune"
 
-_CHAMPS_TOTAUX = (
-    "Inscrits", "Votants", "Abstentions", "Exprimés", "Blancs", "Nuls",
+_CHAMPS_TOTAUX = ("inscrits", "abstentions", "votants", "blancs", "nuls", "exprimes")
+_CHAMPS_BUREAU_GENERAL = ("code_canton", "libelle_canton", "code_circonscription", "libelle_circonscription")
+_CHAMPS_IDENTITE_CANDIDAT = (
+    "no_panneau", "nuance", "nom", "prenom", "liste",
+    "libelle_abrege_liste", "libelle_etendu_liste",
+    *_CHAMPS_BUREAU_GENERAL,
 )
-_CHAMPS_BLOC = (
-    "numero_panneau", "libelle_liste", "libelle_abrege", "nuance", "voix",
-    "pourcentage_exprimes", "elu", "sieges_conseil_municipal", "sieges_conseil_communautaire",
+_COLONNES_GENERALES = (
+    "id_election", "code_commune", "code_bv", "libelle_commune", *_CHAMPS_TOTAUX, *_CHAMPS_BUREAU_GENERAL,
+)
+_COLONNES_CANDIDATS = (
+    "id_election", "code_commune", "code_bv", "voix",
+    "no_panneau", "nuance", "nom", "prenom", "liste",
+    "libelle_abrege_liste", "libelle_etendu_liste",
+)
+_COLONNES_RATIOS_COMMUNE = (
+    "ratio_abstentions_inscrits", "ratio_votants_inscrits", "ratio_blancs_inscrits",
+    "ratio_blancs_votants", "ratio_nuls_inscrits", "ratio_nuls_votants",
+    "ratio_exprimes_inscrits", "ratio_exprimes_votants",
 )
 _COLONNES_CSV = (
-    ("code_insee", "commune")
-    + tuple(f"totaux_{champ}" for champ in _CHAMPS_TOTAUX)
-    + _CHAMPS_BLOC
+    ("annee", "type_election", "tour", "code_commune", "libelle_commune")
+    + _CHAMPS_BUREAU_GENERAL
+    + ("nuance", "liste", "libelle_abrege_liste", "libelle_etendu_liste", "no_panneau",
+       "voix", "ratio_voix_inscrits", "ratio_voix_exprimes")
+    + _CHAMPS_TOTAUX
+    + _COLONNES_RATIOS_COMMUNE
 )
 
 
-def _lignes_csv(resultat_commune: dict) -> list[dict]:
-    """Dénormalise le résultat d'une commune en lignes CSV : une ligne par liste
-    candidate, totaux de la commune répétés sur chaque ligne (onglet tableau du portail —
-    ``application/json`` n'y est pas reconnu)."""
-    entete = {"code_insee": resultat_commune["code_insee"], "commune": resultat_commune["commune"]}
-    entete.update({f"totaux_{champ}": v for champ, v in resultat_commune["totaux"].items()})
-    return [{**entete, **bloc} for bloc in resultat_commune["listes"]]
+def _enrichir_canton_circonscription(lignes_candidats: list[dict], lignes_generales: list[dict]) -> list[dict]:
+    """Joint code_canton/libelle_canton/code_circonscription/libelle_circonscription
+    (présents uniquement dans general_results) sur les lignes candidat, au niveau
+    bureau (code_bv) — avant l'agrégation commune, pour ne jamais perdre l'information
+    d'un découpage électoral différent entre bureaux d'une même commune."""
+    lookup = {
+        (l.get("id_election"), l.get("code_bv")): {c: l.get(c) for c in _CHAMPS_BUREAU_GENERAL}
+        for l in lignes_generales
+    }
+    vide = {c: None for c in _CHAMPS_BUREAU_GENERAL}
+    return [
+        {**l, **lookup.get((l.get("id_election"), l.get("code_bv")), vide)}
+        for l in lignes_candidats
+    ]
 
 
-def _blocs_liste(entetes: list[str], ligne: dict) -> list[dict]:
-    blocs = []
-    for entete in entetes:
-        m = _RE_BLOC.match(entete)
-        if not m:
-            continue
-        i = m.group(1)
-        libelle = (ligne.get(f"Libellé de liste {i}") or "").strip()
-        if not libelle:
-            continue
-        blocs.append({
-            "numero_panneau": ligne.get(f"Numéro de panneau {i}"),
-            "libelle_liste": libelle,
-            "libelle_abrege": ligne.get(f"Libellé abrégé de liste {i}"),
-            "nuance": ligne.get(f"Nuance liste {i}"),
-            "voix": ligne.get(f"Voix {i}"),
-            "pourcentage_exprimes": ligne.get(f"% Voix/exprimés {i}"),
-            "elu": bool((ligne.get(f"Elu {i}") or "").strip()),
-            "sieges_conseil_municipal": ligne.get(f"Sièges au CM {i}"),
-            "sieges_conseil_communautaire": ligne.get(f"Sièges au CC {i}"),
+def _lignes_csv(candidats_agreges: list[dict], totaux_agreges: list[dict], commune: dict) -> list[dict]:
+    totaux_par_id = {t["id_election"]: t for t in totaux_agreges}
+    lignes = []
+    for cand in candidats_agreges:
+        id_el = cand["id_election"]
+        totaux = totaux_par_id.get(id_el)
+        decomp = decomposer_id_election(id_el)
+        ratios_commune = recalculer_ratios(totaux) if totaux else {c: None for c in _COLONNES_RATIOS_COMMUNE}
+        inscrits = (totaux or {}).get("inscrits") or 0
+        exprimes = (totaux or {}).get("exprimes") or 0
+        voix = cand.get("voix") or 0
+        lignes.append({
+            "annee": decomp["annee"], "type_election": decomp["type_election"], "tour": decomp["tour"],
+            "code_commune": cand["code_insee"], "libelle_commune": commune["nom"],
+            **{c: cand.get(c) for c in _CHAMPS_BUREAU_GENERAL},
+            "nuance": cand.get("nuance"), "liste": cand.get("liste"),
+            "libelle_abrege_liste": cand.get("libelle_abrege_liste"),
+            "libelle_etendu_liste": cand.get("libelle_etendu_liste"),
+            "no_panneau": cand.get("no_panneau"), "voix": voix,
+            "ratio_voix_inscrits": round(voix / inscrits, 4) if inscrits else None,
+            "ratio_voix_exprimes": round(voix / exprimes, 4) if exprimes else None,
+            **{c: (totaux or {}).get(c) for c in _CHAMPS_TOTAUX},
+            **ratios_commune,
         })
-    return blocs
+    lignes.sort(key=lambda r: (r["annee"], r["type_election"], r["tour"], str(r.get("no_panneau") or "")))
+    return lignes
 
 
-def _description_enrichie(commune: dict, code_insee: str) -> str:
+def _description_enrichie(commune: dict, code_insee: str, types_trouves: list[str]) -> str:
     return construire_description_structuree(
         quoi=(
-            f"Résultats du premier tour des élections municipales 2026 pour "
-            f"{commune['nom']} ({code_insee}), par liste candidate."
+            f"Historique des résultats électoraux pour {commune['nom']} ({code_insee}) : "
+            f"{', '.join(sorted(types_trouves))}, de 1999 à 2026, par liste ou candidat."
         ),
         comment_construit=(
-            "Extrait du fichier déjà agrégé au niveau commune publié par le "
-            "Ministère de l'Intérieur, filtré sur le code commune. Ne couvre que le "
-            "1er tour, limité à ce seul scrutin (pas d'historique multi-scrutins "
-            "dans cette version)."
+            "Extrait du jeu agrégé data.gouv.fr (fichiers Parquet « Résultats généraux » "
+            "et « Résultats par candidat »), filtré sur le code commune, agrégé au niveau "
+            "commune (group by élection + identité candidat, sommé depuis le niveau bureau "
+            "de vote). Mode d'emploi : filtrer la colonne type_election (ex. "
+            "« Présidentielles ») et annee (ex. « 2022 ») pour un scrutin donné, tour "
+            "(1 ou 2) pour le tour. Exemple : type_election=Présidentielles et "
+            "annee=2022 pour la présidentielle 2022 ; tour=2 pour tous les seconds tours."
         ),
         structure_variables=[
-            "Totaux de la commune (inscrits, votants, abstentions, exprimés, "
-            "blancs, nuls)",
-            "Par liste candidate : libellé, nuance, voix, pourcentage des exprimés",
-            "Élu(e) ou non, sièges au conseil municipal et au conseil "
-            "communautaire",
+            "Identité du scrutin : annee, type_election, tour",
+            "Totaux de la commune (inscrits, votants, abstentions, exprimés, blancs, "
+            "nuls) et leurs ratios",
+            "Par liste ou candidat : nuance, libellé de liste, numéro de panneau, "
+            "voix et ratios (inscrits, exprimés)",
+            "Découpage électoral du bureau : canton, circonscription (quand "
+            "applicable)",
+        ],
+        limites=[
+            "Municipales 2008 : communes de plus de 3500 habitants seulement "
+            "(partiel, pas disponible pour les communes plus petites cette année-là).",
+            "Européennes : premier tour seul (pas de second tour pour ce type "
+            "d'élection).",
+            "Colonnes élu/sièges absentes de ce jeu agrégé (voir BACKLOG.md).",
         ],
         frequence_maj=FREQUENCE_MAJ,
-        source_label="Ministère de l'Intérieur (résultats des élections)",
+        source_label="data.gouv.fr (jeu agrégé, à partir des données du Ministère de l'Intérieur)",
         url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
     )
 
@@ -142,21 +194,25 @@ def moissonner(
 
     try:
         metadata = get_dataset_metadata(_DATASET_ID, session_http=session_http)
-        ressource = selectionner_ressource(
-            # Ancré en début de titre : exclut "Municipales Polynésie française 2026 -
-            # Résultats - Communes_..." et "Conseils d'arrondissement..." (même suffixe,
-            # titres distincts du même dataset) sans quoi le motif est ambigu.
-            metadata, motif_nom=r"^Municipales 2026 - R[ée]sultats - Communes_",
+        ressource_generale = selectionner_ressource(
+            metadata, motif_nom=r"^Résultats généraux$", format="parquet",
         )
-        chemin_cache = telecharger(
-            ressource["url"], dossier=os.path.join(dossier_sortie, ".cache_elections"),
-            session_http=session_http,
+        ressource_candidats = selectionner_ressource(
+            metadata, motif_nom=r"^Résultats par candidat$", format="parquet",
         )
-        lignes, entetes = lire_csv_filtre(chemin_cache, _COLONNE_COMMUNE, code_insee)
+        dossier_cache = os.path.join(dossier_sortie, ".cache_elections")
+        chemin_general = telecharger(ressource_generale["url"], dossier=dossier_cache, session_http=session_http)
+        chemin_candidats = telecharger(ressource_candidats["url"], dossier=dossier_cache, session_http=session_http)
+        lignes_generales, _ = lire_parquet_filtre(
+            chemin_general, _COLONNE_COMMUNE, code_insee, colonnes=list(_COLONNES_GENERALES),
+        )
+        lignes_candidats_brutes, _ = lire_parquet_filtre(
+            chemin_candidats, _COLONNE_COMMUNE, code_insee, colonnes=list(_COLONNES_CANDIDATS),
+        )
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    if not lignes:
+    if not lignes_generales or not lignes_candidats_brutes:
         return ResultatConnecteur(StatutConnecteur.VIDE)
 
     try:
@@ -167,24 +223,26 @@ def moissonner(
     except licences.LicenceInconnueError as e:
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    ligne = lignes[0]
-    blocs = _blocs_liste(entetes, ligne)
+    try:
+        lignes_candidats = _enrichir_canton_circonscription(lignes_candidats_brutes, lignes_generales)
+        totaux_agreges = agreger_long_vers_commune(lignes_generales, code_insee, champs_totaux=_CHAMPS_TOTAUX)
+        candidats_agreges = agreger_long_vers_commune(
+            lignes_candidats, code_insee, champs_identite_candidat=_CHAMPS_IDENTITE_CANDIDAT,
+        )
+        lignes_csv = _lignes_csv(candidats_agreges, totaux_agreges, commune)
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    resultat_commune = {
-        "code_insee": code_insee,
-        "commune": commune["nom"],
-        "totaux": {champ: ligne.get(champ) for champ in _CHAMPS_TOTAUX},
-        "listes": blocs,
-    }
+    types_trouves = sorted({l["type_election"] for l in lignes_csv})
 
     local_id = local_id_jdd(CLE, code_insee)
-    nom_fichier = f"elections_municipales_2026_t1_{code_insee}.csv"
+    nom_fichier = f"elections_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
     os.makedirs(dossier_sortie, exist_ok=True)
     with open(chemin, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_COLONNES_CSV, delimiter=";")
         writer.writeheader()
-        writer.writerows(_lignes_csv(resultat_commune))
+        writer.writerows(lignes_csv)
 
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
@@ -196,18 +254,25 @@ def moissonner(
 
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
-        caption=f"Résultats municipales 2026, 1er tour - {commune['nom']} (CSV)",
+        caption=f"Résultats électoraux (historique multi-scrutins) - {commune['nom']} (CSV)",
+    )
+
+    date_source = max(
+        (r.get("last_modified") for r in (ressource_generale, ressource_candidats) if r.get("last_modified")),
+        default=None,
     )
 
     rudi_metadata = construire_rudi_metadata(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=_description_enrichie(commune, code_insee),
+        description=_description_enrichie(commune, code_insee, types_trouves),
         theme=THEME,
         keywords=[
-            "élections", "municipales 2026", "résultats électoraux",
-            commune["nom"], "Ministère de l'Intérieur",
+            "élections", "résultats électoraux", "historique électoral",
+            "présidentielle", "législatives", "municipales", "européennes",
+            "régionales", "départementales", "cantonales",
+            commune["nom"], "data.gouv.fr",
         ],
         producer=producer,
         url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
@@ -216,7 +281,7 @@ def moissonner(
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
-        date_source=ressource.get("last_modified"),
+        date_source=date_source,
     )
 
     return ResultatConnecteur(
