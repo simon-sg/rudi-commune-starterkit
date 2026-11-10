@@ -101,6 +101,39 @@ class TestMoissonnerPopulation(unittest.TestCase):
             resultat.rudi_metadata["producer"]["organization_name"], "Commune de Gévezé"
         )
 
+    def test_geography_resolue_depuis_le_contour_commune(self):
+        # Preuve bout-en-bout (v3, Axe 6) que geography_pour_commune() est bien
+        # transmis jusqu'à construire_rudi_metadata() — le test de contrat statique
+        # de test_registre.py vérifie les 13 modules mais pas que le câblage produit
+        # réellement la clé attendue dans rudi_metadata.
+        commune_avec_contour = {
+            **_GEVEZE,
+            "contour": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-1.75, 48.20], [-1.70, 48.20], [-1.70, 48.24], [-1.75, 48.24],
+                    [-1.75, 48.20],
+                ]],
+            },
+        }
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        resultat = population.moissonner(
+            "35120", commune_avec_contour, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.rudi_metadata["geography"]["bounding_box"], {
+            "west_longitude": -1.75, "east_longitude": -1.70,
+            "south_latitude": 48.20, "north_latitude": 48.24,
+        })
+
+    def test_pas_de_geography_si_contour_absent(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        resultat = population.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertNotIn("geography", resultat.rudi_metadata)
+
 
 if __name__ == "__main__":
     unittest.main()

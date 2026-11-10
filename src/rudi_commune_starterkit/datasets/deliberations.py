@@ -33,7 +33,7 @@ from rudi_harvest_toolkit.http import session
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd
+from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.DELIBERATIONS
 THEME = "citizenship"
@@ -142,6 +142,7 @@ def moissonner(
         url_fiche="https://data-publication.megalis.bretagne.bzh/",
         medias=[media],
         contacts_source=contacts,
+        geography=geography_pour_commune(commune),
         licence=licence,
     )
 

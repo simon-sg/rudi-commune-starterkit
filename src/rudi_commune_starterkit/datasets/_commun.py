@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 
+from rudi_harvest_toolkit.commune import bbox_depuis_contour
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.rudi_client import email_par_defaut
 
@@ -70,6 +71,14 @@ def contacts_pour_producer(
     if contact_source:
         contacts.append(contact_source)
     return contacts
+
+
+def geography_pour_commune(commune: dict) -> dict | None:
+    """``geography`` à transmettre à ``construire_rudi_metadata()`` (v3 Axe 6) : bbox
+    dataset simple dérivée du contour de la commune, ``None`` si absent (``contour``
+    non résolu, ex. ``inclure_contour=False``) — jamais une bbox devinée ou vide."""
+    bbox = bbox_depuis_contour(commune.get("contour"))
+    return {"bounding_box": bbox} if bbox else None
 
 
 def recherche_entreprises(
@@ -172,6 +181,7 @@ __all__ = [
     "PLAFOND_PAGES_DEFAUT",
     "RECHERCHE_ENTREPRISES_API",
     "contacts_pour_producer",
+    "geography_pour_commune",
     "lignes_csv_entreprises",
     "local_id_jdd",
     "recherche_entreprises",

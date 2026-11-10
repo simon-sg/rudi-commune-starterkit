@@ -36,7 +36,7 @@ from rudi_harvest_toolkit.tabular import lire_csv_filtre
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd
+from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.ELECTIONS
 THEME = "citizenship"
@@ -181,6 +181,7 @@ def moissonner(
         url_fiche=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
         medias=[media],
         contacts_source=contacts,
+        geography=geography_pour_commune(commune),
         licence=licence,
         date_source=ressource.get("last_modified"),
     )

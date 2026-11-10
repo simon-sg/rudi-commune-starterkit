@@ -16,7 +16,7 @@ from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd
+from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.ETABLISSEMENTS_SCOLAIRES
 THEME = "education"
@@ -90,6 +90,7 @@ def moissonner(
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
         medias=[media],
         contacts_source=contacts,
+        geography=geography_pour_commune(commune),
         licence=licence,
     )
 

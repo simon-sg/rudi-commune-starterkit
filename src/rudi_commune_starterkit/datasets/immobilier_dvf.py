@@ -30,7 +30,7 @@ from rudi_harvest_toolkit.tabular import lire_csv_filtre
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd
+from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.IMMOBILIER_DVF
 THEME = "housing"
@@ -146,6 +146,7 @@ def moissonner(
         url_fiche="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/",
         medias=[media],
         contacts_source=contacts,
+        geography=geography_pour_commune(commune),
         licence=licence,
     )
 

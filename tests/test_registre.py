@@ -38,6 +38,14 @@ class TestRegistre(unittest.TestCase):
             params = inspect.signature(module.moissonner).parameters
             self.assertIn("description_commune", params, module.CLE)
 
+    def test_tous_les_modules_cablent_geography_pour_commune(self):
+        # Test de contrat statique (v3, Axe 6) — même principe que ci-dessus : attrape
+        # un module oublié par le câblage mécanique de la bbox dataset, sans dépendre
+        # des mocks réseau propres à chaque module.
+        for module in registre.lister_modules():
+            source = inspect.getsource(module.moissonner)
+            self.assertIn("geography_pour_commune(commune)", source, module.CLE)
+
 
 if __name__ == "__main__":
     unittest.main()

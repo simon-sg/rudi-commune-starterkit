@@ -5,11 +5,37 @@ from unittest import mock
 from rudi_commune_starterkit.datasets._commun import (
     RECHERCHE_ENTREPRISES_API,
     contacts_pour_producer,
+    geography_pour_commune,
     lignes_csv_entreprises,
     local_id_jdd,
     recherche_entreprises,
     simplifier_resultat_entreprise,
 )
+
+_CONTOUR_GEVEZE = {
+    "type": "Polygon",
+    "coordinates": [[
+        [-1.75, 48.20], [-1.70, 48.20], [-1.70, 48.24], [-1.75, 48.24], [-1.75, 48.20],
+    ]],
+}
+
+
+class TestGeographyPourCommune(unittest.TestCase):
+    def test_contour_present_retourne_une_bounding_box(self):
+        commune = {"nom": "Gévezé", "code_insee": "35120", "contour": _CONTOUR_GEVEZE}
+        geography = geography_pour_commune(commune)
+        self.assertEqual(geography, {"bounding_box": {
+            "west_longitude": -1.75, "east_longitude": -1.70,
+            "south_latitude": 48.20, "north_latitude": 48.24,
+        }})
+
+    def test_contour_absent_retourne_none(self):
+        commune = {"nom": "Gévezé", "code_insee": "35120"}
+        self.assertIsNone(geography_pour_commune(commune))
+
+    def test_contour_none_retourne_none(self):
+        commune = {"nom": "Gévezé", "code_insee": "35120", "contour": None}
+        self.assertIsNone(geography_pour_commune(commune))
 
 _RESULTAT_BRUT = {
     "siren": "775685506",

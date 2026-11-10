@@ -29,7 +29,7 @@ from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
-from ._commun import contacts_pour_producer, local_id_jdd
+from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
 CLE = organisations.IRVE
 THEME = "transportation"
@@ -109,6 +109,7 @@ def moissonner(
         url_fiche="https://www.data.gouv.fr/fr/datasets/bornes-de-recharge-pour-vehicules-electriques-3/",
         medias=[media],
         contacts_source=contacts,
+        geography=geography_pour_commune(commune),
         licence=licence,
     )
 
