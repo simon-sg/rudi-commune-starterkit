@@ -16,13 +16,29 @@ une résolution dynamique du code INSEE donné.
 | Module | Rôle |
 |---|---|
 | `datasets/*.py` (13 modules) + `_commun.py` | Un module par JDD (voir liste ci-dessus) — construction des métadonnées RUDI et des contacts, publication via `rudi_harvest_toolkit`. |
-| `organisations.py` | Table curée des producteurs réels des 13 JDD qui en ont un propre (DGFiP, INSEE, Ministère de l'Intérieur...) ; `organisation_commune()` (producteur « la commune publie ses données ») ; `resoudre_producer()` (bascule entre les 3 modes `source`/`commune`/`par-jdd`, avec le cas particulier des délibérations, où la commune est toujours sa propre productrice). |
+| `description_commune.py` | `construire_description_commune(commune)` — vrai résumé Wikipédia de la commune (désambiguïsé par code INSEE), attribution CC BY-SA intégrée au texte, second paragraphe maire actuel (RNE, pas Wikidata)/gentilé/superficie si disponibles, repli générique explicite sinon. |
+| `licences.py` | `licence_pour_jdd(cle_jdd, licence_dynamique=None)` — point d'entrée unique pour la licence de chaque JDD : dynamique depuis data.gouv.fr si disponible, sinon table curée (`LICENCES_CUREES`) ; `LicenceInconnueError` si ni l'une ni l'autre — jamais de repli silencieux etalab-2.0. |
+| `organisations.py` | Table curée des producteurs réels des 13 JDD qui en ont un propre (DGFiP, INSEE, Ministère de l'Intérieur...) ; `organisation_commune()` (producteur « la commune publie ses données ») ; `resoudre_producer()` (bascule entre les 3 modes `source`/`commune`/`par-jdd`, avec le cas particulier des délibérations, où la commune est toujours sa propre productrice) ; `CONTACTS_ORGANISATIONS`/`contact_curated_pour_jdd()` (contacts producteurs confirmés par recherche, distincts de `producer`). |
 | `agregation_scrutin.py` | Agrégation bureau de vote → commune pour un scrutin électoral (format large) : normalisation du code commune (padding incohérent selon les millésimes, Corse-safe), unpivot candidat↔voix, sommation des totaux (inscrits/votants/exprimés...). |
 | `registre.py` | Liste des 14 modules JDD, point d'entrée de la moisson complète. |
 | `profils_communes.py` | Registre multi-communes (`.rudi_commune_starterkit/profils.json`) : mémorise code INSEE, URL/identifiants de nœud, mode producteur, email de contact — évite de tout ressaisir à chaque run. |
 | `vidage.py` | « Vider une commune » : supprime les JDD déjà publiés par ce socle (voir plus bas). |
 | `securite.py` | `email_suspect()` — avertit (sans bloquer) si un contact utilise un domaine sur un TLD réservé (`.local`/`.test`/`.example`/`.invalid`). |
 | `cli.py` | Assistant interactif + mode scriptable, point d'entrée (`python3 -m rudi_commune_starterkit.cli`). |
+
+### Qualité du contenu publié (v3)
+
+Au-delà de la mécanique de publication, le contenu des 13 JDD est rigoureux par
+construction, jamais deviné — détail complet dans `CHANGELOG.md`/`BACKLOG.md` :
+- **Descriptions réelles** des communes (Wikipédia + maire RNE/gentilé/superficie) et
+  des JDD (quoi/comment construit/variables/fréquence/source, mots-clés enrichis).
+- **Licence réelle par JDD** — dynamique depuis data.gouv.fr si disponible, sinon une
+  table curée par recherche ; un JDD sans licence confirmée échoue proprement plutôt
+  que de publier une licence devinée.
+- **Contacts producteurs réels** (table curée + extraction dynamique data.gouv.fr),
+  priorité sur le repli générique `nom@example.org`.
+- **Géolocalisation** (bbox) sur les 13 modules, calculée depuis le contour réel de
+  la commune.
 
 ### Garde-fou organisation
 

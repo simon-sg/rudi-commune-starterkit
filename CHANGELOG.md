@@ -1,6 +1,8 @@
 # Changelog
 
-## Non publié — description de commune : second paragraphe (maire/gentilé/superficie)
+## 0.3.0 — 2026-11-10
+
+### description de commune : second paragraphe (maire/gentilé/superficie)
 
 Correction post-livraison de la v3, suite à un test réel sur Acigné : l'intro
 Wikipédia réelle (192 caractères) était rejetée par le garde-fou anti-ébauches
@@ -19,7 +21,7 @@ En complément, un second paragraphe compense désormais un intro court :
 
 Paragraphe entier omis si aucune des trois informations n'est disponible.
 
-## Non publié — v3 : descriptions, contacts, licences, dates, géographie (voir BACKLOG.md)
+### v3 : descriptions, contacts, licences, dates, géographie (voir BACKLOG.md)
 
 Qualité du contenu publié par les 13 JDD, pas la mécanique du socle — détail complet
 dans `BACKLOG.md`. **Republication unique des 13 JDD à l'activation de cette version**
@@ -47,7 +49,7 @@ dans `BACKLOG.md`. **Republication unique des 13 JDD à l'activation de cette ve
   (`bbox_depuis_contour()`, toolkit).
 - Nouveau `BACKLOG.md` à la racine, tenu à jour à chaque axe.
 
-## Non publié — entreprises/associations/élections/délibérations : CSV au lieu de JSON
+### entreprises/associations/élections/délibérations : CSV au lieu de JSON
 
 Ces 4 JDD n'avaient jamais d'onglet « tableau » sur le portail : leur seul média
 `FILE` était en `application/json`, format que le front-office ne reconnaît pas pour
@@ -67,7 +69,7 @@ CSV natif (testé `format=csv` et `Accept: text/csv`, les deux ignorent/rejetten
 et basculer en CSV supposerait d'abandonner le hybride pour ces deux JDD. Laissé tel
 quel pour l'instant, sujet distinct.
 
-## Non publié — organisation : plus d'appel portail automatisé à la suppression
+### organisation : plus d'appel portail automatisé à la suppression
 
 Suite directe de l'entrée précédente : une fois le producteur détaché et validé par
 l'animateur du portail, la suppression de l'organisation **elle-même** côté Strukture
@@ -85,7 +87,7 @@ l'UI Strukture ; cette confirmation déclenche alors le nettoyage de la copie lo
 du nœud. Tant qu'elle n'est pas donnée, l'organisation reste détachée mais présente
 des deux côtés — état dégradé volontaire, jamais d'orpheline créée.
 
-## Non publié — vidage : plus d'appel portail séparé pour les datasets
+### vidage : plus d'appel portail séparé pour les datasets
 
 `vider_commune()` appelait `supprimer_dataset_portail()` (OAuth2 direct au portail)
 en plus de `supprimer_dataset()` (nœud) pour chaque JDD supprimé — ce second appel
@@ -95,7 +97,7 @@ nœud que `supprimer_dataset()` seul déclenche déjà ce relais automatiquement
 l'identité propre du nœud — un seul appel par JDD désormais, dans les deux boucles de
 suppression (JDD suivis par l'état local et JDD non suivis détectés sur le nœud).
 
-## Non publié — `--vider-commune` : détecte et propose les JDD non suivis
+### `--vider-commune` : détecte et propose les JDD non suivis
 
 Avec `--supprimer-organisation`, si d'autres JDD référencent encore l'organisation
 sans être suivis par ce socle (publiés par un autre outil sur le même nœud, ou un
@@ -103,7 +105,7 @@ test manuel), leur suppression est désormais détectée et **proposée** sépar
 (confirmation `SUPPRIMER` dédiée) plutôt que de bloquer la suppression de
 l'organisation sans aucun recours.
 
-## Non publié — corrige deux bugs réels trouvés en conditions de production
+### corrige deux bugs réels trouvés en conditions de production
 
 - `vider_commune()` plantait avec `KeyError: 'local_id'` sur un JDD restant publié
   par un autre outil (le champ est optionnel dans le schéma RUDI) — repli sur
