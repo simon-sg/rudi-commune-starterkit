@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import os
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
 from .. import licences, organisations
@@ -38,6 +39,32 @@ DESCRIPTION_PATRON = (
 FREQUENCE_MAJ = "mensuelle"
 
 _NATURE_JURIDIQUE_ASSOCIATION = "9220"
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Associations loi 1901 déclarées (catégorie juridique 9220) ayant au "
+            f"moins un établissement sur le territoire de {commune['nom']} "
+            f"({code_insee})."
+        ),
+        comment_construit=(
+            "Extrait de l'API recherche-entreprises.api.gouv.fr (répertoire SIRENE de "
+            "l'INSEE), filtré par code commune et nature juridique 9220, pages "
+            "fusionnées en un seul fichier CSV. Instantané figé à la date de moisson, "
+            "pas une vue live."
+        ),
+        structure_variables=[
+            "siren, nom_complet, sigle",
+            "activite_principale, nature_juridique, catégorie d'entreprise",
+            "date de création, état administratif",
+            "liste des établissements rattachés (siret, adresse, code postal, "
+            "commune, siège ou non)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="API Recherche d'entreprises (INSEE/DINUM)",
+        url_source="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
+    )
 
 
 def moissonner(
@@ -90,9 +117,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["associations", "loi 1901", "SIRENE", commune["nom"], "INSEE"],
+        keywords=[
+            "associations", "loi 1901", "vie associative", "SIRENE",
+            commune["nom"], "INSEE",
+        ],
         producer=producer,
         url_source=(
             f"https://recherche-entreprises.api.gouv.fr/search?code_commune={code_insee}"

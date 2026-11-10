@@ -68,6 +68,18 @@ class TestMoissonnerAssociations(unittest.TestCase):
         from rudi_commune_starterkit.datasets import entreprises
         self.assertNotEqual(associations.CLE, entreprises.CLE)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([_RESULTAT])
+        resultat = associations.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("9220", html)
+        self.assertIn("vie associative", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
