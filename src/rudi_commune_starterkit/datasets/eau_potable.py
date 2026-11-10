@@ -15,6 +15,12 @@ n'expose qu'une ``date_prelevement`` par ligne de résultat, pas une date de mis
 du jeu lui-même — aucun autre endpoint Hub'eau vérifié n'en expose une non plus. Ce
 module reste donc sans ``date_source`` (``dataset_dates.updated`` absent), documenté
 en BACKLOG.md (§ Limites de couverture connues) plutôt qu'un mécanisme inventé.
+
+**Axe 3 (v4) : pas de GeoJSON possible.** ``resultats_dis`` (re-vérifié en direct,
+32 champs) ne porte aucune coordonnée géographique ; ``reseaux`` n'est qu'une liste
+d'identifiants de réseau de distribution, pas une géométrie. Aucun autre endpoint
+Hub'eau vérifié n'en expose une pour ce JDD. Confirmé, pas forcé — documenté en
+BACKLOG.md plutôt qu'un géocodage inventé.
 """
 
 from __future__ import annotations

@@ -143,12 +143,14 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   commencé (Axe 5, 3 incréments A/B/C).
 - Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
   commencé (Axe 4).
-- Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6) — **en
-  cours** (Axe 3) : `rudi_harvest_toolkit.geojson` + `valider_alignement_medias()`
-  (garde-fou d'ordre, Axe 3) construits et testés ; `adresses.py` câblé. Reste
-  `etablissements_scolaires.py`/`entreprises.py`/`associations.py` (simples) et
-  `irve.py` (parsing local obligatoire, piège d'inversion de coordonnées sur l'export
-  natif) ; `eau_potable.py` confirmé sans géométrie disponible.
+- ~~Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6)~~ —
+  **fait** (Axe 3) : `rudi_harvest_toolkit.geojson` + `valider_alignement_medias()`
+  (garde-fou d'ordre) construits et testés ; `adresses.py`,
+  `etablissements_scolaires.py` (export GeoJSON natif de l'ODS, correct pour ce
+  dataset), `entreprises.py`/`associations.py` (latitude/longitude déjà fournis par
+  établissement), `irve.py` (parsing local obligatoire — export natif confirmé
+  inversé) câblés. `eau_potable.py` confirmé et documenté sans géométrie disponible
+  (pas une régression). Voir Journal.
 - ~~Dates réelles pour les 10 modules non-data.gouv~~ — **fait** (Axe 2) : `adresses.py`/
   `immobilier_dvf.py` (mtime du cache), `irve.py` (MAX last_modified ODS trié),
   `etablissements_scolaires.py`/`budget.py` (metas.default.modified ODS),
@@ -182,6 +184,8 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 |---|---|---|---|
 | Fichier DVF national unique couvre juillet 2021 à juin 2026 — les mutations antérieures ne sont plus accessibles via cette source (l'ancienne source départementale ne remontait déjà que ~5-6 ans en arrière, pas de régression de fenêtre) | `immobilier_dvf.py` | Description riche (« années disponibles ») | — |
 | Aucune date de mise à jour de jeu exploitable côté source : `resultats_dis` (Hub'eau) n'expose qu'une `date_prelevement` par ligne de résultat, pas une date de mise à jour du jeu — `dataset_dates.updated` reste absent (pas une régression, cette source n'a jamais eu de date réelle) | `eau_potable.py` | Aucune (pas de mécanisme à ajouter tant que `limites` — Axe 4 — n'existe pas) | Revisiter si Hub'eau expose un jour une date de mise à jour de jeu |
+| Aucune coordonnée géographique disponible (`resultats_dis` : 32 champs, aucun n'est une géométrie ; `reseaux` n'est qu'une liste d'identifiants) — pas de GeoJSON possible | `eau_potable.py` | Aucune (idem, en attendant `limites`) | Revisiter si Hub'eau expose un jour une géométrie par point de prélèvement |
+| `entreprises.py`/`associations.py` : une entreprise/association sans établissement correspondant publié (`matching_etablissements` vide) produit 0 point sur la carte même si son siège est géolocalisé — conséquence de ce que publie `simplifier_resultat_entreprise()`, pas un bug | `entreprises.py`, `associations.py` | Aucune (idem) | — |
 | `adresses.py`/`immobilier_dvf.py` : date affichée = date de récupération locale (mtime du cache, TTL 30 j), pas la date de mise à jour réelle de la source — écart possible jusqu'à 30 jours | `adresses.py`, `immobilier_dvf.py` | `dataset_dates.updated` (date de cache, pas de source) | — |
 
 ## Point tranché (2026-11-10, décision Simon)
@@ -259,3 +263,14 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   `eau_potable.py` confirmé et documenté sans date réelle disponible (BACKLOG §
   Limites de couverture connues) — pas une régression. Suite complète verte à chaque
   étape, poussé sur `main` par petits commits.
+- 2026-11-10 : Axe 3 (GeoJSON) complété en totalité (quota opencode épuisé, fait
+  directement) — `etablissements_scolaires.py` (export GeoJSON natif de l'ODS,
+  correct pour ce dataset, pas de parsing local nécessaire), `entreprises.py`/
+  `associations.py` (`latitude`/`longitude` ajoutés à `_CHAMPS_ETABLISSEMENT`,
+  partagé dans `_commun.py` — pas de géocodage BAN nécessaire, les champs sont déjà
+  fournis par l'API), `irve.py` (parsing local depuis `consolidated_longitude`/
+  `consolidated_latitude`, export natif confirmé inversé — second téléchargement du
+  même CSV déjà utilisé par le média hybride, ordre des médias imposé par
+  `valider_alignement_medias()`). `eau_potable.py` confirmé et documenté sans
+  géométrie disponible. Suite complète verte à chaque étape, poussé sur `main`.
+  **Axes 1, 2 et 3 désormais tous complets — release 0.4.0.**
