@@ -1,5 +1,33 @@
 # Changelog
 
+## Non publié — v3 : descriptions, contacts, licences, dates, géographie (voir BACKLOG.md)
+
+Qualité du contenu publié par les 13 JDD, pas la mécanique du socle — détail complet
+dans `BACKLOG.md`. **Republication unique des 13 JDD à l'activation de cette version**
+(description + licence + géographie changent le hash de contenu de chacun), pas des
+événements isolés par commit :
+
+- **Descriptions des communes réelles** (`rudi_harvest_toolkit.wikipedia` +
+  `description_commune.py`) : résumé Wikipédia désambiguïsé par code INSEE (Wikidata
+  `P374`), attribution CC BY-SA intégrée au texte, repli explicite si absent.
+- **Descriptions riches des 13 JDD** (`rudi_harvest_toolkit.description`) : quoi/comment
+  construit/variables publiées/fréquence/source, mots-clés enrichis par module.
+- **Licence réelle par JDD, jamais de repli silencieux etalab-2.0** (`licences.py`) :
+  dynamique depuis data.gouv.fr pour `elus`/`elections`/`marches_publics`, curée pour les
+  10 autres ; un JDD sans licence confirmée échoue proprement (`ECHEC`) plutôt que de
+  publier une licence devinée.
+- **Contacts producteurs réels** (`CONTACTS_ORGANISATIONS` + `rudi_harvest_toolkit.
+  contacts`, migré depuis `moissonneuse-batteuse`) : chaîne de priorité contact
+  dynamique data.gouv > contact curé confirmé > repli générique.
+- **Remplacement de la source `marches_publics.py` (DECP)** : l'ancienne source
+  (`data.economie.gouv.fr`) était touchée par un trou de remontée AIFE non confirmé
+  résolu ; remplacée par le jeu consolidé indépendant de Colin Maudry (data.gouv.fr),
+  mise à jour quasi quotidienne, avec avertissement CLI si la source se fige.
+- **Géographie (bbox) sur les 13 modules** (`geography_pour_commune()`) : la fiche
+  catalogue affiche désormais une localisation, calculée depuis le contour de la commune
+  (`bbox_depuis_contour()`, toolkit).
+- Nouveau `BACKLOG.md` à la racine, tenu à jour à chaque axe.
+
 ## Non publié — entreprises/associations/élections/délibérations : CSV au lieu de JSON
 
 Ces 4 JDD n'avaient jamais d'onglet « tableau » sur le portail : leur seul média
