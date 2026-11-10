@@ -46,6 +46,17 @@ class TestMoissonnerAssociations(unittest.TestCase):
         self.assertEqual(licence["licence_type"], "CUSTOM")
         self.assertTrue(os.path.isfile(resultat.fichiers_filtres[0]))
 
+    def test_date_source_derivee_du_max_date_mise_a_jour(self):
+        session = mock.Mock()
+        resultat_date = {**_RESULTAT, "date_mise_a_jour_rne": "2026-03-04T16:22:49"}
+        session.get.return_value = _reponse_page([resultat_date])
+        resultat = associations.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(
+            resultat.rudi_metadata["dataset_dates"]["updated"], "2026-03-04T16:22:49Z",
+        )
+
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
         session.get.return_value = _reponse_page([_RESULTAT])

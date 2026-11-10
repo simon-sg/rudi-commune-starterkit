@@ -27,8 +27,11 @@ def _reponse_page(resultats, nb_resultats, page_suivante=None):
     return r
 
 
-def _acte(id_):
-    return {"id": id_, "date_acte": "2026-01-01", "objet": "x", "url": "https://x/" + id_}
+def _acte(id_, date_acte="2026-01-01", date_publication=None):
+    return {
+        "id": id_, "date_acte": date_acte, "date_publication": date_publication,
+        "objet": "x", "url": "https://x/" + id_,
+    }
 
 
 class TestMoissonnerDeliberations(unittest.TestCase):
@@ -62,6 +65,25 @@ class TestMoissonnerDeliberations(unittest.TestCase):
         with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
             actes = list(csv.DictReader(f, delimiter=";"))
         self.assertEqual(len(actes), 2)
+
+    def test_date_source_derivee_du_max_date_acte_et_date_publication(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_siren(),
+            _reponse_page(
+                [
+                    _acte("a1", date_acte="2026-01-01", date_publication="2026-01-03"),
+                    _acte("a2", date_acte="2026-10-05T00:00:00Z", date_publication="2026-10-08T11:00:45Z"),
+                ],
+                nb_resultats=2, page_suivante=None,
+            ),
+        ]
+        resultat = deliberations.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(
+            resultat.rudi_metadata["dataset_dates"]["updated"], "2026-10-08T11:00:45Z",
+        )
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()

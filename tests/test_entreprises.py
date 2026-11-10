@@ -52,6 +52,18 @@ class TestMoissonnerEntreprises(unittest.TestCase):
             medias[0]["media_name"], os.path.basename(resultat.fichiers_filtres[0])
         )
 
+    def test_date_source_derivee_du_max_date_mise_a_jour(self):
+        session = mock.Mock()
+        resultat_recent = {**_RESULTAT, "siren": "999999999", "date_mise_a_jour": "2026-10-01T09:00:00"}
+        resultat_ancien = {**_RESULTAT, "date_mise_a_jour_insee": "2025-01-01T00:00:00"}
+        session.get.return_value = _reponse_page([resultat_ancien, resultat_recent])
+        resultat = entreprises.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(
+            resultat.rudi_metadata["dataset_dates"]["updated"], "2026-10-01T09:00:00Z",
+        )
+
     def test_vide_sans_fichier_ni_media(self):
         session = mock.Mock()
         session.get.return_value = _reponse_page([])

@@ -8,6 +8,7 @@ import uuid
 
 from rudi_harvest_toolkit.commune import bbox_depuis_contour
 from rudi_harvest_toolkit.http import session
+from rudi_harvest_toolkit.http_dates import parser_date_iso_stricte
 from rudi_harvest_toolkit.rudi_client import email_par_defaut
 
 from .. import organisations
@@ -152,6 +153,27 @@ _CHAMPS_ETABLISSEMENT = (
     "siret", "adresse", "code_postal", "libelle_commune", "est_siege",
     "activite_principale", "etat_administratif",
 )
+
+
+_CHAMPS_DATE_MISE_A_JOUR = ("date_mise_a_jour", "date_mise_a_jour_insee", "date_mise_a_jour_rne")
+
+
+def date_plus_recente_entreprises(resultats_bruts: list[dict]) -> str | None:
+    """Date la plus récente trouvée sur ``date_mise_a_jour``/``date_mise_a_jour_insee``/
+    ``date_mise_a_jour_rne`` (vérifiés en direct, par ordre de préférence) sur les
+    résultats **bruts** ``recherche-entreprises`` (avant ``simplifier_resultat_
+    entreprise()``, qui ne retient pas ces champs). Pas de date de jeu de données
+    globale côté source — MAX sur l'unité légale la plus récemment mise à jour parmi
+    les résultats de cette commune. ``None`` si aucune date n'est exploitable (jamais
+    deviné)."""
+    dates: list[str] = []
+    for resultat in resultats_bruts:
+        for champ in _CHAMPS_DATE_MISE_A_JOUR:
+            iso = parser_date_iso_stricte(resultat.get(champ))
+            if iso:
+                dates.append(iso)
+                break
+    return max(dates) if dates else None
 
 
 def simplifier_resultat_entreprise(resultat: dict) -> dict:

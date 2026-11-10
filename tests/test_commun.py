@@ -5,6 +5,7 @@ from unittest import mock
 from rudi_commune_starterkit.datasets._commun import (
     RECHERCHE_ENTREPRISES_API,
     contacts_pour_producer,
+    date_plus_recente_entreprises,
     geography_pour_commune,
     lignes_csv_entreprises,
     local_id_jdd,
@@ -213,6 +214,36 @@ class TestRechercheEntreprises(unittest.TestCase):
         session.get.side_effect = RuntimeError("DNS")
         with self.assertRaises(RuntimeError):
             recherche_entreprises("35120", session_http=session)
+
+
+class TestDatePlusRecenteEntreprises(unittest.TestCase):
+    def test_prend_le_max_entre_plusieurs_resultats(self):
+        resultats = [
+            {"date_mise_a_jour": "2025-01-01T00:00:00"},
+            {"date_mise_a_jour": "2026-10-01T09:00:00"},
+        ]
+        self.assertEqual(date_plus_recente_entreprises(resultats), "2026-10-01T09:00:00Z")
+
+    def test_priorite_date_mise_a_jour_sur_les_champs_de_repli(self):
+        resultat = {
+            "date_mise_a_jour": "2026-11-10T06:00:00",
+            "date_mise_a_jour_insee": "2099-01-01T00:00:00",
+        }
+        self.assertEqual(date_plus_recente_entreprises([resultat]), "2026-11-10T06:00:00Z")
+
+    def test_repli_sur_date_mise_a_jour_insee_si_absente(self):
+        resultat = {"date_mise_a_jour": None, "date_mise_a_jour_insee": "2025-12-05T15:39:38"}
+        self.assertEqual(date_plus_recente_entreprises([resultat]), "2025-12-05T15:39:38Z")
+
+    def test_repli_sur_date_mise_a_jour_rne_si_les_deux_premieres_absentes(self):
+        resultat = {"date_mise_a_jour": None, "date_mise_a_jour_rne": "2026-03-04T16:22:49"}
+        self.assertEqual(date_plus_recente_entreprises([resultat]), "2026-03-04T16:22:49Z")
+
+    def test_none_si_aucune_date_exploitable(self):
+        self.assertIsNone(date_plus_recente_entreprises([{"siren": "123"}]))
+
+    def test_none_sur_liste_vide(self):
+        self.assertIsNone(date_plus_recente_entreprises([]))
 
 
 class TestSimplifierResultatEntreprise(unittest.TestCase):

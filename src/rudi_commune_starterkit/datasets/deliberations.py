@@ -29,6 +29,7 @@ import os
 
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
 from rudi_harvest_toolkit.description import construire_description_structuree
+from rudi_harvest_toolkit.http_dates import parser_date_iso_stricte
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.http import session
 
@@ -60,6 +61,19 @@ _CHAMPS_ACTE = (
 
 def _simplifier_acte(acte: dict) -> dict:
     return {champ: acte.get(champ) for champ in _CHAMPS_ACTE}
+
+
+def _date_plus_recente_actes(actes: list[dict]) -> str | None:
+    """MAX(date_acte, date_publication) sur tous les actes déjà chargés — aucune
+    requête supplémentaire. None si aucun acte n'a de date exploitable (jamais
+    deviné)."""
+    dates = [
+        iso
+        for acte in actes
+        for champ in ("date_acte", "date_publication")
+        if (iso := parser_date_iso_stricte(acte.get(champ)))
+    ]
+    return max(dates) if dates else None
 
 
 def _description_enrichie(commune: dict, code_insee: str) -> str:
@@ -168,6 +182,7 @@ def moissonner(
         producer=producer,
         url_source=f"{_MEGALIS_API}?siren={siren}",
         url_fiche="https://data-publication.megalis.bretagne.bzh/",
+        date_source=_date_plus_recente_actes(actes),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),

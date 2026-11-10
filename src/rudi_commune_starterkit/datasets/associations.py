@@ -19,6 +19,7 @@ from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import (
     COLONNES_CSV_ENTREPRISES,
     contacts_pour_producer,
+    date_plus_recente_entreprises,
     geography_pour_commune,
     lignes_csv_entreprises,
     local_id_jdd,
@@ -129,6 +130,7 @@ def moissonner(
             f"&nature_juridique={_NATURE_JURIDIQUE_ASSOCIATION}"
         ),
         url_fiche="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
+        date_source=date_plus_recente_entreprises(resultats),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
