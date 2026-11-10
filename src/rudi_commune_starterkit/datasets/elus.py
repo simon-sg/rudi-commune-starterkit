@@ -19,6 +19,7 @@ import os
 
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import (
@@ -53,6 +54,31 @@ _COLONNES_CONSERVEES = (
     "Code de la commune", "Libellé de la commune",
     "Nom de l'élu", "Prénom de l'élu", "Libellé de la fonction", "Date de début du mandat",
 )
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Conseillers municipaux en mandat de {commune['nom']} ({code_insee}), "
+            f"limité au nom, prénom, fonction et date de début de mandat."
+        ),
+        comment_construit=(
+            "Extrait du fichier national du Répertoire National des Élus (RNE, "
+            "Ministère de l'Intérieur), filtré sur le code commune. Exclut "
+            "volontairement la date de naissance, la catégorie "
+            "socio-professionnelle et le code sexe, présentes dans la source mais "
+            "non republiées ici (allowlist de colonnes volontairement restreinte)."
+        ),
+        structure_variables=[
+            "Code et libellé de la commune",
+            "Nom et prénom de l'élu",
+            "Libellé de la fonction (maire, adjoint, conseiller...)",
+            "Date de début du mandat",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Répertoire National des Élus (RNE)",
+        url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
+    )
 
 
 def moissonner(
@@ -119,9 +145,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["élus", "conseil municipal", "RNE", commune["nom"], "Ministère de l'Intérieur"],
+        keywords=[
+            "élus", "conseil municipal", "RNE", "mandat municipal",
+            commune["nom"], "Ministère de l'Intérieur",
+        ],
         producer=producer,
         url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
         url_fiche=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
