@@ -115,6 +115,18 @@ class TestMoissonnerBudget(unittest.TestCase):
         self.assertIn("exports/csv", media["connector"]["url"])
         self.assertIn("where=", media["connector"]["url"])
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        resultat = budget.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("DGFiP", html)
+        self.assertIn("comptes communaux", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()

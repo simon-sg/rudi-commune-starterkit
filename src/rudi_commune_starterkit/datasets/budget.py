@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
@@ -61,6 +62,30 @@ def _dep_icom(code_insee: str) -> tuple[str, str]:
             "(encodage dep/icom DGFiP de ce dataset non vérifié pour les DOM)."
         )
     return code_insee[:2].zfill(3), code_insee[2:]
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Comptes individuels de la commune de {commune['nom']} ({code_insee}) : "
+            f"recettes, dépenses et dotations, dernier exercice disponible (2023-2024)."
+        ),
+        comment_construit=(
+            "Extrait du fichier global des comptes individuels des communes de la "
+            "DGFiP (data.economie.gouv.fr), filtré par code département (dep) et code "
+            "commune (icom) au format DGFiP historique dérivé du code INSEE."
+        ),
+        structure_variables=[
+            "Identifiants (dep, icom, nom de la commune)",
+            "Recettes de fonctionnement et d'investissement (prod, ...)",
+            "Dépenses de fonctionnement et d'investissement (impo1, ...)",
+            "Dotations globales de fonctionnement (dgf, ...), nomenclature DGFiP "
+            "historique dont les codes sont documentés sur la fiche source",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="DGFiP (comptes individuels des communes)",
+        url_source=f"https://data.economie.gouv.fr/explore/dataset/{_DATASET_ID}/",
+    )
 
 
 def moissonner(
@@ -116,9 +141,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["budget communal", "finances locales", commune["nom"], "DGFiP"],
+        keywords=[
+            "budget communal", "finances locales", "comptes communaux", "fiscalité",
+            commune["nom"], "DGFiP",
+        ],
         producer=producer,
         url_source=url,
         url_fiche=f"https://data.economie.gouv.fr/explore/dataset/{_DATASET_ID}/",
