@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
@@ -31,6 +32,28 @@ FREQUENCE_MAJ = "mensuelle"
 
 _DATASET_ID = "fr-en-annuaire-education"
 _EXPLORE_BASE = f"https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/{_DATASET_ID}"
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Établissements scolaires (écoles, collèges, lycées) implantés sur le "
+            f"territoire de {commune['nom']} ({code_insee})."
+        ),
+        comment_construit=(
+            "Extrait de l'annuaire de l'éducation (data.education.gouv.fr), filtré "
+            "par code commune en une seule requête. Export CSV pré-filtré par la "
+            "source, publié tel quel."
+        ),
+        structure_variables=[
+            "Identité de l'établissement (nom, type, statut public/privé)",
+            "Adresse et coordonnées géographiques",
+            "Niveau d'enseignement et secteur (premier/second degré)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Ministère de l'Éducation nationale (annuaire de l'éducation)",
+        url_source=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
+    )
 
 
 def moissonner(
@@ -82,9 +105,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["établissements scolaires", "écoles", commune["nom"], "Éducation nationale"],
+        keywords=[
+            "établissements scolaires", "écoles", "collèges", "lycées",
+            commune["nom"], "Éducation nationale",
+        ],
         producer=producer,
         url_source=url,
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",

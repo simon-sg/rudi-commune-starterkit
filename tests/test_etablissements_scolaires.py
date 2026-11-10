@@ -80,6 +80,18 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_records(3), _reponse_streaming()]
+        resultat = etablissements_scolaires.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("annuaire de l'éducation", html)
+        self.assertIn("collèges", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
