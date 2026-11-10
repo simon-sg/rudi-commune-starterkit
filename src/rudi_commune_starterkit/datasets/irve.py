@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
@@ -49,6 +50,33 @@ _EXPLORE_BASE = f"https://odre.opendatasoft.com/api/explore/v2.1/catalog/dataset
 
 def _echapper_ods(valeur: str) -> str:
     return valeur.replace("'", "''")
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Infrastructures de recharge pour véhicules électriques (IRVE) "
+            f"implantées sur le territoire de {commune['nom']} ({code_insee})."
+        ),
+        comment_construit=(
+            "Extraites du fichier consolidé national des IRVE (Etalab/ODRE), filtré "
+            "sur le nom de commune vérifié par la consolidation (consolidated_commune) "
+            "ET le code INSEE déclaré par l'aménageur. Les deux critères sont combinés "
+            "car le code "
+            "INSEE brut déclaré contient des erreurs connues (vérifié : il mélange "
+            "des bornes de communes voisines) et le nom seul resterait vulnérable à "
+            "des communes homonymes dans des départements différents."
+        ),
+        structure_variables=[
+            "Identification de la station et de l'aménageur",
+            "Localisation (adresse, coordonnées géographiques, commune consolidée)",
+            "Caractéristiques techniques (puissance nominale, type de prise, "
+            "nombre de points de charge)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Fichier consolidé des IRVE (transport.data.gouv.fr)",
+        url_source="https://www.data.gouv.fr/fr/datasets/bornes-de-recharge-pour-vehicules-electriques-3/",
+    )
 
 
 def moissonner(
@@ -101,9 +129,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["IRVE", "bornes de recharge", "véhicules électriques", commune["nom"]],
+        keywords=[
+            "IRVE", "bornes de recharge", "véhicules électriques", "mobilité électrique",
+            commune["nom"],
+        ],
         producer=producer,
         url_source=url,
         url_fiche="https://www.data.gouv.fr/fr/datasets/bornes-de-recharge-pour-vehicules-electriques-3/",
