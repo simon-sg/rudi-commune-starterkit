@@ -30,12 +30,15 @@ def _reponse_siren(siren=_SIREN):
     return r
 
 
-def _reponse_metadata(license="lov2", last_modified="2026-11-09T13:58:30.789000+00:00"):
+def _reponse_metadata(
+    license="lov2", last_modified="2026-11-09T13:58:30.789000+00:00", contact_points=None,
+):
     r = mock.Mock()
     r.raise_for_status = mock.Mock()
     r.json.return_value = {
         "license": license,
         "page": "https://www.data.gouv.fr/datasets/donnees-essentielles-de-la-commande-publique-consolidees-format-tabulaire",
+        "contact_points": contact_points or [],
         "resources": [
             {"id": "a", "title": "decp.parquet", "format": "parquet",
              "url": "https://static.data.gouv.fr/decp.parquet"},
@@ -177,6 +180,40 @@ class TestMoissonnerMarchesPublics(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+
+    def test_contact_dynamique_contact_points_priorite_sur_la_source_generique(self):
+        # v3, Axe 2 : contact réel confirmé sur ce dataset (Colin Maudry via
+        # contact_points) — priorité absolue sur le repli générique du producteur
+        # (Ministère de l'Économie et des Finances).
+        chemin_cache = self._ecrire_decp_cache([f"{_SIREN}00019"])
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_siren(),
+            _reponse_metadata(contact_points=[
+                {"name": "Colin Maudry", "email": "colin@colmo.tech", "role": "creator"},
+            ]),
+        ]
+        with self._patch_telecharger(chemin_cache):
+            resultat = marches_publics.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
+        self.assertEqual(
+            resultat.rudi_metadata["contacts"][0],
+            {"contact_name": "Colin Maudry", "email": "colin@colmo.tech", "role": "creator"},
+        )
+
+    def test_sans_contact_points_retombe_sur_le_repli_generique(self):
+        chemin_cache = self._ecrire_decp_cache([f"{_SIREN}00019"])
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_siren(), _reponse_metadata(contact_points=[])]
+        with self._patch_telecharger(chemin_cache):
+            resultat = marches_publics.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
+        self.assertEqual(
+            resultat.rudi_metadata["contacts"][0]["contact_name"],
+            "Ministère de l'Économie et des Finances",
+        )
 
     def test_avertissement_source_figee(self):
         chemin_cache = self._ecrire_decp_cache([f"{_SIREN}00019"])

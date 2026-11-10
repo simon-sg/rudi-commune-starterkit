@@ -31,7 +31,8 @@ def local_id_jdd(cle_jdd: str, code_insee: str) -> str:
 
 
 def contacts_pour_producer(
-    cle_jdd: str, producer: dict, commune: dict, *, email_commune: str | None = None,
+    cle_jdd: str, producer: dict, commune: dict, *,
+    email_commune: str | None = None, contacts_dynamiques: list[dict] | None = None,
 ) -> list[dict]:
     """Contacts à transmettre à ``construire_rudi_metadata(contacts_source=...)``.
 
@@ -41,11 +42,16 @@ def contacts_pour_producer(
     n'étant alors jamais vide, le repli générique de ``publier_dataset()`` ne se
     déclenchait jamais).
 
-    **Contact curé (v3, Axe 2)** : si ``organisations.contact_curated_pour_jdd(cle_jdd)``
-    retourne une entrée avec ``contact_statut="confirme"`` et un ``contact_email``, ce
-    contact réel (ex. ``support-apim@insee.fr``) remplace le repli générique
-    ``email_par_defaut()`` — jamais l'inverse (``"a_confirmer"`` ou entrée absente
-    retombe sur le repli, pas d'email confirmé à moitié inventé).
+    **Chaîne de priorité pour le contact source (v3, Axe 2)** :
+    1. ``contacts_dynamiques`` (optionnel, keyword-only) — contact résolu par l'appelant
+       depuis ``contact_points`` data.gouv.fr (``rudi_harvest_toolkit.contacts.
+       extraire_contacts_datagouv()``), pour les 3 modules branchés sur
+       ``get_dataset_metadata()`` (``elus``, ``elections``, ``marches_publics``). Non
+       vide -> priorité absolue, remplace même un contact curé confirmé.
+    2. ``organisations.contact_curated_pour_jdd(cle_jdd)`` avec
+       ``contact_statut="confirme"`` et un ``contact_email`` — ex. ``support-apim@insee.fr``.
+    3. Repli générique ``email_par_defaut()`` — jamais inventé à la place d'un contact
+       confirmé (``"a_confirmer"`` ou entrée absente retombe ici, pas de court-circuit).
 
     - Si ``producer`` résout vers la commune (mode ``commune`` pour CE JDD précis — pas
       seulement ``email_commune is not None``, qui serait vrai aussi pour un JDD resté en
@@ -62,8 +68,10 @@ def contacts_pour_producer(
     try:
         source = organisations.producteur_reel(cle_jdd)
         curee = organisations.contact_curated_pour_jdd(cle_jdd)
-        if curee and curee.get("contact_statut") == "confirme" and curee.get("contact_email"):
-            contact_source: dict | None = {
+        if contacts_dynamiques:
+            contact_source: dict | None = dict(contacts_dynamiques[0])
+        elif curee and curee.get("contact_statut") == "confirme" and curee.get("contact_email"):
+            contact_source = {
                 "contact_name": curee.get("contact_name", source["organization_name"]),
                 "email": curee["contact_email"],
             }

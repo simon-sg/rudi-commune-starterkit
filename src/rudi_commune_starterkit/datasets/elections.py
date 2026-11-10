@@ -23,6 +23,7 @@ import csv
 import os
 import re
 
+from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
@@ -162,7 +163,10 @@ def moissonner(
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
     )
-    contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
+    contacts = contacts_pour_producer(
+        CLE, producer, commune, email_commune=contact_email_commune,
+        contacts_dynamiques=extraire_contacts_datagouv(metadata),
+    )
 
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
