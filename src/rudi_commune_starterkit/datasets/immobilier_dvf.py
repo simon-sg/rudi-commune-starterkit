@@ -1,28 +1,36 @@
-"""JDD « Valeurs foncières (DVF) » — archive géolocalisée par département, plusieurs années.
+"""JDD « Valeurs foncières (DVF) » — fichier national unique, filtré par commune.
 
-Confirmé le 2026-11-07 : ``files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/
-{dep}.csv.gz`` (motif publié et stable de l'écosystème DVF, pas une URL de ressource
-dataset — exception assumée, voir le plan) ; **délimiteur virgule**, pas point-virgule
-(contrairement à la plupart des autres sources de ce socle). Millésimes 2021 à 2025
-disponibles au moment de la vérification, 2020 et antérieurs en `404` propre — la
-disponibilité réelle est donc **sondée à l'exécution** (``HEAD``) plutôt que supposée sur
-une liste d'années figée en dur, pour ne jamais casser silencieusement quand une nouvelle
-année est publiée ou qu'une ancienne est retirée.
+**Migration d'urgence (Axe 0, v4, 2026-11)** : la source précédente
+(``files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/{dep}.csv.gz``, fichiers
+départementaux) était servie par une ressource du dataset explicitement intitulée
+``[ARCHIVE] Données au format CSV - livraison avril - suppression au 31/11/2026`` —
+annoncée pour suppression. **Vérifié en direct le 2026-11-10** sur le dataset data.gouv.fr
+``demandes-de-valeurs-foncieres-geolocalisees`` (id ``5cc1b94a634f4165e96436c1``) : aucune
+ressource par département n'existe ailleurs dans ce dataset — seules des ressources
+**nationales** sont disponibles (``full-YYYY.csv.gz`` par exercice, et une ressource
+unique ``dvf.csv.gz`` couvrant juillet 2021 à juin 2026, 609 Mo). Retenu : la ressource
+unique (un seul téléchargement/une seule entrée de cache, plutôt que 6 fichiers annuels à
+unifier) — schéma confirmé identique à l'ancienne source départementale (mêmes colonnes,
+dont ``date_mutation``, ``code_commune``, ``longitude``/``latitude``), **délimiteur
+virgule**, pas point-virgule (contrairement à la plupart des autres sources de ce socle).
 
-**Harmonisation de schéma explicite avant concaténation** (point de vigilance identifié
-par le plan, pas une hypothèse) : le header réel s'est révélé identique sur les 3 millésimes
-testés (2021/2023/2025), mais le code ne le suppose pas pour autant — l'en-tête final est
-l'**union** des colonnes vues sur les millésimes effectivement récupérés, une colonne
-absente d'un millésime donné restant vide pour les lignes de cette année plutôt que de
-faire planter l'écriture ou de perdre une colonne apparue plus tard.
+**Résolution dynamique de l'URL** (jamais codée en dur) : le nom du fichier physique sur
+``static.data.gouv.fr`` change à chaque republication de la ressource (horodatage dans le
+chemin) — l'URL est donc résolue à chaque run via
+``datagouv.get_dataset_metadata()``/``selectionner_ressource()``, pas une constante.
+
+Plus de sondage par année ni d'union de schéma : un seul fichier, un seul appel réseau. Le
+« millésime » n'est plus un concept de la source (c'était un artefact du découpage par
+exercice) — les années réellement couvertes pour une commune sont dérivées des valeurs
+``date_mutation`` effectivement trouvées (colonne native de la source, pas ajoutée).
 """
 
 from __future__ import annotations
 
 import csv
-import datetime
 import os
 
+from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
@@ -39,46 +47,41 @@ TITRE = "Valeurs foncières (DVF)"
 SYNOPSIS_PATRON = "Transactions immobilières (DVF) à {commune} ({code_insee})"
 DESCRIPTION_PATRON = (
     "Valeurs foncières (DVF) des transactions immobilières réalisées sur la commune de "
-    "{commune} ({code_insee}), sur les millésimes disponibles ({annees}), sourcées auprès "
-    "de la DGFiP. Chaque ligne porte le millésime d'archive dont elle provient "
-    "(colonne 'annee_millesime_dvf', ajoutée à la concaténation, absente de la source)."
+    "{commune} ({code_insee}), sur les années disponibles ({annees}), sourcées auprès "
+    "de la DGFiP (fichier national unique, filtré par commune)."
 )
 FREQUENCE_MAJ = "annuelle"
 
-_DVF_URL_PATRON = "https://files.data.gouv.fr/geo-dvf/latest/csv/{annee}/departements/{dep}.csv.gz"
+_DATASET_SLUG = "demandes-de-valeurs-foncieres-geolocalisees"
+_MOTIF_RESSOURCE = r"fichier unique"
+_FORMAT_RESSOURCE = "csv.gz"
 _COLONNE_COMMUNE = "code_commune"
-NB_ANNEES_A_SONDER = 6
-_COLONNE_MILLESIME = "annee_millesime_dvf"
-
-
-def _annees_candidates() -> list[int]:
-    annee_courante = datetime.date.today().year
-    return list(range(annee_courante - 1, annee_courante - 1 - NB_ANNEES_A_SONDER, -1))
+_COLONNE_DATE_MUTATION = "date_mutation"
 
 
 def _description_enrichie(commune: dict, code_insee: str, annees_texte: str) -> str:
     return construire_description_structuree(
         quoi=(
             f"Transactions immobilières (mutations) ayant eu lieu sur le territoire "
-            f"de {commune['nom']} ({code_insee}), sur les millésimes disponibles "
+            f"de {commune['nom']} ({code_insee}), sur les années disponibles "
             f"({annees_texte})."
         ),
         comment_construit=(
-            "Archive Demandes de Valeurs Foncières (DVF) géolocalisée de la DGFiP, "
-            "téléchargée par département et filtrée sur le code commune, pour chaque "
-            "millésime disponible (sondé à l'exécution, pas une liste figée). Chaque "
-            "ligne porte le millésime d'archive dont elle provient (colonne "
-            "annee_millesime_dvf, ajoutée à la concaténation, absente de la source)."
+            "Demandes de Valeurs Foncières (DVF) géolocalisées de la DGFiP, fichier "
+            "national unique (couvrant juillet 2021 à juin 2026) filtré sur le code "
+            "commune."
         ),
         structure_variables=[
             "Identification de la mutation (date, nature, valeur foncière)",
             "Localisation (adresse, code commune, section et numéro de parcelle)",
             "Bien (type de local, surface, nombre de pièces, dépendances)",
-            "Millésime d'archive (annee_millesime_dvf)",
         ],
         frequence_maj=FREQUENCE_MAJ,
         source_label="DGFiP (Demandes de Valeurs Foncières)",
-        url_source="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/",
+        url_source=(
+            "https://www.data.gouv.fr/fr/datasets/"
+            "demandes-de-valeurs-foncieres-geolocalisees/"
+        ),
     )
 
 
@@ -93,67 +96,52 @@ def moissonner(
     description_commune: dict | None = None,
 ) -> ResultatConnecteur:
     session_http = session_http or session
-    dep = commune.get("code_departement") or code_insee[:2]
 
-    entetes_union: list[str] = []
-    vus: set[str] = set()
-    lignes_combinees: list[dict] = []
-    annees_trouvees: list[int] = []
+    try:
+        meta = get_dataset_metadata(_DATASET_SLUG, session_http=session_http)
+        ressource = selectionner_ressource(
+            meta, motif_nom=_MOTIF_RESSOURCE, format=_FORMAT_RESSOURCE,
+        )
+        url = ressource["url"]
+        chemin_cache = telecharger(
+            url, dossier=os.path.join(dossier_sortie, ".cache_dvf"),
+            session_http=session_http,
+        )
+        lignes, _entetes = lire_csv_filtre(
+            chemin_cache, _COLONNE_COMMUNE, code_insee, delimiter=",", gzip=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
-    for annee in _annees_candidates():
-        url = _DVF_URL_PATRON.format(annee=annee, dep=dep)
-        try:
-            tete = session_http.head(url, allow_redirects=True, timeout=15)
-        except Exception as e:  # noqa: BLE001
-            return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
-        if tete.status_code == 404:
-            continue
-        try:
-            tete.raise_for_status()
-            chemin_cache = telecharger(
-                url, dossier=os.path.join(dossier_sortie, ".cache_dvf"),
-                session_http=session_http,
-            )
-            lignes, entetes_annee = lire_csv_filtre(
-                chemin_cache, _COLONNE_COMMUNE, code_insee, delimiter=",",
-            )
-        except Exception as e:  # noqa: BLE001
-            return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
-
-        for colonne in entetes_annee:
-            if colonne not in vus:
-                vus.add(colonne)
-                entetes_union.append(colonne)
-        for ligne in lignes:
-            ligne[_COLONNE_MILLESIME] = str(annee)
-            lignes_combinees.append(ligne)
-        annees_trouvees.append(annee)
-
-    if not lignes_combinees:
+    if not lignes:
         return ResultatConnecteur(StatutConnecteur.VIDE)
 
-    entetes_union.append(_COLONNE_MILLESIME)
+    annees_trouvees = sorted({
+        ligne[_COLONNE_DATE_MUTATION][:4]
+        for ligne in lignes
+        if ligne.get(_COLONNE_DATE_MUTATION)
+    })
 
     local_id = local_id_jdd(CLE, code_insee)
     nom_fichier = f"immobilier_dvf_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
     os.makedirs(dossier_sortie, exist_ok=True)
     with open(chemin, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=entetes_union, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=_entetes, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(lignes_combinees)
+        writer.writerows(lignes)
 
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
     )
     contacts = contacts_pour_producer(CLE, producer, commune, email_commune=contact_email_commune)
 
+    annees_texte = ", ".join(annees_trouvees)
     media = media_filtre(
         local_id, nom_fichier, commune["nom"],
-        caption=f"Valeurs foncières (DVF), {min(annees_trouvees)}-{max(annees_trouvees)} - {commune['nom']} (CSV)",
+        caption=f"Valeurs foncières (DVF), {annees_texte} - {commune['nom']} (CSV)",
     )
 
-    annees_texte = ", ".join(str(a) for a in sorted(annees_trouvees))
     try:
         licence = licences.licence_pour_jdd(CLE)
     except licences.LicenceInconnueError as e:
@@ -170,8 +158,11 @@ def moissonner(
             "mutations", commune["nom"], "DGFiP",
         ],
         producer=producer,
-        url_source=_DVF_URL_PATRON.format(annee=max(annees_trouvees), dep=dep),
-        url_fiche="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/",
+        url_source=url,
+        url_fiche=(
+            "https://www.data.gouv.fr/fr/datasets/"
+            "demandes-de-valeurs-foncieres-geolocalisees/"
+        ),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
@@ -184,6 +175,6 @@ def moissonner(
 
 
 __all__ = [
-    "CLE", "DESCRIPTION_PATRON", "FREQUENCE_MAJ", "NB_ANNEES_A_SONDER",
+    "CLE", "DESCRIPTION_PATRON", "FREQUENCE_MAJ",
     "SYNOPSIS_PATRON", "THEME", "TITRE", "moissonner",
 ]

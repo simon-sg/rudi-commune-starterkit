@@ -1,6 +1,7 @@
-"""Tests de datasets/immobilier_dvf.py — sondage HEAD par année, union de schéma."""
+"""Tests de datasets/immobilier_dvf.py — résolution dynamique de la ressource DVF
+nationale unique, filtrage par commune, dates dérivées de date_mutation."""
 import csv
-import datetime
+import gzip
 import io
 import tempfile
 import unittest
@@ -10,23 +11,35 @@ from rudi_commune_starterkit.datasets import immobilier_dvf
 from rudi_commune_starterkit.resultat import StatutConnecteur
 
 _GEVEZE = {"nom": "Gévezé", "code_insee": "35120", "code_departement": "35"}
-_ANNEE_COURANTE = datetime.date.today().year
+
+_META_DATASET = {
+    "resources": [
+        {"title": "DVF 2025", "format": "csv.gz", "url": "https://x/full-2025.csv.gz"},
+        {
+            "title": "DVF juillet 2021 - juin 2026 - fichier unique",
+            "format": "csv.gz",
+            "url": "https://static.data.gouv.fr/x/dvf.csv.gz",
+        },
+    ],
+}
+
+_ENTETES = ["id_mutation", "date_mutation", "code_commune", "nom_commune", "valeur_fonciere"]
+_LIGNE_2024 = {"id_mutation": "1", "date_mutation": "2024-05-01", "code_commune": "35120",
+               "nom_commune": "Gévezé", "valeur_fonciere": "150000"}
 
 
-def _csv_dvf(lignes, entetes):
+def _csv_dvf_gz(lignes, entetes=_ENTETES):
     tampon = io.StringIO()
     writer = csv.DictWriter(tampon, fieldnames=entetes)
     writer.writeheader()
     writer.writerows(lignes)
-    return tampon.getvalue().encode("utf-8")
+    return gzip.compress(tampon.getvalue().encode("utf-8"))
 
 
-def _tete(status_code):
+def _reponse_json(payload):
     r = mock.Mock()
-    r.status_code = status_code
     r.raise_for_status = mock.Mock()
-    if status_code >= 400:
-        r.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
+    r.json = mock.Mock(return_value=payload)
     return r
 
 
@@ -38,22 +51,22 @@ def _reponse_telechargement(contenu):
     return r
 
 
-_ENTETES_2024 = ["id_mutation", "date_mutation", "code_commune", "nom_commune", "valeur_fonciere"]
-_LIGNE_2024 = {"id_mutation": "1", "date_mutation": "2024-05-01", "code_commune": "35120",
-               "nom_commune": "Gévezé", "valeur_fonciere": "150000"}
-
-
 class TestMoissonnerImmobilierDvf(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.dossier = self._tmp.name
 
-    def test_publiable_une_annee_disponible(self):
+    def _session(self, lignes_source, entetes=_ENTETES):
         session = mock.Mock()
-        # NB_ANNEES_A_SONDER=6 : toutes 404 sauf la 1ère tentée (année courante - 1).
-        session.head.side_effect = [_tete(200)] + [_tete(404)] * 5
-        session.get.side_effect = [_reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024))]
+        session.get.side_effect = [
+            _reponse_json(_META_DATASET),
+            _reponse_telechargement(_csv_dvf_gz(lignes_source, entetes)),
+        ]
+        return session
+
+    def test_publiable(self):
+        session = self._session([_LIGNE_2024])
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -64,12 +77,18 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
             lignes = list(csv.DictReader(f))
         self.assertEqual(len(lignes), 1)
-        self.assertEqual(lignes[0]["annee_millesime_dvf"], str(_ANNEE_COURANTE - 1))
+        self.assertEqual(lignes[0]["date_mutation"], "2024-05-01")
+
+    def test_resout_la_ressource_fichier_unique_pas_la_ressource_annuelle(self):
+        session = self._session([_LIGNE_2024])
+        immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        url_telechargee = session.get.call_args_list[1].args[0]
+        self.assertEqual(url_telechargee, "https://static.data.gouv.fr/x/dvf.csv.gz")
 
     def test_metadonnees_sans_em_dash(self):
-        session = mock.Mock()
-        session.head.side_effect = [_tete(200)] + [_tete(404)] * 5
-        session.get.side_effect = [_reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024))]
+        session = self._session([_LIGNE_2024])
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -79,14 +98,9 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         for media in resultat.rudi_metadata["available_formats"]:
             self.assertNotIn("—", media["media_caption"])
 
-    def test_concatene_plusieurs_annees(self):
-        session = mock.Mock()
-        ligne_2 = {**_LIGNE_2024, "id_mutation": "2", "date_mutation": "2023-01-01"}
-        session.head.side_effect = [_tete(200), _tete(200)] + [_tete(404)] * 4
-        session.get.side_effect = [
-            _reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024)),
-            _reponse_telechargement(_csv_dvf([ligne_2], _ENTETES_2024)),
-        ]
+    def test_plusieurs_annees_dans_le_fichier_unique(self):
+        ligne_2 = {**_LIGNE_2024, "id_mutation": "2", "date_mutation": "2022-01-01"}
+        session = self._session([_LIGNE_2024, ligne_2])
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -94,64 +108,36 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
             lignes = list(csv.DictReader(f))
         self.assertEqual(len(lignes), 2)
+        self.assertIn("2022, 2024", resultat.rudi_metadata["available_formats"][0]["media_caption"])
 
-    def test_union_schema_colonne_absente_laissee_vide(self):
-        session = mock.Mock()
-        entetes_annee_2 = _ENTETES_2024 + ["nouvelle_colonne"]
-        ligne_2 = {**_LIGNE_2024, "id_mutation": "2", "nouvelle_colonne": "X"}
-        session.head.side_effect = [_tete(200), _tete(200)] + [_tete(404)] * 4
-        session.get.side_effect = [
-            _reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024)),
-            _reponse_telechargement(_csv_dvf([ligne_2], entetes_annee_2)),
-        ]
-        resultat = immobilier_dvf.moissonner(
-            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
-        )
-        with open(resultat.fichiers_filtres[0], encoding="utf-8") as f:
-            lecteur = csv.DictReader(f)
-            self.assertIn("nouvelle_colonne", lecteur.fieldnames)
-            lignes = list(lecteur)
-        self.assertEqual(lignes[0]["nouvelle_colonne"], "")
-        self.assertEqual(lignes[1]["nouvelle_colonne"], "X")
-
-    def test_vide_sans_aucun_millesime_disponible(self):
-        session = mock.Mock()
-        session.head.side_effect = [_tete(404)] * 6
-        resultat = immobilier_dvf.moissonner(
-            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
-        )
-        self.assertEqual(resultat.statut, StatutConnecteur.VIDE)
-
-    def test_vide_millesimes_disponibles_mais_commune_absente(self):
-        session = mock.Mock()
+    def test_vide_si_commune_absente_du_fichier(self):
         autre = {**_LIGNE_2024, "code_commune": "99999"}
-        session.head.side_effect = [_tete(200)] + [_tete(404)] * 5
-        session.get.side_effect = [_reponse_telechargement(_csv_dvf([autre], _ENTETES_2024))]
+        session = self._session([autre])
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.VIDE)
 
-    def test_echec_reseau_sur_head(self):
+    def test_echec_reseau_sur_resolution_dataset(self):
         session = mock.Mock()
-        session.head.side_effect = RuntimeError("DNS")
+        session.get.side_effect = RuntimeError("DNS")
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
-    def test_echec_serveur_distinct_du_404(self):
+    def test_echec_telechargement(self):
         session = mock.Mock()
-        session.head.side_effect = [_tete(500)]
+        reponse_echec = mock.Mock()
+        reponse_echec.raise_for_status = mock.Mock(side_effect=Exception("HTTP 500"))
+        session.get.side_effect = [_reponse_json(_META_DATASET), reponse_echec]
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
     def test_description_riche_mise_en_page_et_contenu_metier(self):
-        session = mock.Mock()
-        session.head.side_effect = [_tete(200)] + [_tete(404)] * 5
-        session.get.side_effect = [_reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024))]
+        session = self._session([_LIGNE_2024])
         resultat = immobilier_dvf.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
