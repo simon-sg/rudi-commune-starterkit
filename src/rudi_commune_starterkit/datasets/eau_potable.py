@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
@@ -38,6 +39,30 @@ FREQUENCE_MAJ = "mensuelle"
 _HUBEAU_URL = "https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis"
 _FENETRE_ANNEES = 5
 _TAILLE_PAGE = 20000
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Résultats des analyses de contrôle sanitaire de l'eau destinée à la "
+            f"consommation humaine, pour les réseaux desservant {commune['nom']} "
+            f"({code_insee}), sur les {_FENETRE_ANNEES} dernières années."
+        ),
+        comment_construit=(
+            "Extrait de l'API Hub'eau « qualité de l'eau potable » (résultats du "
+            "contrôle sanitaire), filtré par code commune et fenêtre temporelle. "
+            "Producteur réel : l'Agence régionale de santé (ARS), Hub'eau n'étant "
+            "qu'une plateforme nationale d'agrégation, pas le producteur."
+        ),
+        structure_variables=[
+            "Identification du point de prélèvement et de la date d'analyse",
+            "Paramètre analysé (libellé et code SISE-Eaux)",
+            "Résultat de l'analyse et conformité réglementaire",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Hub'eau (qualité de l'eau potable)",
+        url_source="https://hubeau.eaufrance.fr/page/api-qualite-eau-potable",
+    )
 
 
 def moissonner(
@@ -90,9 +115,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["eau potable", "contrôle sanitaire", commune["nom"], "ARS", "Hub'eau"],
+        keywords=[
+            "eau potable", "contrôle sanitaire", "qualité de l'eau", "santé publique",
+            commune["nom"], "ARS", "Hub'eau",
+        ],
         producer=producer,
         url_source=url,
         url_fiche="https://hubeau.eaufrance.fr/page/api-qualite-eau-potable",

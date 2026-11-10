@@ -90,6 +90,18 @@ class TestMoissonnerEauPotable(unittest.TestCase):
         )
         self.assertIn("ARS", resultat.rudi_metadata["producer"]["organization_name"])
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(3148), _reponse_streaming()]
+        resultat = eau_potable.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("SISE-Eaux", html)
+        self.assertIn("santé publique", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
