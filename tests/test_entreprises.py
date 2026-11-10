@@ -64,6 +64,40 @@ class TestMoissonnerEntreprises(unittest.TestCase):
             resultat.rudi_metadata["dataset_dates"]["updated"], "2026-10-01T09:00:00Z",
         )
 
+    def test_second_media_geojson_si_coordonnees_exploitables(self):
+        session = mock.Mock()
+        resultat_avec_coords = {
+            **_RESULTAT,
+            "matching_etablissements": [{
+                "siret": "77568550600010", "adresse": "1 RUE X",
+                "latitude": "48.220806213", "longitude": "-1.788383609",
+            }],
+        }
+        session.get.return_value = _reponse_page([resultat_avec_coords])
+        resultat = entreprises.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_geojson = [
+            m for m in resultat.rudi_metadata["available_formats"]
+            if m["media_name"].endswith(".geojson")
+        ]
+        self.assertEqual(len(medias_geojson), 1)
+        self.assertEqual(len(resultat.fichiers_filtres), 2)
+        self.assertTrue(os.path.isfile(resultat.fichiers_filtres[1]))
+
+    def test_pas_de_media_geojson_sans_coordonnees_exploitables(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([_RESULTAT])
+        resultat = entreprises.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_geojson = [
+            m for m in resultat.rudi_metadata["available_formats"]
+            if m["media_name"].endswith(".geojson")
+        ]
+        self.assertEqual(medias_geojson, [])
+        self.assertEqual(len(resultat.fichiers_filtres), 1)
+
     def test_vide_sans_fichier_ni_media(self):
         session = mock.Mock()
         session.get.return_value = _reponse_page([])

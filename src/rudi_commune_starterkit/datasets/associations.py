@@ -4,14 +4,19 @@ juridique 9220 (associations loi 1901 déclarées), via le répertoire SIRENE.
 Confirmé le 2026-11-07 : 104 résultats pour Gévezé avec ce filtre précis — API v1 confirmée
 suffisante (pas de repli fichier RNA, reporté en v2 si besoin constaté). Source paginée
 (25/page), jamais une seule requête → **FILE combiné**, comme ``entreprises.py``.
+
+**GeoJSON par ligne (Axe 3, v4)** : même mécanisme qu'``entreprises.py`` (voir sa
+docstring pour la limite sur les établissements non appariés).
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 from rudi_harvest_toolkit.description import construire_description_structuree
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
 from .. import licences, organisations
@@ -90,6 +95,8 @@ def moissonner(
 
     associations = [simplifier_resultat_entreprise(r) for r in resultats]
 
+    lignes_csv = lignes_csv_entreprises(associations)
+
     local_id = local_id_jdd(CLE, code_insee)
     nom_fichier = f"associations_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
@@ -97,7 +104,7 @@ def moissonner(
     with open(chemin, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=COLONNES_CSV_ENTREPRISES, delimiter=";")
         writer.writeheader()
-        writer.writerows(lignes_csv_entreprises(associations))
+        writer.writerows(lignes_csv)
 
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
@@ -108,6 +115,33 @@ def moissonner(
         local_id, nom_fichier, commune["nom"],
         caption=f"Associations déclarées à {commune['nom']} (CSV)",
     )
+    medias = [media]
+    fichiers_filtres = [chemin]
+
+    try:
+        fc = construire_feature_collection(
+            lignes_csv, champ_lon="etablissement_longitude", champ_lat="etablissement_latitude",
+            proprietes=["siren", "nom_complet", "etablissement_siret", "etablissement_adresse"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes_csv) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[associations] AVERTISSEMENT : {nb_omises} établissement(s) sans "
+                f"coordonnées exploitables, absent(s) de la carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"associations_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        medias.append(media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Associations, {commune['nom']}",
+        ))
+        fichiers_filtres.append(chemin_geojson)
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -131,14 +165,14 @@ def moissonner(
         ),
         url_fiche="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
         date_source=date_plus_recente_entreprises(resultats),
-        medias=[media],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 

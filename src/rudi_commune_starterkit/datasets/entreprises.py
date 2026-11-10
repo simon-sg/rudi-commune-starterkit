@@ -5,14 +5,23 @@ taille courante (confirmé le 2026-11-07 : 1639 résultats pour Gévezé, ~4200 
 avant même filtrage par état administratif) — donc **FILE combiné** (toutes les pages
 récupérées puis fusionnées en un seul JSON), jamais FILE hybride (voir le plan, § Modèle
 de média).
+
+**GeoJSON par ligne (Axe 3, v4)** : second média FILE construit depuis `latitude`/
+`longitude` déjà présents par établissement (``matching_etablissements``) —
+``_CHAMPS_ETABLISSEMENT`` partagé avec ``associations.py`` (``_commun.py``). **Limite**
+(passe 2 du plan) : une entreprise sans établissement correspondant publié (aucun
+``matching_etablissements``) produit 0 point même si son siège est géolocalisé — pas un
+bug, conséquence de ce que publie réellement ``simplifier_resultat_entreprise()``.
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 from rudi_harvest_toolkit.description import construire_description_structuree
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
 from .. import licences, organisations
@@ -88,6 +97,8 @@ def moissonner(
 
     entreprises = [simplifier_resultat_entreprise(r) for r in resultats]
 
+    lignes_csv = lignes_csv_entreprises(entreprises)
+
     local_id = local_id_jdd(CLE, code_insee)
     nom_fichier = f"entreprises_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
@@ -95,7 +106,7 @@ def moissonner(
     with open(chemin, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=COLONNES_CSV_ENTREPRISES, delimiter=";")
         writer.writeheader()
-        writer.writerows(lignes_csv_entreprises(entreprises))
+        writer.writerows(lignes_csv)
 
     producer = organisations.resoudre_producer(
         CLE, mode_producer, commune, description_commune=description_commune,
@@ -106,6 +117,33 @@ def moissonner(
         local_id, nom_fichier, commune["nom"],
         caption=f"Entreprises actives à {commune['nom']} (CSV)",
     )
+    medias = [media]
+    fichiers_filtres = [chemin]
+
+    try:
+        fc = construire_feature_collection(
+            lignes_csv, champ_lon="etablissement_longitude", champ_lat="etablissement_latitude",
+            proprietes=["siren", "nom_complet", "etablissement_siret", "etablissement_adresse"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes_csv) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[entreprises] AVERTISSEMENT : {nb_omises} établissement(s) sans "
+                f"coordonnées exploitables, absent(s) de la carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"entreprises_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        medias.append(media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Entreprises, {commune['nom']}",
+        ))
+        fichiers_filtres.append(chemin_geojson)
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -126,14 +164,14 @@ def moissonner(
         url_source=f"https://recherche-entreprises.api.gouv.fr/search?code_commune={code_insee}",
         url_fiche="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
         date_source=date_plus_recente_entreprises(resultats),
-        medias=[media],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 

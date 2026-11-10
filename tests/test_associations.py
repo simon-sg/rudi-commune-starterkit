@@ -67,6 +67,38 @@ class TestMoissonnerAssociations(unittest.TestCase):
         self.assertNotIn("—", resultat.rudi_metadata["synopsis"][0]["text"])
         self.assertNotIn("—", resultat.rudi_metadata["summary"][0]["text"])
 
+    def test_second_media_geojson_si_coordonnees_exploitables(self):
+        session = mock.Mock()
+        resultat_avec_coords = {
+            **_RESULTAT,
+            "matching_etablissements": [{
+                "siret": "77568550600010",
+                "latitude": "48.220806213", "longitude": "-1.788383609",
+            }],
+        }
+        session.get.return_value = _reponse_page([resultat_avec_coords])
+        resultat = associations.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_geojson = [
+            m for m in resultat.rudi_metadata["available_formats"]
+            if m["media_name"].endswith(".geojson")
+        ]
+        self.assertEqual(len(medias_geojson), 1)
+        self.assertEqual(len(resultat.fichiers_filtres), 2)
+
+    def test_pas_de_media_geojson_sans_coordonnees_exploitables(self):
+        session = mock.Mock()
+        session.get.return_value = _reponse_page([_RESULTAT])
+        resultat = associations.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_geojson = [
+            m for m in resultat.rudi_metadata["available_formats"]
+            if m["media_name"].endswith(".geojson")
+        ]
+        self.assertEqual(medias_geojson, [])
+
     def test_vide(self):
         session = mock.Mock()
         session.get.return_value = _reponse_page([])

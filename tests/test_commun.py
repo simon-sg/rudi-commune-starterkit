@@ -59,6 +59,8 @@ _RESULTAT_BRUT = {
             "est_siege": False,
             "activite_principale": "53.10Z",
             "etat_administratif": "A",
+            "latitude": "48.220806213",
+            "longitude": "-1.788383609",
         }
     ],
 }
@@ -268,6 +270,20 @@ class TestSimplifierResultatEntreprise(unittest.TestCase):
 
 
 class TestLignesCsvEntreprises(unittest.TestCase):
+    def test_latitude_longitude_figurent_dans_les_champs_etablissement(self):
+        # Test non tautologique (corrigé en passe 5) : vérifie le contenu réel de
+        # _CHAMPS_ETABLISSEMENT, pas seulement que COLONNES_CSV_ENTREPRISES en dérive
+        # (vrai par construction quel que soit son contenu).
+        from rudi_commune_starterkit.datasets._commun import _CHAMPS_ETABLISSEMENT
+        self.assertIn("latitude", _CHAMPS_ETABLISSEMENT)
+        self.assertIn("longitude", _CHAMPS_ETABLISSEMENT)
+
+    def test_latitude_longitude_presentes_dans_une_ligne_csv_reelle(self):
+        simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
+        lignes = lignes_csv_entreprises([simplifie])
+        self.assertEqual(lignes[0]["etablissement_latitude"], "48.220806213")
+        self.assertEqual(lignes[0]["etablissement_longitude"], "-1.788383609")
+
     def test_une_ligne_par_etablissement_champs_entreprise_repetes(self):
         simplifie = simplifier_resultat_entreprise(_RESULTAT_BRUT)
         lignes = lignes_csv_entreprises([simplifie])

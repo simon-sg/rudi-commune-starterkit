@@ -151,7 +151,7 @@ _CHAMPS_ENTREPRISE = (
 )
 _CHAMPS_ETABLISSEMENT = (
     "siret", "adresse", "code_postal", "libelle_commune", "est_siege",
-    "activite_principale", "etat_administratif",
+    "activite_principale", "etat_administratif", "latitude", "longitude",
 )
 
 
