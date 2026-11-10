@@ -26,6 +26,7 @@ from urllib.parse import urlencode
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
+from rudi_harvest_toolkit.http_dates import parser_date_iso_stricte
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
 from .. import licences, organisations
@@ -95,15 +96,28 @@ def moissonner(
 
     try:
         reponse = session_http.get(
-            f"{_EXPLORE_BASE}/records", params={"where": where, "limit": 1}, timeout=30,
+            f"{_EXPLORE_BASE}/records",
+            params={
+                "where": where, "limit": 1,
+                "select": "last_modified", "order_by": "last_modified desc",
+            },
+            timeout=30,
         )
         reponse.raise_for_status()
-        total_count = reponse.json().get("total_count", 0)
+        corps = reponse.json()
+        total_count = corps.get("total_count", 0)
+        resultats = corps.get("results", [])
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 
     if not total_count:
         return ResultatConnecteur(StatutConnecteur.VIDE)
+
+    # MAX(last_modified) sur les enregistrements filtrés, triés — pas une date de
+    # jeu de données globale (l'export CSV/geojson ODS n'expose aucun Last-Modified
+    # HTTP exploitable, vérifié en passe 1 du plan v4). Parseur ISO strict (jamais
+    # une date inventée si le champ était malformé).
+    date_source = parser_date_iso_stricte(resultats[0].get("last_modified")) if resultats else None
 
     local_id = local_id_jdd(CLE, code_insee)
     producer = organisations.resoudre_producer(
@@ -138,6 +152,7 @@ def moissonner(
         producer=producer,
         url_source=url,
         url_fiche="https://www.data.gouv.fr/fr/datasets/bornes-de-recharge-pour-vehicules-electriques-3/",
+        date_source=date_source,
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),

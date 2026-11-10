@@ -9,10 +9,13 @@ from rudi_commune_starterkit.resultat import StatutConnecteur
 _GEVEZE = {"nom": "Gévezé", "code_insee": "35120"}
 
 
-def _reponse_records(total_count):
+def _reponse_records(total_count, last_modified="2026-07-21T08:03:43+00:00"):
     r = mock.Mock()
     r.raise_for_status = mock.Mock()
-    r.json.return_value = {"total_count": total_count}
+    corps = {"total_count": total_count}
+    if total_count:
+        corps["results"] = [{"last_modified": last_modified}]
+    r.json.return_value = corps
     return r
 
 
@@ -54,6 +57,21 @@ class TestMoissonnerIrve(unittest.TestCase):
         self.assertNotIn("—", resultat.rudi_metadata["summary"][0]["text"])
         for media in resultat.rudi_metadata["available_formats"]:
             self.assertNotIn("—", media["media_caption"])
+
+    def test_date_source_derivee_du_max_last_modified(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        resultat = irve.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.rudi_metadata["dataset_dates"]["updated"], "2026-07-21T08:03:43Z")
+
+    def test_requete_triee_par_last_modified_desc(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_records(4), _reponse_streaming()]
+        irve.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
+        premier_appel = session.get.call_args_list[0]
+        self.assertEqual(premier_appel.kwargs["params"]["order_by"], "last_modified desc")
 
     def test_where_combine_nom_et_code_insee(self):
         session = mock.Mock()
