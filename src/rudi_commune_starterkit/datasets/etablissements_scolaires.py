@@ -14,7 +14,7 @@ from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
-from .. import organisations
+from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, local_id_jdd
 
@@ -73,6 +73,11 @@ def moissonner(
         session_http=session_http,
     )
 
+    try:
+        licence = licences.licence_pour_jdd(CLE)
+    except licences.LicenceInconnueError as e:
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
     rudi_metadata = construire_rudi_metadata(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
@@ -85,6 +90,7 @@ def moissonner(
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
         medias=[media],
         contacts_source=contacts,
+        licence=licence,
     )
 
     return ResultatConnecteur(

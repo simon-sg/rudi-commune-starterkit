@@ -42,6 +42,8 @@ class TestMoissonnerAssociations(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        licence = resultat.rudi_metadata["access_condition"]["licence"]
+        self.assertEqual(licence["licence_type"], "CUSTOM")
         self.assertTrue(os.path.isfile(resultat.fichiers_filtres[0]))
 
     def test_metadonnees_sans_em_dash(self):

@@ -24,7 +24,7 @@ from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.tabular import lire_csv_filtre
 
-from .. import organisations
+from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, local_id_jdd
 
@@ -87,6 +87,11 @@ def moissonner(
         caption=f"Voies et adresses - {commune['nom']} (CSV)",
     )
 
+    try:
+        licence = licences.licence_pour_jdd(CLE)
+    except licences.LicenceInconnueError as e:
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
     rudi_metadata = construire_rudi_metadata(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
@@ -99,6 +104,7 @@ def moissonner(
         url_fiche="https://adresse.data.gouv.fr/base-adresse-nationale",
         medias=[media],
         contacts_source=contacts,
+        licence=licence,
     )
 
     return ResultatConnecteur(

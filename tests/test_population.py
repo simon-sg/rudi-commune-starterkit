@@ -45,6 +45,9 @@ class TestMoissonnerPopulation(unittest.TestCase):
         )
 
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        licence = resultat.rudi_metadata["access_condition"]["licence"]
+        self.assertEqual(licence["licence_type"], "STANDARD")
+        self.assertEqual(licence["licence_label"], "etalab-2.0")
         self.assertEqual(resultat.fichiers_filtres, [])
         self.assertEqual(os.listdir(self.dossier), [])
 

@@ -13,7 +13,7 @@ import os
 
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
-from .. import organisations
+from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import (
     COLONNES_CSV_ENTREPRISES,
@@ -80,6 +80,11 @@ def moissonner(
         caption=f"Associations déclarées à {commune['nom']} (CSV)",
     )
 
+    try:
+        licence = licences.licence_pour_jdd(CLE)
+    except licences.LicenceInconnueError as e:
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
     rudi_metadata = construire_rudi_metadata(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
@@ -95,6 +100,7 @@ def moissonner(
         url_fiche="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
         medias=[media],
         contacts_source=contacts,
+        licence=licence,
     )
 
     return ResultatConnecteur(

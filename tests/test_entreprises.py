@@ -37,6 +37,8 @@ class TestMoissonnerEntreprises(unittest.TestCase):
         )
 
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        licence = resultat.rudi_metadata["access_condition"]["licence"]
+        self.assertEqual(licence["licence_type"], "CUSTOM")
         self.assertEqual(len(resultat.fichiers_filtres), 1)
         self.assertTrue(os.path.isfile(resultat.fichiers_filtres[0]))
         with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:

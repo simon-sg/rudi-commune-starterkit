@@ -55,6 +55,9 @@ class TestMoissonnerDeliberations(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        licence = resultat.rudi_metadata["access_condition"]["licence"]
+        self.assertEqual(licence["licence_type"], "STANDARD")
+        self.assertEqual(licence["licence_label"], "etalab-2.0")
         self.assertEqual(len(resultat.fichiers_filtres), 1)
         with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
             actes = list(csv.DictReader(f, delimiter=";"))
