@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import os
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
@@ -40,6 +41,31 @@ DESCRIPTION_PATRON = (
 FREQUENCE_MAJ = "mensuelle"
 
 _BAN_URL_PATRON = "https://adresse.data.gouv.fr/data/ban/adresses/latest/csv/adresses-{dep}.csv.gz"
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Voies et adresses de {commune['nom']} ({code_insee}), avec leurs "
+            f"coordonnées géographiques."
+        ),
+        comment_construit=(
+            "Extraites du fichier départemental complet de la Base Adresse Nationale "
+            "(BAN, consortium IGN / La Poste / DINUM sous l'égide d'Etalab), filtré "
+            "localement sur le code commune (la source ne propose pas de filtre par "
+            "commune, seulement par département). Instantané figé à la date de "
+            "moisson."
+        ),
+        structure_variables=[
+            "Identifiant et nom de la voie (nom_voie)",
+            "Numéro et complément (numero, suffixe)",
+            "Code postal et nom de la commune (code_postal, nom_commune)",
+            "Coordonnées géographiques (lon, lat)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Base Adresse Nationale (BAN)",
+        url_source="https://adresse.data.gouv.fr/base-adresse-nationale",
+    )
 
 
 def moissonner(
@@ -96,9 +122,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["adresses", "voies", "BAN", commune["nom"], "IGN"],
+        keywords=[
+            "adresses", "voies", "Base Adresse Nationale", "BAN", "géocodage",
+            commune["nom"], "IGN",
+        ],
         producer=producer,
         url_source=url_dep,
         url_fiche="https://adresse.data.gouv.fr/base-adresse-nationale",
