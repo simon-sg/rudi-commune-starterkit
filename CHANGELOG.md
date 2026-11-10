@@ -1,5 +1,24 @@
 # Changelog
 
+## Non publié — description de commune : second paragraphe (maire/gentilé/superficie)
+
+Correction post-livraison de la v3, suite à un test réel sur Acigné : l'intro
+Wikipédia réelle (192 caractères) était rejetée par le garde-fou anti-ébauches
+(`longueur_min=250`), alors que ce n'était pas une ébauche — juste une petite commune
+peu documentée. `longueur_min` abaissé à 80 (`rudi_harvest_toolkit.wikipedia`).
+
+En complément, un second paragraphe compense désormais un intro court :
+- **Maire actuel** — nouveau `rudi_harvest_toolkit.rne.maire_actuel()`, source
+  Répertoire National des Élus (Ministère de l'Intérieur), **pas** Wikidata (propriété
+  P6, trouvée affichant un mandat de 2014 sans date de fin alors que le RNE listait
+  déjà le mandat renouvelé en mars 2026 — Wikidata ne signale jamais son obsolescence).
+- **Gentilé et superficie** (Wikidata P1549/P2046) — nouvelle requête SPARQL
+  complémentaire dans `wikipedia.resumer_commune_wikipedia()`, réutilisant le QID déjà
+  résolu ; omis si absents sur Wikidata (gentilé souvent non renseigné pour les petites
+  communes), jamais devinés.
+
+Paragraphe entier omis si aucune des trois informations n'est disponible.
+
 ## Non publié — v3 : descriptions, contacts, licences, dates, géographie (voir BACKLOG.md)
 
 Qualité du contenu publié par les 13 JDD, pas la mécanique du socle — détail complet

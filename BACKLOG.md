@@ -24,6 +24,15 @@ par code INSEE, extrait MediaWiki complet, cache partagé) +
 texte, repli explicite) câblés dans `organisations.py`/`cli.py`/les 13 modules. Résolu une
 seule fois par run, avertissement CLI si repli générique utilisé.
 
+**Correction post-livraison (test réel Acigné, 2026-11-10)** : `longueur_min` (garde-fou
+contre les ébauches) abaissé de 250 à 80 caractères — le résumé réel d'Acigné (192
+caractères) était à tort traité comme une ébauche. Second paragraphe ajouté
+(`description_commune._paragraphe_complementaire()`) : maire actuel (RNE,
+`rudi_harvest_toolkit.rne.maire_actuel()` — pas Wikidata P6, qui reste affiché
+indéfiniment sans signal d'obsolescence après une élection non répercutée), gentilé et
+superficie (Wikidata P1549/P2046, `resumer_commune_wikipedia()`) — chacun omis si
+absent, paragraphe entier omis si aucun des trois n'est disponible.
+
 ## 2. Contacts producteurs
 Statut global : **fait**. Dernière màj : 2026-11-10.
 

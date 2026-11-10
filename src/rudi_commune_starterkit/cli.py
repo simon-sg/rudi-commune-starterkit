@@ -165,6 +165,7 @@ def executer_run(
     # chaque JDD pourraient porter des résumés différents).
     description_commune = construire_description_commune(
         commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+        dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
     )
     if description_commune["source"] == "repli_generique":
         print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
