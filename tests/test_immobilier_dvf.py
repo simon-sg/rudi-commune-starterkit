@@ -148,6 +148,19 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.head.side_effect = [_tete(200)] + [_tete(404)] * 5
+        session.get.side_effect = [_reponse_telechargement(_csv_dvf([_LIGNE_2024], _ENTETES_2024))]
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("DVF", html)
+        self.assertIn("mutations", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()

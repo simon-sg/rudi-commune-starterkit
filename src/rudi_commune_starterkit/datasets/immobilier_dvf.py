@@ -23,6 +23,7 @@ import csv
 import datetime
 import os
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
@@ -53,6 +54,32 @@ _COLONNE_MILLESIME = "annee_millesime_dvf"
 def _annees_candidates() -> list[int]:
     annee_courante = datetime.date.today().year
     return list(range(annee_courante - 1, annee_courante - 1 - NB_ANNEES_A_SONDER, -1))
+
+
+def _description_enrichie(commune: dict, code_insee: str, annees_texte: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Transactions immobilières (mutations) ayant eu lieu sur le territoire "
+            f"de {commune['nom']} ({code_insee}), sur les millésimes disponibles "
+            f"({annees_texte})."
+        ),
+        comment_construit=(
+            "Archive Demandes de Valeurs Foncières (DVF) géolocalisée de la DGFiP, "
+            "téléchargée par département et filtrée sur le code commune, pour chaque "
+            "millésime disponible (sondé à l'exécution, pas une liste figée). Chaque "
+            "ligne porte le millésime d'archive dont elle provient (colonne "
+            "annee_millesime_dvf, ajoutée à la concaténation, absente de la source)."
+        ),
+        structure_variables=[
+            "Identification de la mutation (date, nature, valeur foncière)",
+            "Localisation (adresse, code commune, section et numéro de parcelle)",
+            "Bien (type de local, surface, nombre de pièces, dépendances)",
+            "Millésime d'archive (annee_millesime_dvf)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="DGFiP (Demandes de Valeurs Foncières)",
+        url_source="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/",
+    )
 
 
 def moissonner(
@@ -136,11 +163,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(
-            commune=commune["nom"], code_insee=code_insee, annees=annees_texte,
-        ),
+        description=_description_enrichie(commune, code_insee, annees_texte),
         theme=THEME,
-        keywords=["DVF", "valeurs foncières", "immobilier", commune["nom"], "DGFiP"],
+        keywords=[
+            "DVF", "valeurs foncières", "immobilier", "transactions immobilières",
+            "mutations", commune["nom"], "DGFiP",
+        ],
         producer=producer,
         url_source=_DVF_URL_PATRON.format(annee=max(annees_trouvees), dep=dep),
         url_fiche="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/",
