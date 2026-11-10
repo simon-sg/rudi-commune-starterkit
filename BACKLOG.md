@@ -136,19 +136,41 @@ Statut global : **fait**. Dernière màj : 2026-11-10.
 est absent — jamais de bbox devinée. Vérifié par un test de contrat statique
 (`test_registre.py`) et une preuve bout-en-bout (`test_population.py`).
 
-## Backlog v4 (hors scope de cette v3, détaillé plus bas)
-- Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré)
-- Historique budget plus profond + documentation des variables complexes (DGFiP)
-- Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6)
+## Backlog v4 — en cours d'implémentation (plan détaillé, relu en 5 passes)
+- ~~Migration d'urgence de la source DVF (Axe 0)~~ — **fait**, voir « Décisions actées
+  v4 » et Journal ci-dessous. Release 0.3.1.
+- Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré) — pas
+  commencé (Axe 5, 3 incréments A/B/C).
+- Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
+  commencé (Axe 4).
+- Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6) — pas
+  commencé (Axe 3).
+- **Dates réelles pour les 10 modules non-data.gouv** — pas commencé (Axe 2).
 - Contacts restant introuvables : Mégalis Bretagne, Hub'eau/BRGM, Éducation nationale
 - Faire pointer `moissonneuse-batteuse/datagouv_to_rudi.py` vers
-  `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale (évite une 3ᵉ
-  divergence future, pas une obligation immédiate)
-- **Dates réelles pour les 10 modules non-data.gouv** — reporté le 2026-11-10 (décision
-  Simon). Chantier de recherche par source officielle, comparable à celui des
-  licences/contacts de cette v3 ; `download_cache.telecharger()` ne remonte pas
-  aujourd'hui les en-têtes HTTP (`Last-Modified`), limite technique à lever si ce
-  chantier est repris.
+  `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale (Axe 1 — gain
+  rapide, pas commencé)
+
+## Décisions actées v4
+
+- **2026-11-10 (Axe 0, urgence DVF)** : la ressource départementale consommée par
+  `immobilier_dvf.py` (`files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/
+  {dep}.csv.gz`) était explicitement annoncée pour suppression (« suppression au
+  31/11/2026 »). Vérifié en direct : aucun accès par département ne subsiste dans le
+  dataset officiel (`demandes-de-valeurs-foncieres-geolocalisees`) — seules des
+  ressources nationales existent. Choix fait entre 2 options nationales : la ressource
+  unique « DVF juillet 2021 - juin 2026 - fichier unique » (`dvf.csv.gz`, 609 Mo) plutôt
+  que les 6 fichiers annuels (`full-YYYY.csv.gz`, union de schéma) — un seul
+  téléchargement/une seule entrée de cache, schéma confirmé identique à l'ancienne
+  source. URL résolue dynamiquement (`datagouv.get_dataset_metadata()` +
+  `selectionner_ressource()`), jamais codée en dur (le nom physique du fichier change à
+  chaque republication côté data.gouv.fr).
+
+## Limites de couverture connues
+
+| Cause | Module | Visibilité catalogue | Suivi v5 éventuel |
+|---|---|---|---|
+| Fichier DVF national unique couvre juillet 2021 à juin 2026 — les mutations antérieures ne sont plus accessibles via cette source (l'ancienne source départementale ne remontait déjà que ~5-6 ans en arrière, pas de régression de fenêtre) | `immobilier_dvf.py` | Description riche (« années disponibles ») | — |
 
 ## Point tranché (2026-11-10, décision Simon)
 - Test d'intégration `executer_run()` sur les 13 modules — **pas maintenant**. Les
@@ -189,3 +211,14 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   voir § 1 ci-dessus). Les 2 points ouverts du backlog tranchés par Simon : dates des
   10 modules non-data.gouv reportées en v4, test d'intégration `executer_run()` pas
   fait maintenant. **V3 close.**
+- 2026-11-10 : plan v4 écrit (5 axes), relu en 5 passes (3 opencode + vérification
+  ciblée id_brut_miom/jointure élections + 1 passe de cohérence Claude Code + 1 passe
+  indépendante par un agent Claude dédié) — toutes les corrections intégrées au plan.
+  Implémentation démarrée, sous-traitée à `opencode run` axe par axe avec reprise
+  directe par Claude Code dès épuisement du quota gratuit.
+- 2026-11-10 : Axe 0 (urgence DVF) implémenté et testé (quota opencode épuisé, fait
+  directement) — `immobilier_dvf.py` migré vers la ressource nationale unique
+  `dvf.csv.gz`, résolution dynamique via `datagouv.get_dataset_metadata()`/
+  `selectionner_ressource()`, dates dérivées de `date_mutation` (plus de sondage par
+  année ni d'union de schéma). Suite complète des deux dépôts verte (357 + 321 tests).
+  À livrer en release **0.3.1** indépendamment du reste de la v4.

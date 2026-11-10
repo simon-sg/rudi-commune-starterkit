@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.1 — 2026-11-10
+
+### Migration d'urgence de la source DVF (Axe 0, v4)
+
+La ressource départementale consommée par `immobilier_dvf.py`
+(`files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/{dep}.csv.gz`) était
+explicitement annoncée pour suppression (« suppression au 31/11/2026 ») sur le dataset
+data.gouv.fr. Vérifié en direct : aucun accès par département ne subsiste dans ce
+dataset — migration vers la ressource nationale unique **« DVF juillet 2021 - juin
+2026 - fichier unique »** (`dvf.csv.gz`, 609 Mo), résolue dynamiquement via
+`datagouv.get_dataset_metadata()`/`selectionner_ressource()` (jamais une URL figée —
+le nom physique du fichier change à chaque republication côté data.gouv.fr).
+
+**Changement de comportement** : plus de sondage par année (`NB_ANNEES_A_SONDER`
+supprimé) ni d'union de schéma entre millésimes — un seul fichier, un seul appel
+réseau. La colonne `annee_millesime_dvf` (ajoutée artificiellement par l'ancien code)
+disparaît : les années publiées sont désormais dérivées de la colonne native
+`date_mutation`, réellement présente dans la source.
+
+**Limite de couverture** : la nouvelle source couvre juillet 2021 à juin 2026 — pas de
+régression par rapport à l'ancienne source (qui ne remontait déjà que ~5-6 ans).
+
 ## 0.3.0 — 2026-11-10
 
 ### description de commune : second paragraphe (maire/gentilé/superficie)
