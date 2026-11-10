@@ -10,7 +10,8 @@ dernière mise à jour (pas seulement le Journal global).
 3. ~~Câblage elus/elections (Axe 4, étape 2)~~ — fait.
 4. ~~Remplacement DECP (Axe 4, étape 3)~~ — fait.
 5. ~~Câblage licence des 10 modules non-data.gouv (Axe 4, étape 4)~~ — fait.
-6. Axe 2 (contacts), Axe 3 (descriptions riches + mots-clés), Axe 6 (bbox).
+6. ~~Axe 6 (bbox, tous les modules)~~ — fait.
+7. Axe 2 (contacts) et Axe 3 (descriptions riches + mots-clés enrichis) — reste de la v3.
 
 ## 1. Descriptions des communes
 Statut global : **fait**. Dernière màj : 2026-11-10.
@@ -86,25 +87,29 @@ prendre avec Simon** : faire ce chantier dans cette v3, ou le reporter en v4.
 Statut : bloqué — attend Simon.
 
 ## 5. Géolocalisation (vue carte) — Axe 6, tous les modules sans exception
+Statut global : **fait**. Dernière màj : 2026-11-10.
+
 | Module | Statut | Dernière màj |
 |---|---|---|
-| entreprises | pas commencé | 2026-11-10 |
-| associations | pas commencé | 2026-11-10 |
-| budget | pas commencé | 2026-11-10 |
-| marches_publics | pas commencé | 2026-11-10 |
-| deliberations | pas commencé | 2026-11-10 |
-| population | pas commencé | 2026-11-10 |
-| eau_potable | pas commencé | 2026-11-10 |
-| etablissements_scolaires | pas commencé | 2026-11-10 |
-| adresses | pas commencé | 2026-11-10 |
-| elus | pas commencé | 2026-11-10 |
-| elections | pas commencé | 2026-11-10 |
-| immobilier_dvf | pas commencé | 2026-11-10 |
-| irve | pas commencé | 2026-11-10 |
+| entreprises | fait | 2026-11-10 |
+| associations | fait | 2026-11-10 |
+| budget | fait | 2026-11-10 |
+| marches_publics | fait | 2026-11-10 |
+| deliberations | fait | 2026-11-10 |
+| population | fait | 2026-11-10 |
+| eau_potable | fait | 2026-11-10 |
+| etablissements_scolaires | fait | 2026-11-10 |
+| adresses | fait | 2026-11-10 |
+| elus | fait | 2026-11-10 |
+| elections | fait | 2026-11-10 |
+| immobilier_dvf | fait | 2026-11-10 |
+| irve | fait | 2026-11-10 |
 
-`bbox_depuis_contour()` déjà disponible dans le toolkit (`rudi_harvest_toolkit.commune`),
-testé (Polygon/MultiPolygon/anneaux intérieurs/axes non mélangés) — reste le câblage dans
-les 13 modules.
+`bbox_depuis_contour()` (toolkit, `rudi_harvest_toolkit.commune`) + `geography_pour_commune()`
+(starterkit, `datasets/_commun.py`) câblés dans les 13 modules via
+`construire_rudi_metadata(geography=...)`. `None` (clé omise) si le contour de la commune
+est absent — jamais de bbox devinée. Vérifié par un test de contrat statique
+(`test_registre.py`) et une preuve bout-en-bout (`test_population.py`).
 
 ## Backlog v4 (hors scope de cette v3, détaillé plus bas)
 - Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré)
@@ -137,3 +142,6 @@ les 13 modules.
   flux avec le nouveau paramètre `prefixe=True` de `filtrer_csv()`/`lire_csv_filtre()`).
   Reste : mots-clés enrichis (lié à l'Axe 3), point ouvert dates des 10 modules
   non-data.gouv (bloqué — attend Simon).
+- 2026-11-10 : Axe 6 (bbox) câblé et testé sur les 13 modules (`geography_pour_commune()`
+  dans `_commun.py`, test de contrat statique + preuve bout-en-bout sur `population.py`).
+  Reste : Axe 2 (contacts) et Axe 3 (descriptions riches + mots-clés) pour clore la v3.
