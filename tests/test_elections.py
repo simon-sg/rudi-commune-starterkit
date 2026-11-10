@@ -184,6 +184,20 @@ class TestMoissonnerElections(unittest.TestCase):
             )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_metadata(), _reponse_telechargement(_csv_national([_LIGNE_GEVEZE])),
+        ]
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("Ministère de l'Intérieur", html)
+        self.assertIn("résultats électoraux", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,7 @@ import re
 
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import (
@@ -102,6 +103,31 @@ def _blocs_liste(entetes: list[str], ligne: dict) -> list[dict]:
     return blocs
 
 
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Résultats du premier tour des élections municipales 2026 pour "
+            f"{commune['nom']} ({code_insee}), par liste candidate."
+        ),
+        comment_construit=(
+            "Extrait du fichier déjà agrégé au niveau commune publié par le "
+            "Ministère de l'Intérieur, filtré sur le code commune. Ne couvre que le "
+            "1er tour, limité à ce seul scrutin (pas d'historique multi-scrutins "
+            "dans cette version)."
+        ),
+        structure_variables=[
+            "Totaux de la commune (inscrits, votants, abstentions, exprimés, "
+            "blancs, nuls)",
+            "Par liste candidate : libellé, nuance, voix, pourcentage des exprimés",
+            "Élu(e) ou non, sièges au conseil municipal et au conseil "
+            "communautaire",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Ministère de l'Intérieur (résultats des élections)",
+        url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
+    )
+
+
 def moissonner(
     code_insee: str,
     commune: dict,
@@ -177,9 +203,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["élections", "municipales 2026", commune["nom"], "Ministère de l'Intérieur"],
+        keywords=[
+            "élections", "municipales 2026", "résultats électoraux",
+            commune["nom"], "Ministère de l'Intérieur",
+        ],
         producer=producer,
         url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
         url_fiche=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
