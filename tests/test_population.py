@@ -30,6 +30,13 @@ def _reponse_streaming(contenu=b"[1,2,3]"):
     return r
 
 
+def _reponse_catalogue(modified="2025-12-18T12:00:16.306934614"):
+    r = mock.Mock()
+    r.raise_for_status = mock.Mock()
+    r.json.return_value = {"modified": modified}
+    return r
+
+
 class TestMoissonnerPopulation(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -38,7 +45,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
 
     def test_publiable_sans_fichier_local(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
 
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
@@ -53,7 +60,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -65,7 +72,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
 
     def test_media_hybride_url_distante_conservee(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -73,6 +80,29 @@ class TestMoissonnerPopulation(unittest.TestCase):
         self.assertEqual(media["media_type"], "FILE")
         self.assertIn("GEO=COM-35120", media["connector"]["url"])
         self.assertTrue(media["checksum"]["hash"])
+
+    def test_date_source_derivee_de_la_fiche_catalogue_melodi(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
+        resultat = population.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(
+            resultat.rudi_metadata["dataset_dates"]["updated"], "2025-12-18T12:00:16Z",
+        )
+
+    def test_date_source_absente_sans_faire_echouer_le_run(self):
+        session = mock.Mock()
+        reponse_catalogue_echec = mock.Mock()
+        reponse_catalogue_echec.raise_for_status = mock.Mock(side_effect=Exception("HTTP 500"))
+        session.get.side_effect = [
+            _reponse_json(_OBSERVATIONS), _reponse_streaming(), reponse_catalogue_echec,
+        ]
+        resultat = population.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        self.assertIsNone(resultat.rudi_metadata["dataset_dates"].get("updated"))
 
     def test_vide_sans_observations(self):
         session = mock.Mock()
@@ -92,7 +122,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
 
     def test_mode_commune(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, mode_producer="commune",
             contact_email_commune="mairie@geveze.fr", session_http=session,
@@ -117,7 +147,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
             },
         }
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", commune_avec_contour, dossier_sortie=self.dossier, session_http=session,
         )
@@ -128,7 +158,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
 
     def test_pas_de_geography_si_contour_absent(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -138,7 +168,7 @@ class TestMoissonnerPopulation(unittest.TestCase):
         # v3, Axe 3 : forme (liste + lien final) ET contenu (mot-clé métier propre à ce
         # module) — un test de forme seul laisserait passer un contenu copié-collé.
         session = mock.Mock()
-        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming(), _reponse_catalogue()]
         resultat = population.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )

@@ -13,6 +13,7 @@ from __future__ import annotations
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
+from rudi_harvest_toolkit.http_dates import parser_date_iso_stricte
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
 from .. import licences, organisations
@@ -30,7 +31,22 @@ DESCRIPTION_PATRON = (
 )
 FREQUENCE_MAJ = "annuelle"
 
-_MELODI_URL = "https://api.insee.fr/melodi/data/DS_POPULATIONS_HISTORIQUES"
+_DATASET_ID = "DS_POPULATIONS_HISTORIQUES"
+_MELODI_URL = f"https://api.insee.fr/melodi/data/{_DATASET_ID}"
+_MELODI_CATALOG_URL = f"https://api.insee.fr/melodi/catalog/{_DATASET_ID}"
+
+
+def _date_dataset_melodi(session_http) -> str | None:
+    """Date de dernière modification du jeu Melodi (champ ``modified`` de la fiche
+    catalogue, ``GET /melodi/catalog/{id}``, sans authentification) — requête de
+    métadonnées légère, best-effort, jamais bloquante ni devinée."""
+    try:
+        reponse = session_http.get(_MELODI_CATALOG_URL, timeout=15)
+        reponse.raise_for_status()
+        modifie = reponse.json().get("modified")
+    except Exception:  # noqa: BLE001
+        return None
+    return parser_date_iso_stricte(modifie) if modifie else None
 
 
 def _description_enrichie(commune: dict, code_insee: str) -> str:
@@ -111,6 +127,7 @@ def moissonner(
         producer=producer,
         url_source=url,
         url_fiche="https://api.insee.fr/catalogue/",
+        date_source=_date_dataset_melodi(session_http),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
