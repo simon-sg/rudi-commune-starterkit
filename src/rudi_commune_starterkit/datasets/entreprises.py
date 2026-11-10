@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import os
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 
 from .. import licences, organisations
@@ -37,6 +38,31 @@ DESCRIPTION_PATRON = (
     "live ni mise à jour en continu."
 )
 FREQUENCE_MAJ = "mensuelle"
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Entreprises ayant au moins un établissement actif sur le territoire de "
+            f"{commune['nom']} ({code_insee}), avec leurs établissements rattachés."
+        ),
+        comment_construit=(
+            "Extrait de l'API recherche-entreprises.api.gouv.fr (répertoire SIRENE de "
+            "l'INSEE), filtré par code commune et état administratif actif, pages "
+            "fusionnées en un seul fichier CSV. Instantané figé à la date de moisson, "
+            "pas une vue live."
+        ),
+        structure_variables=[
+            "siren, nom_complet, sigle",
+            "activite_principale, nature_juridique, catégorie d'entreprise",
+            "tranche d'effectif salarié, date de création, état administratif",
+            "liste des établissements rattachés (siret, adresse, code postal, "
+            "commune, siège ou non)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="API Recherche d'entreprises (INSEE/DINUM)",
+        url_source="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
+    )
 
 
 def moissonner(
@@ -89,9 +115,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["entreprises", "SIRENE", commune["nom"], "INSEE"],
+        keywords=[
+            "entreprises", "SIRENE", "établissements", "activité économique",
+            commune["nom"], "INSEE",
+        ],
         producer=producer,
         url_source=f"https://recherche-entreprises.api.gouv.fr/search?code_commune={code_insee}",
         url_fiche="https://www.data.gouv.fr/dataservices/api-recherche-dentreprises/",
