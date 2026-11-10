@@ -11,7 +11,8 @@ dernière mise à jour (pas seulement le Journal global).
 4. ~~Remplacement DECP (Axe 4, étape 3)~~ — fait.
 5. ~~Câblage licence des 10 modules non-data.gouv (Axe 4, étape 4)~~ — fait.
 6. ~~Axe 6 (bbox, tous les modules)~~ — fait.
-7. Axe 2 (contacts) et Axe 3 (descriptions riches + mots-clés enrichis) — reste de la v3.
+7. ~~Axe 2 (contacts)~~ — fait.
+8. Axe 3 (descriptions riches + mots-clés enrichis) — reste de la v3.
 
 ## 1. Descriptions des communes
 Statut global : **fait**. Dernière màj : 2026-11-10.
@@ -23,18 +24,27 @@ texte, repli explicite) câblés dans `organisations.py`/`cli.py`/les 13 modules
 seule fois par run, avertissement CLI si repli générique utilisé.
 
 ## 2. Contacts producteurs
+Statut global : **fait**. Dernière màj : 2026-11-10.
+
 | Organisation | Email confirmé | Statut | Dernière màj |
 |---|---|---|---|
-| INSEE | support-apim@insee.fr | pas commencé (connu, pas encore câblé) | 2026-11-10 |
-| BAN (DINUM) | adresse@data.gouv.fr | pas commencé | 2026-11-10 |
-| DGFiP | dtnum.donnees.gouvernance@dgfip.finances.gouv.fr | pas commencé (confiance moyenne) | 2026-11-10 |
-| Ministère Intérieur | elections@interieur.gouv.fr | pas commencé | 2026-11-10 |
-| IRVE (transport.data.gouv.fr) | contact@transport.beta.gouv.fr | pas commencé (confiance moyenne) | 2026-11-10 |
-| DECP (Colin Maudry, via contact_points) | colin@colmo.tech | pas commencé (dépend du remplacement de source) | 2026-11-10 |
+| INSEE | support-apim@insee.fr | fait (table curée) | 2026-11-10 |
+| BAN (DINUM) | adresse@data.gouv.fr | fait (table curée) | 2026-11-10 |
+| DGFiP | dtnum.donnees.gouvernance@dgfip.finances.gouv.fr | fait (table curée, confiance moyenne) | 2026-11-10 |
+| Ministère Intérieur | elections@interieur.gouv.fr | fait (table curée, repli dynamique prioritaire câblé) | 2026-11-10 |
+| IRVE (transport.data.gouv.fr) | contact@transport.beta.gouv.fr | fait (table curée, confiance moyenne) | 2026-11-10 |
+| DECP (Colin Maudry, via contact_points) | colin@colmo.tech | fait (contact dynamique, priorité 1 confirmée réelle) | 2026-11-10 |
 | Délibérations | `contact_email_commune` (mécanisme existant, pas une entrée curée) | connu par construction | 2026-11-10 |
 | Mégalis Bretagne | — | repli générique — introuvable, `contact_statut: a_confirmer` | 2026-11-10 |
 | Hub'eau / BRGM | — | repli générique — introuvable, `contact_statut: a_confirmer` | 2026-11-10 |
 | Éducation nationale | — | repli générique — introuvable, `contact_statut: a_confirmer` | 2026-11-10 |
+
+`CONTACTS_ORGANISATIONS` + `contact_curated_pour_jdd()` (`organisations.py`) + chaîne de
+priorité dans `contacts_pour_producer()` (`_commun.py`) : contact dynamique data.gouv
+(`extraire_contacts_datagouv()`, migré dans `rudi_harvest_toolkit.contacts`) > contact curé
+confirmé > repli générique. `rudi_harvest_toolkit.contacts` migré depuis
+`moissonneuse-batteuse`, qui en garde un shim de réexportation (zéro changement pour ses
+6 appelants).
 
 ## 3. Descriptions riches des JDD (+ mots-clés enrichis, même commit)
 | Module | Helper câblé | Contenu rédigé | Mots-clés enrichis | Statut | Dernière màj |
@@ -144,4 +154,9 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   non-data.gouv (bloqué — attend Simon).
 - 2026-11-10 : Axe 6 (bbox) câblé et testé sur les 13 modules (`geography_pour_commune()`
   dans `_commun.py`, test de contrat statique + preuve bout-en-bout sur `population.py`).
-  Reste : Axe 2 (contacts) et Axe 3 (descriptions riches + mots-clés) pour clore la v3.
+- 2026-11-10 : Axe 2 (contacts) implémenté et testé — `rudi_harvest_toolkit.contacts`
+  migré depuis `moissonneuse-batteuse` (shim de réexportation côté origine, zéro
+  changement pour ses 6 appelants), `CONTACTS_ORGANISATIONS` + chaîne de priorité
+  (dynamique data.gouv > curé confirmé > repli générique) câblée dans
+  `contacts_pour_producer()`. Reste : Axe 3 (descriptions riches + mots-clés enrichis)
+  pour clore la v3.
