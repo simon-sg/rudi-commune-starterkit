@@ -9,6 +9,12 @@ déjà pré-filtrée par la source : **FILE hybride**. Fenêtre limitée aux 5 d
 
 Hub'eau n'est qu'une plateforme d'agrégation nationale ; le producteur réel du contrôle
 sanitaire est l'Agence régionale de santé (ARS) — voir ``organisations.py``.
+
+**Axe 2 (v4) : pas de date de mise à jour de jeu exploitable.** ``resultats_dis``
+n'expose qu'une ``date_prelevement`` par ligne de résultat, pas une date de mise à jour
+du jeu lui-même — aucun autre endpoint Hub'eau vérifié n'en expose une non plus. Ce
+module reste donc sans ``date_source`` (``dataset_dates.updated`` absent), documenté
+en BACKLOG.md (§ Limites de couverture connues) plutôt qu'un mécanisme inventé.
 """
 
 from __future__ import annotations

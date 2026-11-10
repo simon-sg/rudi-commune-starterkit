@@ -143,9 +143,19 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   commencé (Axe 5, 3 incréments A/B/C).
 - Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
   commencé (Axe 4).
-- Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6) — pas
-  commencé (Axe 3).
-- **Dates réelles pour les 10 modules non-data.gouv** — pas commencé (Axe 2).
+- Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6) — **en
+  cours** (Axe 3) : `rudi_harvest_toolkit.geojson` + `valider_alignement_medias()`
+  (garde-fou d'ordre, Axe 3) construits et testés ; `adresses.py` câblé. Reste
+  `etablissements_scolaires.py`/`entreprises.py`/`associations.py` (simples) et
+  `irve.py` (parsing local obligatoire, piège d'inversion de coordonnées sur l'export
+  natif) ; `eau_potable.py` confirmé sans géométrie disponible.
+- ~~Dates réelles pour les 10 modules non-data.gouv~~ — **fait** (Axe 2) : `adresses.py`/
+  `immobilier_dvf.py` (mtime du cache), `irve.py` (MAX last_modified ODS trié),
+  `etablissements_scolaires.py`/`budget.py` (metas.default.modified ODS),
+  `entreprises.py`/`associations.py` (date_mise_a_jour*, MAX sur les résultats),
+  `deliberations.py` (MAX date_acte/date_publication), `population.py` (fiche catalogue
+  Melodi). `eau_potable.py` reste sans date réelle (aucune disponible côté source,
+  documenté ci-dessous). Voir Journal.
 - Contacts restant introuvables : Mégalis Bretagne, Hub'eau/BRGM, Éducation nationale
 - ~~Faire pointer `moissonneuse-batteuse/datagouv_to_rudi.py` vers
   `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale~~ — **fait** (Axe 1),
@@ -171,6 +181,8 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 | Cause | Module | Visibilité catalogue | Suivi v5 éventuel |
 |---|---|---|---|
 | Fichier DVF national unique couvre juillet 2021 à juin 2026 — les mutations antérieures ne sont plus accessibles via cette source (l'ancienne source départementale ne remontait déjà que ~5-6 ans en arrière, pas de régression de fenêtre) | `immobilier_dvf.py` | Description riche (« années disponibles ») | — |
+| Aucune date de mise à jour de jeu exploitable côté source : `resultats_dis` (Hub'eau) n'expose qu'une `date_prelevement` par ligne de résultat, pas une date de mise à jour du jeu — `dataset_dates.updated` reste absent (pas une régression, cette source n'a jamais eu de date réelle) | `eau_potable.py` | Aucune (pas de mécanisme à ajouter tant que `limites` — Axe 4 — n'existe pas) | Revisiter si Hub'eau expose un jour une date de mise à jour de jeu |
+| `adresses.py`/`immobilier_dvf.py` : date affichée = date de récupération locale (mtime du cache, TTL 30 j), pas la date de mise à jour réelle de la source — écart possible jusqu'à 30 jours | `adresses.py`, `immobilier_dvf.py` | `dataset_dates.updated` (date de cache, pas de source) | — |
 
 ## Point tranché (2026-11-10, décision Simon)
 - Test d'intégration `executer_run()` sur les 13 modules — **pas maintenant**. Les
@@ -226,3 +238,24 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   `moissonneuse-batteuse` (quota opencode épuisé, fait directement) — `LICENCES`
   importe désormais `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale ;
   test `odc-odbl` manquant ajouté. 233 tests verts, poussé sur `main`.
+- 2026-11-10 : Axe 3 (GeoJSON), première tranche implémentée et testée (quota opencode
+  épuisé, fait directement) — nouveau `rudi_harvest_toolkit.geojson`
+  (`construire_feature_collection()`, `AucuneGeometrieValide`) et
+  `rudi_client.valider_alignement_medias()` (garde-fou d'ordre, pas seulement de
+  compte — trou trouvé en passe 5 de relecture du plan) ; `adresses.py` câblé (second
+  média GeoJSON).
+- 2026-11-10 : Axe 2 (dates réelles) implémenté et testé en totalité (quota opencode
+  épuisé, fait directement) — nouveau `rudi_harvest_toolkit.http_dates`
+  (`entete_derniere_modification()`, `date_dataset_ods()`, `parser_date_iso_stricte()`,
+  jamais `pivot.parser_date_http()` qui invente une date sur échec) et
+  `download_cache.date_fichier_cache()`. Câblage par module : `adresses.py`/
+  `immobilier_dvf.py` (mtime du cache), `irve.py` (MAX last_modified ODS trié, piège
+  ISO vs format HTTP corrigé en cours de route), `etablissements_scolaires.py`/
+  `budget.py` (metas.default.modified, vérifié en direct), `entreprises.py`/
+  `associations.py` (nouveau `date_plus_recente_entreprises()` partagé dans
+  `_commun.py`, MAX sur date_mise_a_jour/_insee/_rne), `deliberations.py` (MAX
+  date_acte/date_publication, aucune requête supplémentaire), `population.py`
+  (nouvelle fiche catalogue Melodi `GET /melodi/catalog/{id}`, best-effort).
+  `eau_potable.py` confirmé et documenté sans date réelle disponible (BACKLOG §
+  Limites de couverture connues) — pas une régression. Suite complète verte à chaque
+  étape, poussé sur `main` par petits commits.
