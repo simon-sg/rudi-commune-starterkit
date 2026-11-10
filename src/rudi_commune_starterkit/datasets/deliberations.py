@@ -28,6 +28,7 @@ import csv
 import os
 
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.http import session
 
@@ -59,6 +60,30 @@ _CHAMPS_ACTE = (
 
 def _simplifier_acte(acte: dict) -> dict:
     return {champ: acte.get(champ) for champ in _CHAMPS_ACTE}
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Index des délibérations et actes du conseil municipal de {commune['nom']} "
+            f"({code_insee}), diffusés via la plateforme Mégalis Bretagne."
+        ),
+        comment_construit=(
+            "Chaque entrée pointe vers le document PDF original, hébergé par Mégalis "
+            "Bretagne, jamais recopié ici (ce JDD est un index, pas une archive de "
+            "documents). Récupéré par pagination par curseur sur l'API de recherche "
+            "d'actes de Mégalis, filtrée par SIREN de la commune."
+        ),
+        structure_variables=[
+            "Identifiant et dates (id, date_acte, date_publication)",
+            "Objet et classification (objet, classification_code, "
+            "classification_libelle, typologie)",
+            "URL du document PDF original (url, content_type)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="Mégalis Bretagne",
+        url_source="https://data-publication.megalis.bretagne.bzh/",
+    )
 
 
 def moissonner(
@@ -134,9 +159,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["délibérations", "conseil municipal", commune["nom"], "Mégalis Bretagne"],
+        keywords=[
+            "délibérations", "conseil municipal", "actes administratifs",
+            commune["nom"], "Mégalis Bretagne",
+        ],
         producer=producer,
         url_source=f"{_MEGALIS_API}?siren={siren}",
         url_fiche="https://data-publication.megalis.bretagne.bzh/",
