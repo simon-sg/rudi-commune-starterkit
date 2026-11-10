@@ -10,6 +10,7 @@ fichier local écrit.
 
 from __future__ import annotations
 
+from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
@@ -30,6 +31,29 @@ DESCRIPTION_PATRON = (
 FREQUENCE_MAJ = "annuelle"
 
 _MELODI_URL = "https://api.insee.fr/melodi/data/DS_POPULATIONS_HISTORIQUES"
+
+
+def _description_enrichie(commune: dict, code_insee: str) -> str:
+    return construire_description_structuree(
+        quoi=(
+            f"Série historique de la population municipale de {commune['nom']} "
+            f"({code_insee}), recensements disponibles depuis 1968."
+        ),
+        comment_construit=(
+            "Extraite de la plateforme Melodi de l'INSEE (jeu de données "
+            "DS_POPULATIONS_HISTORIQUES), filtrée sur le code géographique de la "
+            "commune en une seule requête, sans authentification requise."
+        ),
+        structure_variables=[
+            "Année du recensement (TIME_PERIOD)",
+            "Mesure (POPREF_MEASURE : PMUN pour population municipale, PSDC pour "
+            "population sans doubles comptes)",
+            "Valeur de la mesure (OBS_VALUE_NIVEAU)",
+        ],
+        frequence_maj=FREQUENCE_MAJ,
+        source_label="INSEE (plateforme Melodi)",
+        url_source="https://api.insee.fr/catalogue/",
+    )
 
 
 def moissonner(
@@ -78,9 +102,12 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=DESCRIPTION_PATRON.format(commune=commune["nom"], code_insee=code_insee),
+        description=_description_enrichie(commune, code_insee),
         theme=THEME,
-        keywords=["population", "recensement", commune["nom"], "INSEE", "Melodi"],
+        keywords=[
+            "population", "recensement", "démographie", "population municipale",
+            commune["nom"], "INSEE", "Melodi",
+        ],
         producer=producer,
         url_source=url,
         url_fiche="https://api.insee.fr/catalogue/",

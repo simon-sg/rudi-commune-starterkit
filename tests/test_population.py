@@ -134,6 +134,20 @@ class TestMoissonnerPopulation(unittest.TestCase):
         )
         self.assertNotIn("geography", resultat.rudi_metadata)
 
+    def test_description_riche_mise_en_page_et_contenu_metier(self):
+        # v3, Axe 3 : forme (liste + lien final) ET contenu (mot-clé métier propre à ce
+        # module) — un test de forme seul laisserait passer un contenu copié-collé.
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(_OBSERVATIONS), _reponse_streaming()]
+        resultat = population.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("<ul>", html)
+        self.assertIn("</a>", html)
+        self.assertIn("Melodi", html)
+        self.assertIn("démographie", resultat.rudi_metadata["keywords"])
+
 
 if __name__ == "__main__":
     unittest.main()
