@@ -82,7 +82,8 @@ dans le HTML rendu, et au moins un mot-clé métier propre au module).
 | marches_publics | oui | oui | oui | fait | 2026-11-10 |
 
 ## 4. Licence / dates / mots-clés / source
-Statut global : **fait** (licence + source + mots-clés, ces derniers via l'Axe 3 ci-dessus).
+Statut global : **fait** (licence + source + mots-clés, ces derniers via l'Axe 3
+ci-dessus ; dates des 10 modules non-data.gouv reportées en v4, décision Simon).
 Dernière màj : 2026-11-10.
 
 | Module | Licence | Dates | Source | Statut | Dernière màj |
@@ -107,12 +108,8 @@ silencieux Etalab) — complétude vérifiée par
 data.gouv (`elus`, `elections`, `marches_publics`) ont en plus la licence/date dynamique
 résolue depuis la fiche source, avec repli curé si absente.
 
-**Point ouvert — dates des 10 modules non-data.gouv** : aucune date réelle disponible
-(limite technique documentée, Axe 4 : `download_cache.telecharger()` ne remonte pas les
-en-têtes HTTP). Rechercher une date de publication par source officielle serait un
-nouveau chantier de recherche comparable à celui des licences/contacts. **Décision à
-prendre avec Simon** : faire ce chantier dans cette v3, ou le reporter en v4.
-Statut : bloqué — attend Simon.
+**Point tranché (2026-11-10, décision Simon)** : dates des 10 modules non-data.gouv
+reportées en v4 (voir Backlog v4 ci-dessous) — la v3 reste close sans ce chantier.
 
 ## 5. Géolocalisation (vue carte) — Axe 6, tous les modules sans exception
 Statut global : **fait**. Dernière màj : 2026-11-10.
@@ -147,12 +144,16 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 - Faire pointer `moissonneuse-batteuse/datagouv_to_rudi.py` vers
   `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale (évite une 3ᵉ
   divergence future, pas une obligation immédiate)
+- **Dates réelles pour les 10 modules non-data.gouv** — reporté le 2026-11-10 (décision
+  Simon). Chantier de recherche par source officielle, comparable à celui des
+  licences/contacts de cette v3 ; `download_cache.telecharger()` ne remonte pas
+  aujourd'hui les en-têtes HTTP (`Last-Modified`), limite technique à lever si ce
+  chantier est repris.
 
-## Point à arbitrer (ni v3 ni v4, dépend du budget)
-- Test d'intégration `executer_run()` sur les 13 modules (signature, threading, absence
-  d'exception non rattrapée) — recommandé par la relecture technique, coût non trivial ;
-  à faire si le budget de cette v3 le permet, sinon les tests statiques de complétude et
-  de contrat de signature couvrent l'essentiel du risque pour un coût bien moindre.
+## Point tranché (2026-11-10, décision Simon)
+- Test d'intégration `executer_run()` sur les 13 modules — **pas maintenant**. Les
+  tests statiques de complétude/contrat de signature couvrent l'essentiel du risque
+  pour un coût bien moindre ; à reconsidérer si un bug d'enchaînement apparaît en réel.
 
 ## Journal
 - 2026-11-09 : plan v3 conçu, recherche web faite (licences, contacts, source DECP).
@@ -180,7 +181,11 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 - 2026-11-10 : Axe 3 (descriptions riches + mots-clés enrichis) implémenté et testé —
   `construire_description_structuree()` ajouté au toolkit, câblé par module (13 commits)
   avec contenu quoi/comment construit/variables rédigé à la main pour chaque JDD,
-  mots-clés enrichis dans le même commit. **V3 fonctionnellement complète** : reste la
-  vérification finale (suite complète des deux dépôts, lecture manuelle d'un
-  `rudi_metadata.json` par famille de module) avant d'annoncer la republication groupée
-  des 13 JDD au CHANGELOG.
+  mots-clés enrichis dans le même commit. V3 fonctionnellement complète, vérification
+  finale faite (suites complètes des deux dépôts vertes, commits locaux).
+- 2026-11-10 : premier test réel (commune d'Acigné) par Simon — 2 défauts trouvés et
+  corrigés le même jour (vue tableau cassée sur 8 modules, régression infra déjà
+  connue ; description de commune non enrichie, garde-fou anti-ébauches trop strict,
+  voir § 1 ci-dessus). Les 2 points ouverts du backlog tranchés par Simon : dates des
+  10 modules non-data.gouv reportées en v4, test d'intégration `executer_run()` pas
+  fait maintenant. **V3 close.**
