@@ -26,6 +26,13 @@ def _reponse_streaming(contenu=b"an;dep;icom\n2024;035;120\n"):
     return r
 
 
+def _reponse_dataset_meta(modified="2026-09-24T10:00:00+00:00"):
+    r = mock.Mock()
+    r.raise_for_status = mock.Mock()
+    r.json.return_value = {"metas": {"default": {"modified": modified}}}
+    return r
+
+
 class TestDepIcom(unittest.TestCase):
     def test_metropole(self):
         self.assertEqual(_dep_icom("35120"), ("035", "120"))
@@ -49,7 +56,7 @@ class TestMoissonnerBudget(unittest.TestCase):
 
     def test_publiable_sans_fichier_local(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
 
         resultat = budget.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
@@ -63,7 +70,7 @@ class TestMoissonnerBudget(unittest.TestCase):
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = budget.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -73,9 +80,19 @@ class TestMoissonnerBudget(unittest.TestCase):
         for media in resultat.rudi_metadata["available_formats"]:
             self.assertNotIn("—", media["media_caption"])
 
+    def test_date_source_derivee_de_metas_default_modified(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
+        resultat = budget.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(
+            resultat.rudi_metadata["dataset_dates"]["updated"], "2026-09-24T10:00:00Z",
+        )
+
     def test_where_clause_utilise_dep_icom(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
         budget.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
         premier_appel = session.get.call_args_list[0]
         self.assertEqual(premier_appel.kwargs["params"]["where"], "dep='035' AND icom='120'")
@@ -107,7 +124,7 @@ class TestMoissonnerBudget(unittest.TestCase):
 
     def test_media_url_pointe_vers_export_csv_filtre(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = budget.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
@@ -117,7 +134,7 @@ class TestMoissonnerBudget(unittest.TestCase):
 
     def test_description_riche_mise_en_page_et_contenu_metier(self):
         session = mock.Mock()
-        session.get.side_effect = [_reponse_records(2), _reponse_streaming()]
+        session.get.side_effect = [_reponse_records(2), _reponse_streaming(), _reponse_dataset_meta()]
         resultat = budget.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )

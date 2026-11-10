@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
 from rudi_harvest_toolkit.http import session
+from rudi_harvest_toolkit.http_dates import date_dataset_ods
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata
 
 from .. import licences, organisations
@@ -114,6 +115,7 @@ def moissonner(
         producer=producer,
         url_source=url,
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
+        date_source=date_dataset_ods(_EXPLORE_BASE, session_http=session_http),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
