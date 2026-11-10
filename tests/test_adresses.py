@@ -115,6 +115,21 @@ class TestMoissonnerAdresses(unittest.TestCase):
         self.assertFalse([m for m in medias if m["media_name"].endswith(".geojson")])
         self.assertEqual(len(resultat.fichiers_filtres), 1)
 
+    def test_date_source_derivee_de_la_mtime_du_cache(self):
+        import datetime
+        session = mock.Mock()
+        session.get.return_value = _reponse_telechargement(_gz_ban())
+        resultat = adresses.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        updated = resultat.rudi_metadata["dataset_dates"]["updated"]
+        # La mtime du fichier vient d'être posée par telecharger() (juste téléchargé) :
+        # elle doit être très récente, pas une valeur devinée/par défaut.
+        age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(
+            updated, "%Y-%m-%dT%H:%M:%SZ",
+        ).replace(tzinfo=datetime.timezone.utc)
+        self.assertLess(age.total_seconds(), 60)
+
     def test_echec_telechargement(self):
         session = mock.Mock()
         session.get.side_effect = RuntimeError("500")

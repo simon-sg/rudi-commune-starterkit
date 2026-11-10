@@ -118,6 +118,18 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         )
         self.assertEqual(resultat.statut, StatutConnecteur.VIDE)
 
+    def test_date_source_derivee_de_la_mtime_du_cache(self):
+        import datetime
+        session = self._session([_LIGNE_2024])
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        updated = resultat.rudi_metadata["dataset_dates"]["updated"]
+        age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.strptime(
+            updated, "%Y-%m-%dT%H:%M:%SZ",
+        ).replace(tzinfo=datetime.timezone.utc)
+        self.assertLess(age.total_seconds(), 60)
+
     def test_echec_reseau_sur_resolution_dataset(self):
         session = mock.Mock()
         session.get.side_effect = RuntimeError("DNS")

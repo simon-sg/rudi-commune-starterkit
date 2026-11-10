@@ -26,7 +26,7 @@ import json
 import os
 
 from rudi_harvest_toolkit.description import construire_description_structuree
-from rudi_harvest_toolkit.download_cache import telecharger
+from rudi_harvest_toolkit.download_cache import date_fichier_cache, telecharger
 from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
@@ -165,6 +165,7 @@ def moissonner(
         producer=producer,
         url_source=url_dep,
         url_fiche="https://adresse.data.gouv.fr/base-adresse-nationale",
+        date_source=date_fichier_cache(chemin_cache),
         medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),

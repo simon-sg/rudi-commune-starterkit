@@ -32,7 +32,7 @@ import os
 
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
 from rudi_harvest_toolkit.description import construire_description_structuree
-from rudi_harvest_toolkit.download_cache import telecharger
+from rudi_harvest_toolkit.download_cache import date_fichier_cache, telecharger
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.tabular import lire_csv_filtre
@@ -163,6 +163,7 @@ def moissonner(
             "https://www.data.gouv.fr/fr/datasets/"
             "demandes-de-valeurs-foncieres-geolocalisees/"
         ),
+        date_source=date_fichier_cache(chemin_cache),
         medias=[media],
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
