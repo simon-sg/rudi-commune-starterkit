@@ -139,9 +139,9 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 ## Backlog v4 — en cours d'implémentation (plan détaillé, relu en 5 passes)
 - ~~Migration d'urgence de la source DVF (Axe 0)~~ — **fait**, voir « Décisions actées
   v4 » et Journal ci-dessous. Release 0.3.1.
-- Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré) —
-  **incréments A et B faits** (fusion + Parquet, puis jointure élu/sièges 2026 T1),
-  incrément C (glossaire nuance, mode d'emploi, `sieges_disponibles`) restant. Voir
+- ~~Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré)~~ —
+  **fait** (Axe 5, incréments A+B+C complets : fusion + Parquet, jointure élu/sièges
+  2026 T1, glossaire nuance + marqueur `sieges_disponibles`). Release 0.5.0. Voir
   Journal.
 - Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
   commencé (Axe 4).
@@ -320,3 +320,16 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   toute sa valeur sans cette jointure, incrément A). 5 nouvelles colonnes CSV (`elu`,
   `sieges_conseil_municipal`, `sieges_conseil_communautaire`, `libelle_liste`,
   `libelle_abrege`). Suite complète verte (417 tests), poussé sur `main`.
+- 2026-11-11 : Axe 5 incrément C (glossaire nuance + `sieges_disponibles`) implémenté
+  et testé (fait directement, après l'épisode opencode bloqué de l'incrément B) —
+  glossaire sourcé depuis la ressource officielle `nuances.csv` du jeu agrégé (2
+  versions coexistent, circulaires différentes : résolution manuelle titre+format+max
+  `last_modified`, `selectionner_ressource()` ne combine pas motif et plus-récent),
+  restreint à l'affichage aux codes nuance effectivement présents dans le CSV publié
+  pour la commune (le fichier source reste complet et fait autorité, seul l'affichage
+  est filtré — pas une curation manuelle partielle). Nouvelle colonne booléenne
+  `sieges_disponibles` (vrai seulement pour les lignes `2026_muni_t1` jointes avec
+  succès) rendant explicite, ligne par ligne, la limite déjà documentée en texte.
+  Enrichissement optionnel (glossaire), comme la jointure de l'incrément B : un échec
+  dégrade proprement sans faire échouer le run. Suite complète verte (421 tests).
+  **Axe 5 désormais complet (incréments A+B+C) — release 0.5.0.**

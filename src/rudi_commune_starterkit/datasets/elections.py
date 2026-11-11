@@ -1,9 +1,9 @@
 """JDD « Résultats élections » — jeu agrégé data.gouv.fr, 56 scrutins, 1999-2026.
 
-**v4, incréments A+B (fusion + Parquet + jointure élu/sièges municipales 2026 T1 —
-voir incrément C restant, BACKLOG.md)** : remplace l'ancien JDD mono-scrutin
-(« municipales 2026, 1er tour ») par un historique complet, construit depuis le jeu
-agrégé data.gouv.fr
+**v4, Axe 5 complet (incréments A+B+C — fusion + Parquet, jointure élu/sièges
+municipales 2026 T1, glossaire nuance + marqueur sieges_disponibles)** : remplace
+l'ancien JDD mono-scrutin (« municipales 2026, 1er tour ») par un historique complet,
+construit depuis le jeu agrégé data.gouv.fr
 « donnees-des-elections-agregees » (id ``6481e741d4cf002ec0efec9d``, producteur réel :
 l'équipe data.gouv.fr, pipeline ouvert à partir des fichiers du Ministère de
 l'Intérieur — pas le Ministère lui-même). Couvre municipales (2008 T1 seul puis
@@ -50,7 +50,7 @@ from rudi_harvest_toolkit.pivot import (
     construire_rudi_metadata,
     media_filtre,
 )
-from rudi_harvest_toolkit.tabular import lire_csv_filtre, lire_parquet_filtre
+from rudi_harvest_toolkit.tabular import iter_lignes_csv, lire_csv_filtre, lire_parquet_filtre
 
 from .. import licences, organisations
 from ..agregation_scrutin import (
@@ -88,6 +88,12 @@ _MOTIF_RESSOURCE_MUNICIPALES_2026 = r"^Municipales 2026 - R[ée]sultats - Commun
 _COLONNE_COMMUNE_MUNICIPALES_2026 = "Code commune"
 _RE_BLOC_LISTE_MUNICIPALES = re.compile(r"^Libellé de liste (\d+)$")
 
+# Incrément C (glossaire nuance) : 2 versions de nuances.csv coexistent dans le jeu
+# (circulaires différentes, mêmes codes bloc/nuance pour l'essentiel) — pas de mode
+# selectionner_ressource() combinant titre + la_plus_recente, filtrage manuel sur le
+# préfixe de titre + format=csv, puis max par last_modified.
+_PREFIXE_RESSOURCE_NUANCES = "Dictionnaire des nuances politiques"
+
 _CHAMPS_TOTAUX = ("inscrits", "abstentions", "votants", "blancs", "nuls", "exprimes")
 _CHAMPS_BUREAU_GENERAL = ("code_canton", "libelle_canton", "code_circonscription", "libelle_circonscription")
 _CHAMPS_IDENTITE_CANDIDAT = (
@@ -113,7 +119,8 @@ _COLONNES_CSV = (
     + _CHAMPS_BUREAU_GENERAL
     + ("nuance", "liste", "libelle_abrege_liste", "libelle_etendu_liste", "no_panneau",
        "voix", "ratio_voix_inscrits", "ratio_voix_exprimes")
-    + ("elu", "sieges_conseil_municipal", "sieges_conseil_communautaire", "libelle_liste", "libelle_abrege")
+    + ("elu", "sieges_conseil_municipal", "sieges_conseil_communautaire", "libelle_liste",
+       "libelle_abrege", "sieges_disponibles")
     + _CHAMPS_TOTAUX
     + _COLONNES_RATIOS_COMMUNE
 )
@@ -155,6 +162,40 @@ def _index_elu_sieges(entetes: list[str], lignes_municipales: list[dict]) -> dic
 def _vers_int_ou_zero(valeur) -> int:
     valeur = (valeur or "").strip()
     return int(valeur) if valeur else 0
+
+
+def _resoudre_ressource_nuances(metadata: dict) -> dict | None:
+    """Sélectionne la ressource ``nuances.csv`` la plus récente des 2 qui coexistent
+    dans le jeu (circulaires différentes) — ``None`` si aucune (dégradation attendue,
+    jamais une exception ici)."""
+    candidates = [
+        r for r in metadata.get("resources", [])
+        if str(r.get("title") or "").startswith(_PREFIXE_RESSOURCE_NUANCES)
+        and str(r.get("format") or "").lower() == "csv"
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda r: r.get("last_modified") or "")
+
+
+def _glossaire_nuances_rencontrees(session_http, metadata: dict, nuances_rencontrees: set[str]) -> dict:
+    """Glossaire ``{code_nuance: signification}`` restreint aux codes effectivement
+    présents dans le CSV publié pour cette commune — sourcé depuis le fichier officiel
+    complet du jeu agrégé (``nuances.csv``, ``libelle_nuance``/``signification``), pas
+    une curation manuelle partielle (plan v4, § 5.8) : le filtrage par commune réduit
+    seulement l'affichage, pas la source, qui reste le fichier complet et faisant
+    autorité."""
+    if not nuances_rencontrees:
+        return {}
+    ressource = _resoudre_ressource_nuances(metadata)
+    if ressource is None:
+        return {}
+    glossaire = {}
+    for ligne in iter_lignes_csv(ressource["url"], session_http=session_http):
+        code = (ligne.get("libelle_nuance") or "").strip()
+        if code in nuances_rencontrees and code not in glossaire:
+            glossaire[code] = (ligne.get("signification") or "").strip()
+    return glossaire
 
 
 def _enrichir_canton_circonscription(lignes_candidats: list[dict], lignes_generales: list[dict]) -> list[dict]:
@@ -199,6 +240,7 @@ def _lignes_csv(candidats_agreges: list[dict], totaux_agreges: list[dict], commu
             "sieges_conseil_communautaire": cand.get("sieges_conseil_communautaire"),
             "libelle_liste": cand.get("libelle_liste"),
             "libelle_abrege": cand.get("libelle_abrege"),
+            "sieges_disponibles": "sieges_conseil_municipal" in cand,
             **{c: (totaux or {}).get(c) for c in _CHAMPS_TOTAUX},
             **ratios_commune,
         })
@@ -206,7 +248,9 @@ def _lignes_csv(candidats_agreges: list[dict], totaux_agreges: list[dict], commu
     return lignes
 
 
-def _description_enrichie(commune: dict, code_insee: str, types_trouves: list[str]) -> str:
+def _description_enrichie(
+    commune: dict, code_insee: str, types_trouves: list[str], glossaire_nuances: dict,
+) -> str:
     return construire_description_structuree(
         quoi=(
             f"Historique des résultats électoraux pour {commune['nom']} ({code_insee}) : "
@@ -239,9 +283,11 @@ def _description_enrichie(commune: dict, code_insee: str, types_trouves: list[st
             "d'élection).",
             "Élu/sièges (conseil municipal, conseil communautaire) disponibles "
             "seulement pour les municipales 2026, et seulement pour les communes "
-            "pourvues dès le premier tour — le second tour (2026_muni_t2) et tous les "
-            "autres scrutins n'ont pas de sièges exploitables dans la source actuelle.",
+            "pourvues dès le premier tour (colonne sieges_disponibles = vrai) — le "
+            "second tour (2026_muni_t2) et tous les autres scrutins n'ont pas de "
+            "sièges exploitables dans la source actuelle (sieges_disponibles = faux).",
         ],
+        glossaire=glossaire_nuances or None,
         frequence_maj=FREQUENCE_MAJ,
         source_label="data.gouv.fr (jeu agrégé, à partir des données du Ministère de l'Intérieur)",
         url_source=f"https://www.data.gouv.fr/fr/datasets/{_DATASET_ID}/",
@@ -328,6 +374,14 @@ def moissonner(
 
     types_trouves = sorted({l["type_election"] for l in lignes_csv})
 
+    # Incrément C : glossaire nuance, enrichissement optionnel (jamais bloquant).
+    try:
+        nuances_rencontrees = {l["nuance"] for l in lignes_csv if l.get("nuance")}
+        glossaire_nuances = _glossaire_nuances_rencontrees(session_http, metadata, nuances_rencontrees)
+    except Exception as e:  # noqa: BLE001
+        print(f"[elections] AVERTISSEMENT : glossaire nuances indisponible ({commune['nom']}) : {e}")
+        glossaire_nuances = {}
+
     local_id = local_id_jdd(CLE, code_insee)
     nom_fichier = f"elections_{code_insee}.csv"
     chemin = os.path.join(dossier_sortie, nom_fichier)
@@ -359,7 +413,7 @@ def moissonner(
         local_id=local_id,
         titre=f"{TITRE} - {commune['nom']} ({code_insee})",
         synopsis=SYNOPSIS_PATRON.format(commune=commune["nom"], code_insee=code_insee)[:150],
-        description=_description_enrichie(commune, code_insee, types_trouves),
+        description=_description_enrichie(commune, code_insee, types_trouves, glossaire_nuances),
         theme=THEME,
         keywords=[
             "élections", "résultats électoraux", "historique électoral",

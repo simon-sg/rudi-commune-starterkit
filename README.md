@@ -52,6 +52,17 @@ construction, jamais deviné — détail complet dans `CHANGELOG.md`/`BACKLOG.md
   inventée (`eau_potable.py` reste sans GeoJSON, aucune coordonnée disponible côté
   source).
 
+### Résultats élections fusionnés (v4)
+
+Le JDD « Résultats élections » publie désormais un historique complet (56 scrutins,
+1999-2026 : présidentielles, législatives, municipales, européennes, régionales,
+départementales, cantonales) au lieu d'un seul scrutin — colonnes `annee`/
+`type_election`/`tour` filtrables en tête, source Parquet (jeu agrégé data.gouv.fr).
+Pour les municipales 2026 des communes pourvues dès le premier tour : élu/sièges par
+liste (jointure avec la source municipales 2026 T1), glossaire des codes nuance
+rencontrés, colonne `sieges_disponibles` rendant la limite de couverture explicite
+ligne par ligne. Détail complet dans `CHANGELOG.md`/`BACKLOG.md`.
+
 ### Garde-fou organisation
 
 Avant de lancer la moisson, vérifie si l'organisation de la commune existe et est

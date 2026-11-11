@@ -1,6 +1,24 @@
 # Changelog
 
-## 0.5.0 (en cours — Axe 5, incréments A+B)
+## 0.5.0 — 2026-11-11
+
+### Glossaire nuance + marqueur `sieges_disponibles` (incrément C)
+
+La description riche du JDD élections inclut désormais un glossaire des codes nuance
+(`LDVD`, `LFI`, `LUG`…) effectivement rencontrés dans le fichier publié pour la
+commune, sourcé depuis la ressource officielle `nuances.csv` du jeu agrégé (2 versions
+coexistent selon la circulaire — la plus récente est résolue automatiquement). Le
+fichier source reste complet et fait autorité ; seul l'affichage est restreint aux
+codes présents pour ne pas publier une table de 51 entrées sur une commune qui n'en
+utilise que 2 ou 3.
+
+Nouvelle colonne booléenne `sieges_disponibles` (vraie seulement pour les lignes
+`2026_muni_t1` enrichies avec succès par la jointure de l'incrément B) : rend la
+limite déjà documentée en texte visible ligne par ligne dans le CSV lui-même, pas
+seulement dans la description.
+
+**Axe 5 (fusion des JDD élections) désormais complet : incréments A (fusion + Parquet),
+B (jointure élu/sièges) et C (glossaire + marqueur) tous livrés.**
 
 ### Jointure élu/sièges, municipales 2026 T1 (incrément B)
 
@@ -47,9 +65,8 @@ l'agrégation commune).
 
 **Limites documentées (description riche, `limites`)** : municipales 2008 partielles
 (communes >3500 hab. seulement), pas de second tour pour les européennes, colonnes
-`elu`/`sieges_*` absentes de ce jeu pour l'instant (incrément B à venir : jointure
-avec la source municipales 2026 T1, communes pourvues dès le premier tour
-uniquement).
+`elu`/`sieges_*` (incrément B, ci-dessus) disponibles seulement pour les municipales
+2026 des communes pourvues dès le premier tour.
 
 ## 0.4.0 — 2026-11-10
 

@@ -120,6 +120,29 @@ def _reponses_avec_jointure_municipales(general_rows=_GENERAL_ROWS, candidats_ro
     ]
 
 
+_NUANCES_CSV = (
+    b"type_nuance;bloc;libelle_nuance;signification;commentaires\n"
+    b"liste;DIV;LDVD;Divers droite;Listes de sensibilite diverse droite\n"
+    b"liste;GAU;LDVG;Divers gauche;Listes de sensibilite diverse gauche\n"
+    b"individuelle;GAU;LFI;La France insoumise;Candidats investis par La France insoumise\n"
+)
+
+
+def _reponse_nuances():
+    r = mock.Mock()
+    r.raise_for_status = mock.Mock()
+    r.iter_content = mock.Mock(return_value=iter([_NUANCES_CSV]))
+    r.close = mock.Mock()
+    return r
+
+
+def _reponses_completes(general_rows=_GENERAL_ROWS, candidats_rows=_CANDIDATS_ROWS,
+                         lignes_municipales=(_LIGNE_MUNICIPALES_GEVEZE,)):
+    return _reponses_avec_jointure_municipales(general_rows, candidats_rows, lignes_municipales) + [
+        _reponse_nuances(),
+    ]
+
+
 def _parquet_bytes(lignes, colonnes):
     data = {c: [l.get(c) for l in lignes] for c in colonnes}
     table = pa.table(data)
@@ -146,6 +169,10 @@ def _reponse_metadata(license="lov2"):
              "url": f"{base}/general_results.parquet", "last_modified": "2026-07-07T14:00:39+00:00"},
             {"id": "4", "title": "Résultats par candidat", "format": "parquet",
              "url": f"{base}/candidats_results.parquet", "last_modified": "2026-07-07T14:01:07+00:00"},
+            {"id": "5", "title": "Dictionnaire des nuances politiques (2025)", "format": "csv",
+             "url": f"{base}/nuances-2025.csv", "last_modified": "2026-02-16T09:21:46+00:00"},
+            {"id": "6", "title": "Dictionnaire des nuances politiques (circulaire INTP2602966C de février 2026)",
+             "format": "csv", "url": f"{base}/nuances-2026.csv", "last_modified": "2026-03-24T13:20:10+00:00"},
         ],
     }
     return r
@@ -367,6 +394,49 @@ class TestMoissonnerElections(unittest.TestCase):
             lignes = list(csv.DictReader(f, delimiter=";"))
         for ligne in lignes:
             self.assertEqual(ligne["sieges_conseil_municipal"], "")
+
+    def test_glossaire_nuances_rencontrees_dans_la_description(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_completes()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("Codes et variables", html)
+        self.assertIn("Divers droite", html)
+        self.assertIn("Divers gauche", html)
+        self.assertIn("La France insoumise", html)
+
+    def test_glossaire_utilise_la_ressource_nuances_la_plus_recente(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_completes()
+        elections.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
+        url_nuances = session.get.call_args_list[5].args[0]
+        self.assertTrue(url_nuances.endswith("nuances-2026.csv"))
+
+    def test_glossaire_indisponible_ne_fait_pas_echouer_le_run(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_avec_jointure_municipales()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertNotIn("Codes et variables", html)
+
+    def test_sieges_disponibles_vrai_pour_les_lignes_jointes(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_avec_jointure_municipales()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        import csv
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        muni = [l for l in lignes if l["type_election"] == "Municipales"]
+        pres = [l for l in lignes if l["type_election"] == "Présidentielles"]
+        self.assertTrue(all(l["sieges_disponibles"] == "True" for l in muni))
+        self.assertTrue(all(l["sieges_disponibles"] == "False" for l in pres))
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()
