@@ -12,6 +12,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 from urllib.parse import urlsplit
 
@@ -97,14 +98,51 @@ def lire_mot_de_passe(invite: str = "Mot de passe : ") -> str:
     return getpass.getpass(invite)
 
 
+def _restreindre_acces_windows(chemin: str) -> None:
+    """Restreint l'accès à ``chemin`` à l'utilisateur Windows courant via ``icacls``
+    (outil natif, pas de dépendance ``pywin32``). NTFS n'a pas de permissions POSIX :
+    ``os.chmod``/``os.stat().st_mode`` n'y pilotent que l'attribut lecture seule, jamais
+    une restriction d'accès par compte — ``os.chmod(chemin, 0o600)` y est donc un no-op
+    silencieux pour la confidentialité, ce qui a été découvert via un échec de test sous
+    Windows (CI) le 2026-11-11, pas anticipé à l'écriture initiale de ce module.
+    N'échoue jamais : avertit si ``icacls`` est indisponible ou échoue plutôt que de
+    laisser croire que le fichier est protégé."""
+    utilisateur = os.environ.get("USERNAME", "")
+    if not utilisateur:
+        print(
+            f"[sécurité] Attention : utilisateur Windows courant introuvable "
+            f"(variable USERNAME absente), {chemin} reste avec les permissions par défaut."
+        )
+        return
+    resultat = subprocess.run(
+        ["icacls", chemin, "/inheritance:r", "/grant:r", f"{utilisateur}:F"],
+        capture_output=True, text=True, check=False,
+    )
+    if resultat.returncode != 0:
+        print(
+            f"[sécurité] Attention : restriction des permissions de {chemin} via icacls "
+            f"a échoué ({resultat.stderr.strip()}) — le fichier peut rester lisible par "
+            "d'autres comptes."
+        )
+
+
 def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
-    """Écrit ``conf`` en JSON dans ``chemin`` avec des permissions ``0600`` dès la
-    création (``os.open`` avec ``O_CREAT|O_WRONLY|O_TRUNC``, pas ``chmod`` après coup,
-    qui laisserait une fenêtre avec des permissions plus larges). Si le fichier existait
-    déjà avec des permissions plus larges, les corrige en plus via ``os.chmod``."""
+    """Écrit ``conf`` en JSON dans ``chemin`` avec un accès restreint à l'utilisateur
+    courant. Sous POSIX : permissions ``0600`` dès la création (``os.open`` avec
+    ``O_CREAT|O_WRONLY|O_TRUNC``, pas ``chmod`` après coup, qui laisserait une fenêtre
+    avec des permissions plus larges) ; si le fichier existait déjà avec des permissions
+    plus larges, les corrige en plus via ``os.chmod``. Sous Windows (NTFS, pas de
+    permissions POSIX) : voir :func:`_restreindre_acces_windows`."""
     dossier = os.path.dirname(chemin)
     if dossier:
         os.makedirs(dossier, exist_ok=True)
+
+    if sys.platform == "win32":
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(conf, f, ensure_ascii=False, indent=2)
+        _restreindre_acces_windows(chemin)
+        print(f"[sécurité] Identifiants écrits en clair dans {chemin} (accès restreint à l'utilisateur courant).")
+        return
 
     permissions_prealables_trop_larges = (
         os.path.exists(chemin)
@@ -126,8 +164,15 @@ def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
 
 def verifier_permissions_conf(chemin: str) -> None:
     """À la lecture d'un fichier de conf existant : avertit si ses permissions sont plus
-    larges que ``0600``. Ne modifie rien. Ne fait rien si le fichier n'existe pas."""
-    if not os.path.exists(chemin):
+    larges que ``0600``. Ne modifie rien. Ne fait rien si le fichier n'existe pas.
+
+    Sous Windows : ``os.stat().st_mode`` ne reflète jamais une restriction d'accès par
+    compte (NTFS, pas de permissions POSIX) — un fichier correctement restreint via
+    :func:`_restreindre_acces_windows` déclencherait donc un faux positif systématique
+    ici. Ce contrôle est donc sans objet sous Windows (pas de vérification fiable
+    disponible sans dépendance supplémentaire), et volontairement ignoré plutôt que de
+    produire un avertissement trompeur à chaque lecture."""
+    if sys.platform == "win32" or not os.path.exists(chemin):
         return
     mode = stat.S_IMODE(os.stat(chemin).st_mode)
     if mode != 0o600:
