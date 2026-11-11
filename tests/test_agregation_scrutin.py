@@ -8,6 +8,7 @@ from rudi_commune_starterkit.agregation_scrutin import (
     agreger_bureau_vers_commune,
     agreger_long_vers_commune,
     decomposer_id_election,
+    joindre_elu_sieges,
     normaliser_code_commune,
     recalculer_ratios,
     unpivot_candidats,
@@ -261,6 +262,66 @@ class TestAgregerLongVersCommune(unittest.TestCase):
         ]
         resultat = agreger_long_vers_commune(lignes, "35120", champs_totaux=("inscrits",))
         self.assertEqual([r["id_election"] for r in resultat], ["2001_cant_t1", "2026_muni_t1"])
+
+
+_INDEX_MUNICIPALES = {
+    ("35120", "1"): {
+        "libelle_liste": "GEVEZE, L'AVENIR EN CONFIANCE", "libelle_abrege": "GEVEZE, L'AVENIR EN CONFIANCE",
+        "sieges_conseil_municipal": 6, "sieges_conseil_communautaire": 0, "elu": True,
+    },
+    ("35120", "2"): {
+        "libelle_liste": "VIVRE ENSEMBLE A GEVEZE", "libelle_abrege": "VIVRE ENSEMBLE A GEVEZE",
+        "sieges_conseil_municipal": 22, "sieges_conseil_communautaire": 2, "elu": True,
+    },
+}
+
+
+class TestJoindreEluSieges(unittest.TestCase):
+    def test_enrichit_une_ligne_2026_muni_t1_trouvee(self):
+        lignes = [{"id_election": "2026_muni_t1", "code_insee": "35120", "no_panneau": "1", "voix": 1361}]
+        resultat = joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertEqual(resultat[0]["sieges_conseil_municipal"], 6)
+        self.assertEqual(resultat[0]["libelle_liste"], "GEVEZE, L'AVENIR EN CONFIANCE")
+        self.assertTrue(resultat[0]["elu"])
+
+    def test_ligne_sans_correspondance_reste_inchangee_sans_lever(self):
+        lignes = [{"id_election": "2026_muni_t1", "code_insee": "35238", "no_panneau": "9", "voix": 1}]
+        resultat = joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertEqual(resultat, lignes)
+        self.assertNotIn("sieges_conseil_municipal", resultat[0])
+
+    def test_ignore_un_autre_id_election(self):
+        lignes = [{"id_election": "2022_pres_t1", "code_insee": "35120", "no_panneau": "1", "voix": 400}]
+        resultat = joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertEqual(resultat, lignes)
+        self.assertNotIn("sieges_conseil_municipal", resultat[0])
+
+    def test_ignore_2026_muni_t2(self):
+        lignes = [{"id_election": "2026_muni_t2", "code_insee": "35120", "no_panneau": "1", "voix": 400}]
+        resultat = joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertNotIn("sieges_conseil_municipal", resultat[0])
+
+    def test_ne_mute_pas_lignes_agregees(self):
+        ligne = {"id_election": "2026_muni_t1", "code_insee": "35120", "no_panneau": "1", "voix": 1361}
+        lignes = [ligne]
+        joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertNotIn("sieges_conseil_municipal", ligne)
+
+    def test_index_vide_ne_leve_jamais(self):
+        lignes = [{"id_election": "2026_muni_t1", "code_insee": "35120", "no_panneau": "1", "voix": 1361}]
+        resultat = joindre_elu_sieges(lignes, {})
+        self.assertEqual(resultat, lignes)
+
+    def test_plusieurs_lignes_melangees(self):
+        lignes = [
+            {"id_election": "2026_muni_t1", "code_insee": "35120", "no_panneau": "1", "voix": 1361},
+            {"id_election": "2026_muni_t1", "code_insee": "35120", "no_panneau": "2", "voix": 1467},
+            {"id_election": "2022_pres_t1", "code_insee": "35120", "no_panneau": "1", "voix": 400},
+        ]
+        resultat = joindre_elu_sieges(lignes, _INDEX_MUNICIPALES)
+        self.assertEqual(resultat[0]["sieges_conseil_municipal"], 6)
+        self.assertEqual(resultat[1]["sieges_conseil_municipal"], 22)
+        self.assertNotIn("sieges_conseil_municipal", resultat[2])
 
 
 if __name__ == "__main__":

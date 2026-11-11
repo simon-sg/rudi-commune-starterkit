@@ -1,8 +1,9 @@
 """JDD « Résultats élections » — jeu agrégé data.gouv.fr, 56 scrutins, 1999-2026.
 
-**v4, incrément A (fusion + Parquet, sans jointure élu/sièges — voir incréments B/C,
-BACKLOG.md)** : remplace l'ancien JDD mono-scrutin (« municipales 2026, 1er tour »)
-par un historique complet, construit depuis le jeu agrégé data.gouv.fr
+**v4, incréments A+B (fusion + Parquet + jointure élu/sièges municipales 2026 T1 —
+voir incrément C restant, BACKLOG.md)** : remplace l'ancien JDD mono-scrutin
+(« municipales 2026, 1er tour ») par un historique complet, construit depuis le jeu
+agrégé data.gouv.fr
 « donnees-des-elections-agregees » (id ``6481e741d4cf002ec0efec9d``, producteur réel :
 l'équipe data.gouv.fr, pipeline ouvert à partir des fichiers du Ministère de
 l'Intérieur — pas le Ministère lui-même). Couvre municipales (2008 T1 seul puis
@@ -25,15 +26,18 @@ toolkit (``rudi_harvest_toolkit.tabular.lire_parquet_filtre()``).
 
 **Limites de couverture** (voir BACKLOG.md « Limites de couverture connues ») :
 municipales 2008 partielles (communes >3500 hab. seulement), pas de second tour pour
-les européennes, colonnes ``elu``/``sieges_*`` absentes de ce jeu (incrément B : jointure
-avec la source municipales 2026 T1 pour les communes pourvues dès le premier tour
-uniquement — second tour non couvert).
+les européennes, colonnes ``elu``/``sieges_*`` disponibles **seulement** pour les
+municipales 2026 des communes pourvues dès le premier tour (jointure
+``(code_insee, no_panneau)`` avec la source municipales 2026 T1 actuelle, ``2026_
+muni_t2`` et tous les autres scrutins non couverts) — enrichissement optionnel,
+jamais bloquant pour le reste du JDD (incrément B).
 """
 
 from __future__ import annotations
 
 import csv
 import os
+import re
 
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
@@ -46,10 +50,15 @@ from rudi_harvest_toolkit.pivot import (
     construire_rudi_metadata,
     media_filtre,
 )
-from rudi_harvest_toolkit.tabular import lire_parquet_filtre
+from rudi_harvest_toolkit.tabular import lire_csv_filtre, lire_parquet_filtre
 
 from .. import licences, organisations
-from ..agregation_scrutin import agreger_long_vers_commune, decomposer_id_election, recalculer_ratios
+from ..agregation_scrutin import (
+    agreger_long_vers_commune,
+    decomposer_id_election,
+    joindre_elu_sieges,
+    recalculer_ratios,
+)
 from ..resultat import ResultatConnecteur, StatutConnecteur
 from ._commun import contacts_pour_producer, geography_pour_commune, local_id_jdd
 
@@ -68,6 +77,16 @@ FREQUENCE_MAJ = "à chaque élection"
 
 _DATASET_ID = "donnees-des-elections-agregees"
 _COLONNE_COMMUNE = "code_commune"
+
+# Incrément B (jointure élu/sièges) : seule source à porter ces colonnes, absentes du
+# jeu agrégé — même dataset municipales 2026 T1 que l'ancien JDD mono-scrutin, avant
+# l'incrément A. Enrichissement optionnel (voir moissonner()) : ne fait jamais échouer
+# tout le run si cette source est indisponible, la fusion (incrément A) reste publiable
+# sans elle.
+_DATASET_ID_MUNICIPALES_2026 = "elections-municipales-2026-resultats-du-premier-tour"
+_MOTIF_RESSOURCE_MUNICIPALES_2026 = r"^Municipales 2026 - R[ée]sultats - Communes_"
+_COLONNE_COMMUNE_MUNICIPALES_2026 = "Code commune"
+_RE_BLOC_LISTE_MUNICIPALES = re.compile(r"^Libellé de liste (\d+)$")
 
 _CHAMPS_TOTAUX = ("inscrits", "abstentions", "votants", "blancs", "nuls", "exprimes")
 _CHAMPS_BUREAU_GENERAL = ("code_canton", "libelle_canton", "code_circonscription", "libelle_circonscription")
@@ -94,9 +113,48 @@ _COLONNES_CSV = (
     + _CHAMPS_BUREAU_GENERAL
     + ("nuance", "liste", "libelle_abrege_liste", "libelle_etendu_liste", "no_panneau",
        "voix", "ratio_voix_inscrits", "ratio_voix_exprimes")
+    + ("elu", "sieges_conseil_municipal", "sieges_conseil_communautaire", "libelle_liste", "libelle_abrege")
     + _CHAMPS_TOTAUX
     + _COLONNES_RATIOS_COMMUNE
 )
+
+
+def _index_elu_sieges(entetes: list[str], lignes_municipales: list[dict]) -> dict:
+    """Construit l'index ``(code_insee, no_panneau) -> {...}`` depuis le fichier
+    municipales 2026 T1 actuel (13 blocs de colonnes répétées par liste,
+    ``Numéro de panneau N``/``Libellé de liste N``/``Sièges au CM N``/
+    ``Sièges au CC N``) — même pattern de dépivot que l'ancien ``elections.py`` (avant
+    l'incrément A).
+
+    ``elu`` est dérivé de ``sieges_conseil_municipal > 0`` : la colonne ``Elu N`` de la
+    source est vide sur l'intégralité du fichier (plan v4, § 5.6), le signal réel est
+    porté par les sièges."""
+    index = {}
+    for ligne in lignes_municipales:
+        code_insee = str(ligne.get(_COLONNE_COMMUNE_MUNICIPALES_2026) or "").strip()
+        for entete in entetes:
+            m = _RE_BLOC_LISTE_MUNICIPALES.match(entete)
+            if not m:
+                continue
+            i = m.group(1)
+            libelle = (ligne.get(f"Libellé de liste {i}") or "").strip()
+            if not libelle:
+                continue
+            no_panneau = str(ligne.get(f"Numéro de panneau {i}") or "").strip()
+            sieges_cm = _vers_int_ou_zero(ligne.get(f"Sièges au CM {i}"))
+            index[(code_insee, no_panneau)] = {
+                "libelle_liste": libelle,
+                "libelle_abrege": ligne.get(f"Libellé abrégé de liste {i}"),
+                "sieges_conseil_municipal": sieges_cm,
+                "sieges_conseil_communautaire": _vers_int_ou_zero(ligne.get(f"Sièges au CC {i}")),
+                "elu": sieges_cm > 0,
+            }
+    return index
+
+
+def _vers_int_ou_zero(valeur) -> int:
+    valeur = (valeur or "").strip()
+    return int(valeur) if valeur else 0
 
 
 def _enrichir_canton_circonscription(lignes_candidats: list[dict], lignes_generales: list[dict]) -> list[dict]:
@@ -136,6 +194,11 @@ def _lignes_csv(candidats_agreges: list[dict], totaux_agreges: list[dict], commu
             "no_panneau": cand.get("no_panneau"), "voix": voix,
             "ratio_voix_inscrits": round(voix / inscrits, 4) if inscrits else None,
             "ratio_voix_exprimes": round(voix / exprimes, 4) if exprimes else None,
+            "elu": cand.get("elu"),
+            "sieges_conseil_municipal": cand.get("sieges_conseil_municipal"),
+            "sieges_conseil_communautaire": cand.get("sieges_conseil_communautaire"),
+            "libelle_liste": cand.get("libelle_liste"),
+            "libelle_abrege": cand.get("libelle_abrege"),
             **{c: (totaux or {}).get(c) for c in _CHAMPS_TOTAUX},
             **ratios_commune,
         })
@@ -164,6 +227,8 @@ def _description_enrichie(commune: dict, code_insee: str, types_trouves: list[st
             "nuls) et leurs ratios",
             "Par liste ou candidat : nuance, libellé de liste, numéro de panneau, "
             "voix et ratios (inscrits, exprimés)",
+            "Élu et sièges (conseil municipal, conseil communautaire) — municipales "
+            "2026 premier tour seulement, voir limites ci-dessous",
             "Découpage électoral du bureau : canton, circonscription (quand "
             "applicable)",
         ],
@@ -172,7 +237,10 @@ def _description_enrichie(commune: dict, code_insee: str, types_trouves: list[st
             "(partiel, pas disponible pour les communes plus petites cette année-là).",
             "Européennes : premier tour seul (pas de second tour pour ce type "
             "d'élection).",
-            "Colonnes élu/sièges absentes de ce jeu agrégé (voir BACKLOG.md).",
+            "Élu/sièges (conseil municipal, conseil communautaire) disponibles "
+            "seulement pour les municipales 2026, et seulement pour les communes "
+            "pourvues dès le premier tour — le second tour (2026_muni_t2) et tous les "
+            "autres scrutins n'ont pas de sièges exploitables dans la source actuelle.",
         ],
         frequence_maj=FREQUENCE_MAJ,
         source_label="data.gouv.fr (jeu agrégé, à partir des données du Ministère de l'Intérieur)",
@@ -229,6 +297,31 @@ def moissonner(
         candidats_agreges = agreger_long_vers_commune(
             lignes_candidats, code_insee, champs_identite_candidat=_CHAMPS_IDENTITE_CANDIDAT,
         )
+    except Exception as e:  # noqa: BLE001
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
+
+    # Incrément B : enrichissement optionnel (élu/sièges, municipales 2026 T1
+    # seulement) — ne fait jamais échouer le run, la fusion (incrément A) a déjà toute
+    # sa valeur sans cette jointure.
+    try:
+        metadata_municipales = get_dataset_metadata(_DATASET_ID_MUNICIPALES_2026, session_http=session_http)
+        ressource_municipales = selectionner_ressource(
+            metadata_municipales, motif_nom=_MOTIF_RESSOURCE_MUNICIPALES_2026,
+        )
+        chemin_municipales = telecharger(
+            ressource_municipales["url"], dossier=dossier_cache, session_http=session_http,
+        )
+        lignes_municipales, entetes_municipales = lire_csv_filtre(
+            chemin_municipales, _COLONNE_COMMUNE_MUNICIPALES_2026, code_insee,
+        )
+        index_elu_sieges = _index_elu_sieges(entetes_municipales, lignes_municipales)
+    except Exception as e:  # noqa: BLE001
+        print(f"[elections] AVERTISSEMENT : jointure élu/sièges indisponible ({commune['nom']}) : {e}")
+        index_elu_sieges = {}
+
+    candidats_agreges = joindre_elu_sieges(candidats_agreges, index_elu_sieges)
+
+    try:
         lignes_csv = _lignes_csv(candidats_agreges, totaux_agreges, commune)
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))

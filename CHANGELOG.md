@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.5.0 (en cours — Axe 5, incrément A)
+## 0.5.0 (en cours — Axe 5, incréments A+B)
+
+### Jointure élu/sièges, municipales 2026 T1 (incrément B)
+
+Les lignes `2026_muni_t1` du JDD fusionné (incrément A, ci-dessous) portent désormais
+5 colonnes supplémentaires — `elu`, `sieges_conseil_municipal`,
+`sieges_conseil_communautaire`, `libelle_liste`, `libelle_abrege` — par jointure
+`(code_insee, no_panneau)` avec la source municipales 2026 T1 actuelle (seule source à
+porter ces colonnes, absentes du jeu agrégé). Nouveau `agregation_scrutin.
+joindre_elu_sieges()` : n'enrichit que `2026_muni_t1` (jamais `2026_muni_t2`, qui n'a
+pas de sièges exploitables dans la source actuelle — conseil pas encore constitué),
+ne lève jamais sur une clé absente (commune au second tour : cas normal, pas une
+erreur).
+
+Enrichissement **optionnel** : un échec de cette source secondaire (réseau, etc.)
+dégrade proprement (avertissement, colonnes vides) sans jamais faire échouer tout le
+run — le JDD fusionné a déjà toute sa valeur sans cette jointure.
 
 ### Fusion des JDD élections : 56 scrutins, 1999-2026 (changement cassant)
 

@@ -256,6 +256,48 @@ def agreger_long_vers_commune(
     return resultat
 
 
+_CHAMPS_JOINTURE_ELU_SIEGES = (
+    "libelle_liste", "libelle_abrege", "sieges_conseil_municipal",
+    "sieges_conseil_communautaire", "elu",
+)
+
+
+def joindre_elu_sieges(lignes_agregees: list[dict], index_municipales: dict) -> list[dict]:
+    """Enrichit les lignes agrégées ``2026_muni_t1`` avec ``elu``/
+    ``sieges_conseil_municipal``/``sieges_conseil_communautaire``/``libelle_liste``/
+    ``libelle_abrege``, par jointure ``(code_insee, no_panneau)`` avec la source
+    municipales 2026 actuelle — seule source à porter ces colonnes, absentes du jeu
+    agrégé (plan v4, § 5.6 : clé validée à 100 % sur l'intégralité du fichier source,
+    49 893/49 893 paires).
+
+    ``index_municipales`` : ``{(code_insee, no_panneau): {...}}`` — construit par
+    l'appelant (``datasets/elections.py``, qui connaît le format précis de la source
+    municipales, 13 blocs de colonnes répétées) depuis le fichier municipales 2026
+    actuel ; ce module reste volontairement agnostique de ce format, comme pour le
+    reste du fichier.
+
+    N'enrichit **que** les lignes ``id_election == "2026_muni_t1"`` — jamais
+    ``2026_muni_t2`` (pas de sièges exploitables au second tour dans la source
+    actuelle, conseil pas encore constitué) ni aucun autre scrutin (aucune source de
+    sièges équivalente n'existe pour les autres types). Une ligne sans correspondance
+    dans l'index (clé absente — ex. commune passée au second tour) est retournée
+    **inchangée**, jamais une exception : c'est un cas normal, pas une erreur de
+    jointure. Ne mute jamais ``lignes_agregees`` (retourne des copies pour les lignes
+    enrichies)."""
+    resultat = []
+    for ligne in lignes_agregees:
+        if ligne.get("id_election") != "2026_muni_t1":
+            resultat.append(ligne)
+            continue
+        cle = (str(ligne.get("code_insee") or "").strip(), str(ligne.get("no_panneau") or "").strip())
+        correspondance = index_municipales.get(cle)
+        if correspondance is None:
+            resultat.append(ligne)
+            continue
+        resultat.append({**ligne, **{c: correspondance.get(c) for c in _CHAMPS_JOINTURE_ELU_SIEGES}})
+    return resultat
+
+
 __all__ = [
     "CodeCommuneInvalide",
     "TYPES_ELECTION",
@@ -263,6 +305,7 @@ __all__ = [
     "agreger_bureau_vers_commune",
     "agreger_long_vers_commune",
     "decomposer_id_election",
+    "joindre_elu_sieges",
     "normaliser_code_commune",
     "recalculer_ratios",
     "unpivot_candidats",

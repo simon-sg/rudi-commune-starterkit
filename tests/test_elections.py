@@ -64,6 +64,62 @@ _CANDIDATS_ROWS = [
 ]
 
 
+_ENTETES_MUNICIPALES = (
+    ["Code département", "Libellé département", "Code commune", "Libellé commune"]
+    + [
+        f"{prefixe} {i}"
+        for i in (1, 2)
+        for prefixe in (
+            "Numéro de panneau", "Nuance liste", "Libellé abrégé de liste",
+            "Libellé de liste", "Voix", "Elu", "Sièges au CM", "Sièges au CC",
+        )
+    ]
+)
+
+_LIGNE_MUNICIPALES_GEVEZE = {
+    "Code département": "35", "Libellé département": "Ille-et-Vilaine",
+    "Code commune": "35120", "Libellé commune": "Gévezé",
+    "Numéro de panneau 1": "1", "Libellé de liste 1": "GEVEZE, L'AVENIR EN CONFIANCE",
+    "Libellé abrégé de liste 1": "GEVEZE, L'AVENIR EN CONFIANCE", "Nuance liste 1": "LDVD",
+    "Voix 1": "1361", "Elu 1": "", "Sièges au CM 1": "6", "Sièges au CC 1": "0",
+    "Numéro de panneau 2": "2", "Libellé de liste 2": "VIVRE ENSEMBLE A GEVEZE",
+    "Libellé abrégé de liste 2": "VIVRE ENSEMBLE A GEVEZE", "Nuance liste 2": "LDVG",
+    "Voix 2": "1467", "Elu 2": "", "Sièges au CM 2": "22", "Sièges au CC 2": "2",
+}
+
+
+def _csv_municipales(lignes):
+    import csv
+    import io
+    tampon = io.StringIO()
+    writer = csv.DictWriter(tampon, fieldnames=_ENTETES_MUNICIPALES, delimiter=";")
+    writer.writeheader()
+    for ligne in lignes:
+        writer.writerow({champ: ligne.get(champ, "") for champ in _ENTETES_MUNICIPALES})
+    return tampon.getvalue().encode("utf-8")
+
+
+def _reponse_metadata_municipales():
+    r = mock.Mock()
+    r.raise_for_status = mock.Mock()
+    r.json.return_value = {
+        "resources": [
+            {"id": "1", "title": "Municipales 2026 - Résultats - Communes_2026-03-20.csv",
+             "url": "https://static.data.gouv.fr/municipales-communes.csv",
+             "last_modified": "2026-03-21T00:00:00Z"},
+        ],
+    }
+    return r
+
+
+def _reponses_avec_jointure_municipales(general_rows=_GENERAL_ROWS, candidats_rows=_CANDIDATS_ROWS,
+                                         lignes_municipales=(_LIGNE_MUNICIPALES_GEVEZE,)):
+    return _reponses_parquet(general_rows, candidats_rows) + [
+        _reponse_metadata_municipales(),
+        _reponse_telechargement(_csv_municipales(lignes_municipales)),
+    ]
+
+
 def _parquet_bytes(lignes, colonnes):
     data = {c: [l.get(c) for l in lignes] for c in colonnes}
     table = pa.table(data)
@@ -206,7 +262,7 @@ class TestMoissonnerElections(unittest.TestCase):
         session = mock.Mock()
         session.get.side_effect = _reponses_parquet()
         elections.moissonner("35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session)
-        urls_telechargees = [c.args[0] for c in session.get.call_args_list[1:]]
+        urls_telechargees = [c.args[0] for c in session.get.call_args_list[1:3]]
         self.assertTrue(all(u.endswith(".parquet") for u in urls_telechargees))
 
     def test_vide_sans_ligne_pour_la_commune(self):
@@ -268,6 +324,49 @@ class TestMoissonnerElections(unittest.TestCase):
         self.assertIn("Municipales", html)
         self.assertIn("Limites de couverture", html)
         self.assertIn("résultats électoraux", resultat.rudi_metadata["keywords"])
+
+    def test_jointure_elu_sieges_sur_2026_muni_t1(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_avec_jointure_municipales()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        import csv
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        muni = {l["no_panneau"]: l for l in lignes if l["type_election"] == "Municipales"}
+        self.assertEqual(muni["1"]["sieges_conseil_municipal"], "6")
+        self.assertEqual(muni["1"]["elu"], "True")
+        self.assertEqual(muni["2"]["sieges_conseil_municipal"], "22")
+        self.assertEqual(muni["2"]["sieges_conseil_communautaire"], "2")
+
+    def test_pas_de_sieges_sur_un_autre_scrutin(self):
+        session = mock.Mock()
+        session.get.side_effect = _reponses_avec_jointure_municipales()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        import csv
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        pres = [l for l in lignes if l["type_election"] == "Présidentielles"]
+        for ligne in pres:
+            self.assertEqual(ligne["sieges_conseil_municipal"], "")
+
+    def test_jointure_indisponible_ne_fait_pas_echouer_le_run(self):
+        session = mock.Mock()
+        # Source municipales 2026 absente (quota HTTP épuisé après les 3 appels
+        # Parquet) — doit se dégrader proprement, pas planter tout le run.
+        session.get.side_effect = _reponses_parquet()
+        resultat = elections.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.PUBLIABLE)
+        import csv
+        with open(resultat.fichiers_filtres[0], encoding="utf-8", newline="") as f:
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        for ligne in lignes:
+            self.assertEqual(ligne["sieges_conseil_municipal"], "")
 
     def test_metadonnees_sans_em_dash(self):
         session = mock.Mock()

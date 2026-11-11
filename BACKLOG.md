@@ -140,9 +140,9 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 - ~~Migration d'urgence de la source DVF (Axe 0)~~ — **fait**, voir « Décisions actées
   v4 » et Journal ci-dessous. Release 0.3.1.
 - Fusion des JDD élections (toutes années/types/tours en un seul JDD structuré) —
-  **incrément A fait** (fusion + Parquet, sans jointure élu/sièges), incréments B
-  (jointure élu/sièges 2026 T1) et C (glossaire nuance, mode d'emploi,
-  `sieges_disponibles`) restants. Voir Journal.
+  **incréments A et B faits** (fusion + Parquet, puis jointure élu/sièges 2026 T1),
+  incrément C (glossaire nuance, mode d'emploi, `sieges_disponibles`) restant. Voir
+  Journal.
 - Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
   commencé (Axe 4).
 - ~~Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6)~~ —
@@ -200,7 +200,7 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 | `entreprises.py`/`associations.py` : une entreprise/association sans établissement correspondant publié (`matching_etablissements` vide) produit 0 point sur la carte même si son siège est géolocalisé — conséquence de ce que publie `simplifier_resultat_entreprise()`, pas un bug | `entreprises.py`, `associations.py` | Aucune (idem) | — |
 | `adresses.py`/`immobilier_dvf.py` : date affichée = date de récupération locale (mtime du cache, TTL 30 j), pas la date de mise à jour réelle de la source — écart possible jusqu'à 30 jours | `adresses.py`, `immobilier_dvf.py` | `dataset_dates.updated` (date de cache, pas de source) | — |
 | Municipales 2008 partielles (communes >3500 hab. seulement) ; pas de second tour pour les européennes (1 seul tour pour ce type d'élection) | `elections.py` | Description riche (`limites`) | — |
-| Colonnes `elu`/`sieges_conseil_municipal`/`sieges_conseil_communautaire` absentes du jeu agrégé pour tous les scrutins (incrément A seul livré) | `elections.py` | Description riche (`limites`) | Incrément B : jointure avec la source municipales 2026 T1 |
+| Colonnes `elu`/`sieges_conseil_municipal`/`sieges_conseil_communautaire` : disponibles seulement pour les municipales 2026 (`2026_muni_t1`) des communes pourvues dès le premier tour — `2026_muni_t2` et tous les autres scrutins n'ont pas de sièges exploitables dans la source actuelle | `elections.py` | Description riche (`limites`) | Intégrer une source des résultats définitifs T2 (hors périmètre v4) |
 
 ## Point tranché (2026-11-10, décision Simon)
 - Test d'intégration `executer_run()` sur les 13 modules — **pas maintenant**. Les
@@ -306,3 +306,17 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   plus aucune mention de « municipales » seule). Fixtures de test : fichiers Parquet
   réels écrits sur disque via `pyarrow.parquet.write_table()` (pas de mock de
   `pyarrow`). Suite complète verte (407 tests), poussé sur `main`.
+- 2026-11-11 : Axe 5 incrément B (jointure élu/sièges, municipales 2026 T1) implémenté
+  et testé (délégation opencode tentée mais bloquée — process resté bloqué ~2h sur une
+  invite de permission sans TTY, faute du flag `--auto` ; relance avec `--auto`
+  refusée par le classifieur auto mode de Claude Code, « Create Unsafe Agents » —
+  fait directement). Nouveau `agregation_scrutin.joindre_elu_sieges()` (jointure
+  `(code_insee, no_panneau)`, n'enrichit que `2026_muni_t1`, jamais d'exception sur
+  clé absente, ne mute jamais son entrée) ; nouveau `_index_elu_sieges()` dans
+  `elections.py` (dépivot des 13 blocs de la source municipales 2026 actuelle, `elu`
+  dérivé de `sieges_conseil_municipal > 0` — la colonne `Elu N` de la source est vide
+  partout). Enrichissement optionnel : un échec de cette source secondaire dégrade
+  proprement (avertissement, colonnes vides) sans jamais faire échouer le run (déjà
+  toute sa valeur sans cette jointure, incrément A). 5 nouvelles colonnes CSV (`elu`,
+  `sieges_conseil_municipal`, `sieges_conseil_communautaire`, `libelle_liste`,
+  `libelle_abrege`). Suite complète verte (417 tests), poussé sur `main`.
