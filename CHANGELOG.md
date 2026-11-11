@@ -1,5 +1,19 @@
 # Changelog
 
+## Non publié
+
+### Exécutable Windows autonome (agent municipal)
+
+Nouveau mode de distribution, sans changement fonctionnel du CLI existant : un
+`.exe` Windows (`packaging/entrypoint.py` + PyInstaller `--onefile`) empaquette
+`rudi_commune_starterkit.cli.main` tel quel (même wizard interactif complet — code
+INSEE, URL du nœud RUDI, identifiants, mode producteur, etc. — rien n'est pré-rempli
+ni simplifié), pour qu'un agent municipal non technique puisse peupler son propre
+nœud RUDI sans installer Python ni taper de ligne de commande. Build déclenché
+manuellement (`.github/workflows/build-executable.yml`, `workflow_dispatch`),
+publié en Release GitHub brouillon pour revue avant publication publique (voir
+`packaging/README.md`).
+
 ## 0.6.0 — 2026-11-11
 
 ### Historique budget complet (Axe 4, changement cassant) + glossaires

@@ -1,0 +1,66 @@
+name: Build executable (Windows, manuel)
+
+# Déclenchement manuel uniquement : chaque build est publié en Release GitHub
+# *brouillon* (draft) — un humain doit explicitement cliquer "Publish release"
+# sur GitHub pour le rendre public et téléchargeable par un agent municipal.
+# Un artifact de workflow (actions/upload-artifact) ne convient pas pour cet
+# usage : son téléchargement exige un compte GitHub avec accès au dépôt, ce
+# qu'un agent municipal externe n'a pas.
+on:
+  workflow_dispatch:
+    inputs:
+      toolkit_ref:
+        description: "Tag/branche de rudi-harvest-toolkit à utiliser pour le build"
+        required: true
+        default: "v0.6.0"
+      version:
+        description: "Nom de la release GitHub à créer (ex: v0.7.0-exe1)"
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
+        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
+
+      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+        # --no-deps : évite que pip tente de résoudre la dépendance locale
+        # file:///... du pyproject.toml de dev (absente sur ce runner). Le
+        # toolkit est déjà installé explicitement ci-dessus, keyring/requests
+        # ci-dessous.
+        run: pip install --no-deps .
+
+      - name: Installer les dépendances restantes + outils de build
+        run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
+
+      - name: Tests (filet de régression avant tout packaging)
+        run: pytest
+
+      - name: Build PyInstaller
+        run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
+
+      - name: Smoke-test (démarrage sans crash d'import/DLL)
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath ".\dist\rudi-commune-starterkit.exe" -RedirectStandardInput "NUL" -PassThru
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
+            Write-Error "L'exécutable s'est arrêté immédiatement avec le code $($proc.ExitCode)"
+            exit 1
+          }
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+
+      - name: Publier une Release GitHub en brouillon
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          draft: true
+          files: dist/rudi-commune-starterkit.exe
