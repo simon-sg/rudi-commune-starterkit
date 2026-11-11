@@ -47,13 +47,16 @@ jobs:
         run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
 
       - name: Smoke-test (démarrage sans crash d'import/DLL)
-        # Stdin étant NUL, le wizard lève EOFError dès la première question (code de
-        # sortie 1 attendu et normal — pas un signe de crash). On vérifie l'absence de
+        # Stdin vide (PowerShell Start-Process -RedirectStandardInput exige un vrai
+        # fichier, "NUL" n'est pas résolu comme le périphérique nul contrairement à
+        # cmd.exe) : le wizard lève EOFError dès la première question (code de sortie
+        # 1 attendu et normal — pas un signe de crash). On vérifie l'absence de
         # traceback Python (import/DLL manquant) plutôt que le code de sortie.
         shell: pwsh
         run: |
+          New-Item -ItemType File -Path "smoke-stdin-vide.txt" -Force | Out-Null
           $proc = Start-Process -FilePath ".\dist\rudi-commune-starterkit.exe" `
-            -RedirectStandardInput "NUL" `
+            -RedirectStandardInput "smoke-stdin-vide.txt" `
             -RedirectStandardOutput "smoke-stdout.log" -RedirectStandardError "smoke-stderr.log" `
             -PassThru
           Start-Sleep -Seconds 5
