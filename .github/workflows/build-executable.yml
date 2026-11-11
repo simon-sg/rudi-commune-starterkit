@@ -20,6 +20,11 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # Requis pour que le GITHUB_TOKEN par défaut puisse créer la Release en
+    # brouillon (softprops/action-gh-release) — sans ce bloc, échec
+    # "Resource not accessible by integration" (constaté en CI le 2026-11-11).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
