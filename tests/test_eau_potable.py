@@ -100,6 +100,16 @@ class TestMoissonnerEauPotable(unittest.TestCase):
         self.assertIn("<ul>", html)
         self.assertIn("</a>", html)
         self.assertIn("SISE-Eaux", html)
+
+    def test_description_riche_limites_codes_non_glosses(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_json(3148), _reponse_streaming()]
+        resultat = eau_potable.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("Limites de couverture", html)
+        self.assertIn("code_type_parametre", html)
         self.assertIn("santé publique", resultat.rudi_metadata["keywords"])
 
 

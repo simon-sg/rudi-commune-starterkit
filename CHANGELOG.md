@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.6.0 — 2026-11-11
+
+### Historique budget complet (Axe 4, changement cassant) + glossaires
+
+`budget.py` publie désormais l'historique complet disponible (2000-2025, 26
+exercices, selon disponibilité pour la commune) au lieu du seul dernier exercice
+(2023-2024) — union de 12 datasets Opendatasoft distincts de la DGFiP, harmonisés par
+nom de colonne (schémas de 173 à 254 colonnes selon l'exercice). **Changement de
+modèle de média** : n'est plus un FILE hybride passthrough (impossible à maintenir
+avec 12 sources à unir) mais un CSV local unique écrit par ce socle (une ligne par
+exercice réellement trouvé, `an` en tête). Dégradation par dataset (pas globale) si
+une requête échoue pour la commune : avertissement + note visible dans `limites`,
+échec du run seulement si les 12 échouent simultanément.
+
+**Correction de recherche notable** : une première vérification avait conclu à une
+couverture 2008-2025 en ne regardant que l'*existence* des 12 datasets sans lire leur
+*contenu* réel — en creusant davantage, le dataset nommé `2008` s'est révélé contenir
+en réalité les exercices 2000 à 2008 (champ `an` interne), rétablissant la couverture
+complète 2000-2025 sans trou. Voir `BACKLOG.md` pour le détail.
+
+Nouveau glossaire (paramètre `glossaire` de `construire_description_structuree()`,
+disponible depuis la v0.5.0) sourcé depuis la fiche de métadonnées DGFiP officielle
+(`Maquette_commune.ods`) : ~43 codes structurants (`prod`, `impo1`, `dgf`, `caf`,
+`dette`...) + la convention de préfixes f/m/r/rm, restreint aux colonnes
+effectivement publiées pour la commune.
+
+Glossaires ajoutés aux 3 autres modules à nomenclature initialement jugée opaque,
+après vérification en direct de chacun (pas une curation à l'aveugle) :
+- `immobilier_dvf.py` : `id_mutation`, `id_parcelle` (les autres codes DVF ont déjà
+  leur libellé en clair dans une colonne adjacente, vérifié sur un échantillon réel).
+- `marches_publics.py` : `codeCPV` (seul code réellement opaque, le reste du schéma
+  DECP porte déjà des labels clairs).
+- `eau_potable.py` : **aucun glossaire ajouté** — la prémisse initiale (codes
+  paramètres SISE-Eaux à glosser) s'est révélée fausse (chaque `code_parametre` est
+  déjà accompagné de son libellé en clair) ; les codes mono-lettre réellement
+  opaques (`code_type_parametre`, `code_lieu_analyse`, `conformite_*_prelevement`)
+  n'ont aucune légende publique trouvée — documentés en `limites`, pas inventés.
+
 ## 0.5.0 — 2026-11-11
 
 ### Glossaire nuance + marqueur `sieges_disponibles` (incrément C)

@@ -23,6 +23,13 @@ Plus de sondage par année ni d'union de schéma : un seul fichier, un seul appe
 « millésime » n'est plus un concept de la source (c'était un artefact du découpage par
 exercice) — les années réellement couvertes pour une commune sont dérivées des valeurs
 ``date_mutation`` effectivement trouvées (colonne native de la source, pas ajoutée).
+
+**Axe 4 (v4, 2026-11-11) — glossaire.** Vérifié en direct (en-tête + échantillon réel du
+fichier source) : la quasi-totalité des codes DVF sont déjà accompagnés de leur libellé en
+clair dans une colonne adjacente (``code_type_local``/``type_local``,
+``code_nature_culture``/``nature_culture``) — pas besoin d'un glossaire pour ceux-là. Les
+deux identifiants réellement non triviaux sans explication (``id_mutation``,
+``id_parcelle``) sont glossés via ``construire_description_structuree(glossaire=...)``.
 """
 
 from __future__ import annotations
@@ -58,6 +65,17 @@ _FORMAT_RESSOURCE = "csv.gz"
 _COLONNE_COMMUNE = "code_commune"
 _COLONNE_DATE_MUTATION = "date_mutation"
 
+_GLOSSAIRE_CODES = {
+    "id_mutation": (
+        "Identifiant d'une transaction (mutation) : une même transaction peut "
+        "produire plusieurs lignes si elle porte sur plusieurs locaux/lots."
+    ),
+    "id_parcelle": (
+        "Référence cadastrale de la parcelle (code commune, section et numéro de "
+        "parcelle concatenés)."
+    ),
+}
+
 
 def _description_enrichie(commune: dict, code_insee: str, annees_texte: str) -> str:
     return construire_description_structuree(
@@ -82,6 +100,12 @@ def _description_enrichie(commune: dict, code_insee: str, annees_texte: str) -> 
             "https://www.data.gouv.fr/fr/datasets/"
             "demandes-de-valeurs-foncieres-geolocalisees/"
         ),
+        glossaire=_GLOSSAIRE_CODES,
+        limites=[
+            "Les codes type_local/nature_culture sont déjà accompagnés de leur "
+            "libellé en clair dans une colonne adjacente du fichier : pas de "
+            "glossaire séparé pour ceux-là.",
+        ],
     )
 
 

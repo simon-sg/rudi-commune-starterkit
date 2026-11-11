@@ -21,6 +21,16 @@ en BACKLOG.md (§ Limites de couverture connues) plutôt qu'un mécanisme invent
 d'identifiants de réseau de distribution, pas une géométrie. Aucun autre endpoint
 Hub'eau vérifié n'en expose une pour ce JDD. Confirmé, pas forcé — documenté en
 BACKLOG.md plutôt qu'un géocodage inventé.
+
+**Axe 4 (v4, 2026-11-11) — pas de glossaire ajouté, par constat et non par oubli.**
+Vérifié en direct sur un échantillon réel (Gévezé) : contrairement à la prémisse du
+plan (« codes paramètres SISE-Eaux » à glosser), chaque ``code_parametre`` est déjà
+accompagné de son ``libelle_parametre`` en clair dans la même ligne — rien à glosser
+là. Les véritables codes mono-lettre non expliqués (``code_type_parametre`` : N/O,
+``code_lieu_analyse`` : L/T, ``conformite_*_prelevement`` : C/S) n'ont, au moment de
+cette collecte, aucune légende publique trouvée (ni dans la réponse de l'API, ni dans
+la documentation Hub'eau de la page ci-dessus) — plutôt que deviner leur sens, ils
+restent non glosés, documentés comme limite ci-dessous.
 """
 
 from __future__ import annotations
@@ -74,6 +84,11 @@ def _description_enrichie(commune: dict, code_insee: str) -> str:
         frequence_maj=FREQUENCE_MAJ,
         source_label="Hub'eau (qualité de l'eau potable)",
         url_source="https://hubeau.eaufrance.fr/page/api-qualite-eau-potable",
+        limites=[
+            "Les codes mono-lettre code_type_parametre, code_lieu_analyse et "
+            "conformite_*_prelevement n'ont aucune légende publique trouvée au "
+            "moment de cette collecte, non glosés plutôt que devinés.",
+        ],
     )
 
 

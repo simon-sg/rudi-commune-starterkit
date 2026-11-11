@@ -242,6 +242,18 @@ class TestMoissonnerMarchesPublics(unittest.TestCase):
         self.assertIn("Colin Maudry", html)
         self.assertIn("achat public", resultat.rudi_metadata["keywords"])
 
+    def test_description_riche_glossaire_et_limites(self):
+        chemin_cache = self._ecrire_decp_cache([f"{_SIREN}00019"])
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_siren(), _reponse_metadata()]
+        with self._patch_telecharger(chemin_cache):
+            resultat = marches_publics.moissonner(
+                "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+            )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("codeCPV", html)
+        self.assertIn("Limites de couverture", html)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,6 +31,11 @@ est mise à jour quasi quotidiennement.
 
 Périmètre v1 inchangé : seuls les marchés (pas les concessions, dataset distinct, hors
 socle).
+
+**Axe 4 (v4, 2026-11-11) — glossaire.** Vérifié en direct (``schema.json`` publié par le
+dataset, labels déjà clairs pour la quasi-totalité des colonnes) : le seul code
+réellement opaque est ``codeCPV`` (nomenclature européenne), glossé via
+``construire_description_structuree(glossaire=...)``.
 """
 
 from __future__ import annotations
@@ -76,6 +81,15 @@ _COLONNE_ACHETEUR = "acheteur_id"
 DOSSIER_CACHE_DECP = ".cache_decp"
 _SEUIL_FIGEE_JOURS = 15
 
+_GLOSSAIRE_CODES = {
+    "codeCPV": (
+        "Code CPV (Common Procurement Vocabulary, nomenclature européenne des "
+        "achats publics), code hiérarchique à 8 chiffres + 1 chiffre de contrôle ; "
+        "les 2 premiers chiffres indiquent la division (ex. 45 = travaux de "
+        "construction). Table de référence complète : simap.ted.europa.eu."
+    ),
+}
+
 
 def _avertir_si_source_figee(last_modified: str | None) -> None:
     if not last_modified:
@@ -117,6 +131,8 @@ def _description_enrichie(commune: dict, code_insee: str) -> str:
         frequence_maj=FREQUENCE_MAJ,
         source_label="Données essentielles de la commande publique (Colin Maudry)",
         url_source=f"https://www.data.gouv.fr/datasets/{_DATASET_ID}/",
+        glossaire=_GLOSSAIRE_CODES,
+        limites=["Périmètre : marchés seulement (pas les concessions, dataset distinct, hors socle)."],
     )
 
 

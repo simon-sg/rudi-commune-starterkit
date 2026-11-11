@@ -143,8 +143,9 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   **fait** (Axe 5, incréments A+B+C complets : fusion + Parquet, jointure élu/sièges
   2026 T1, glossaire nuance + marqueur `sieges_disponibles`). Release 0.5.0. Voir
   Journal.
-- Historique budget plus profond + documentation des variables complexes (DGFiP) — pas
-  commencé (Axe 4).
+- ~~Historique budget plus profond + documentation des variables complexes (DGFiP)~~ —
+  **fait** (Axe 4) : union de 12 datasets DGFiP (2000-2025, sans trou), glossaire
+  budget + 3 autres modules (DVF, DECP, eau potable). Release 0.6.0. Voir Journal.
 - ~~Publication GeoJSON par ligne (au-delà de la bbox dataset simple de l'axe 6)~~ —
   **fait** (Axe 3) : `rudi_harvest_toolkit.geojson` + `valider_alignement_medias()`
   (garde-fou d'ordre) construits et testés ; `adresses.py`,
@@ -334,49 +335,67 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   dégrade proprement sans faire échouer le run. Suite complète verte (421 tests).
   **Axe 5 désormais complet (incréments A+B+C) — release 0.5.0.**
 
-## Axe 4 — état de la recherche (2026-11-11, avant implémentation)
+## Axe 4 — fait (2026-11-11)
 
-Catalogue réel des datasets ODS « comptes individuels des communes » vérifié en
-direct (`data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{id}`) — **corrige le
-plan initial** (qui annonçait une couverture 2000-2025) :
+**Sous-chantier A — historique budget complet.** Catalogue réel des 12 datasets ODS
+« comptes individuels des communes » vérifié en direct
+(`data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{id}`), **en deux temps** —
+la première passe de recherche (notée plus tôt dans ce document, maintenant corrigée)
+avait conclu à tort à une couverture 2008-2025 en ne vérifiant que l'*existence* des
+12 datasets sans lire leur *contenu* réel. **Correction, trouvée en creusant sur
+demande explicite de Simon** : interroger chaque dataset (`/records?where=dep='035'
+AND icom='120'`) montre que le dataset nommé `...-2008` contient en réalité les
+exercices **2000 à 2008** (9 lignes, champ `an` = 2000..2008), et le dataset nommé
+`...-20090` (⚠️ typo source : `20090`, pas `2009`) l'exercice 2009 seul — **couverture
+réelle 2000-2025, sans trou ni recoupement entre les 12 datasets**, conforme à
+l'ambition initiale du plan (que la première passe avait crue impossible à tenir).
+Leçon retenue : ne jamais conclure sur la couverture d'un dataset à partir de son nom
+seul, toujours interroger son contenu (champ `an`).
 
-| Exercice(s) | `dataset_id` réel | `dep`/`icom`/`an` présents |
-|---|---|---|
-| 2008 | `comptes-individuels-des-communes-fichier-global-2008` | oui |
-| 2009 | `comptes-individuels-des-communes-fichier-global-20090` (⚠️ typo source : `20090`, pas `2009`) | oui |
-| 2010 | `comptes-individuels-des-communes-fichier-global-2010` | oui |
-| 2011-2015 | `comptes-individuels-des-communes-fichier-global-2011-2015` | oui |
-| 2016 | `comptes-individuels-des-communes-fichier-global-2016` | oui |
-| 2017 | `comptes-individuels-des-communes-fichier-global-2017` | oui |
-| 2018 | `comptes-individuels-des-communes-fichier-global-2018` | oui |
-| 2019-2020 | `comptes-individuels-des-communes-fichier-global-2019-2020` | oui |
-| 2021 | `comptes-individuels-des-communes-fichier-global-2021` | oui |
-| 2022 | `comptes-individuels-des-communes-fichier-global-2022` | oui |
-| 2023-2024 | `comptes-individuels-des-communes-fichier-global-2023-2024` (déjà utilisé aujourd'hui) | oui |
-| 2025 | `comptes-individuels-des-communes-fichier-global-2025` | oui |
+Les 12 `dataset_id` réels (dans l'ordre utilisé par `budget.py::_DATASET_IDS`) :
+`...-2008` (an 2000-2008), `...-20090` (an 2009), `...-2010`, `...-2011-2015`,
+`...-2016`, `...-2017`, `...-2018`, `...-2019-2020`, `...-2021`, `...-2022`,
+`...-2023-2024`, `...-2025`. Les 12 exposent tous `dep`/`icom`/`an` (vérifié champ par
+champ) — la politique de dégradation prévue par le plan (« si un dataset ancien
+n'expose pas dep/icom ») n'a donc jamais été nécessaire.
 
-**Aucun exercice avant 2008** : les id `...-2000` à `...-2007` et `...-2000-2008`
-renvoient tous 404 sur l'API ODS ; le dataset data.gouv.fr intitulé « (fichier global)
-2000-2008 » ne référence en réalité, une fois ses ressources inspectées, que le
-dataset ODS `...-2008` seul (titre trompeur côté data.gouv.fr, pas une vraie couverture
-2000-2008). **Couverture réelle retenue pour l'Axe 4 : 2008-2025 (12 datasets), pas
-2000-2025** — à corriger dans la description du JDD et le CHANGELOG le jour de
-l'implémentation (ne pas promettre 2000 si la source ne le permet pas).
+`budget.py` n'est plus un FILE hybride passthrough (impossible à maintenir avec 12
+sources à unir) : il interroge les 12 datasets (pagination complète, jamais tronquée
+silencieusement), harmonise les colonnes par nom (union, pas position — schémas
+DGFiP de 173 à 254 colonnes selon l'exercice), écrit un CSV local unique (une ligne
+par exercice réellement trouvé pour la commune, `an` en tête). Dégradation par
+dataset (pas globale) si une requête échoue : avertissement + note dans `limites`,
+échec du run seulement si les 12 échouent. `date_source` = max des `metas.default.
+modified` des seuls datasets ayant contribué une ligne.
 
-Bonne nouvelle pour la politique de dégradation (§ Axe 4 du plan, « si un dataset
-ancien n'expose pas dep/icom ») : **inutile** — les 12 datasets exposent tous `dep`,
-`icom` et `an` (vérifié champ par champ sur 5 échantillons dont le plus ancien, 2008 :
-173 champs, tous présents). Reste à vérifier à l'implémentation : l'union de schéma
-réelle entre les 12 (173 à ~254 colonnes selon le plan — noms de colonnes identiques
-ou renommés entre exercices, sur le modèle de `immobilier_dvf.py`).
+Glossaire (nouveau paramètre `glossaire=` de `construire_description_structuree()`,
+disponible depuis l'Axe 5 incrément A) sourcé depuis la fiche de métadonnées DGFiP
+officielle (`Maquette_commune.ods`, publiée par chaque dataset, téléchargée et
+convertie en direct via `soffice --headless --convert-to csv` — jamais recopié de
+mémoire) : ~43 codes structurants + une note sur la convention de préfixes
+f/m/r/rm, restreint à l'affichage aux colonnes effectivement publiées pour la
+commune (comme le glossaire nuance de l'Axe 5).
 
-**Pas commencé au-delà de cette recherche** (session interrompue ici, suite de nuit —
-voir [[feedback_opencode_cli_gotchas]] pour le contexte opencode bloqué qui a consommé
-du temps sur l'incrément B d'Axe 5 juste avant). Prochaine étape : lire
-`immobilier_dvf.py` en entier pour copier son mécanisme d'union de schéma par année,
-puis écrire `budget.py` en conséquence (téléchargement des 12 ressources filtrées,
-empilage avec `an` déjà présent comme discriminant, description dynamique sur le
-modèle `annees_texte`), puis le glossaire (sous-chantier B, `glossaire=` déjà
-disponible sur `construire_description_structuree()` depuis l'incrément A de l'Axe 5)
-pour les 4 modules concernés (`budget.py`, `immobilier_dvf.py`, `marches_publics.py`,
-`eau_potable.py`).
+**Sous-chantier B — glossaire des 3 autres modules à nomenclature opaque.** Vérifié en
+direct avant d'écrire quoi que ce soit (mécanisme DVF à réutiliser, mentionné par le
+plan, n'existe en réalité plus : l'Axe 0 l'a supprimé en passant à un fichier
+national unique sans union de schéma) :
+- `immobilier_dvf.py` : la quasi-totalité des codes DVF ont déjà leur libellé en clair
+  dans une colonne adjacente (`code_type_local`/`type_local`,
+  `code_nature_culture`/`nature_culture`) — vérifié sur un échantillon réel du fichier
+  source (en-tête + lignes, récupéré par une requête `Range` HTTP partielle, sans
+  télécharger les 609 Mo complets). Glossaire limité aux 2 identifiants réellement
+  non triviaux : `id_mutation`, `id_parcelle`.
+- `marches_publics.py` : le `schema.json` publié par le dataset Colin Maudry porte
+  déjà des labels clairs pour presque toutes les colonnes. Seul `codeCPV`
+  (nomenclature européenne) est réellement opaque — glossé.
+- `eau_potable.py` : **la prémisse du plan était fausse, pas seulement incomplète** —
+  vérifié sur un échantillon réel (Gévezé) que chaque `code_parametre` SISE-Eaux est
+  déjà accompagné de son `libelle_parametre` en clair dans la même ligne, donc rien à
+  glosser là. Les véritables codes mono-lettre non expliqués
+  (`code_type_parametre` N/O, `code_lieu_analyse` L/T, `conformite_*_prelevement`
+  C/S) n'ont, à cette date, aucune légende publique trouvée (ni dans l'API, ni dans
+  la doc Hub'eau) — **aucun glossaire ajouté plutôt que d'inventer leur sens** ;
+  documentés comme limite à la place.
+
+Suite complète verte (433 tests, +12 vs avant l'Axe 4). Release 0.6.0.

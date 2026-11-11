@@ -159,6 +159,16 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         self.assertIn("DVF", html)
         self.assertIn("mutations", resultat.rudi_metadata["keywords"])
 
+    def test_description_riche_glossaire_et_limites(self):
+        session = self._session([_LIGNE_2024])
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        html = resultat.rudi_metadata["summary"][0]["html"]
+        self.assertIn("id_mutation", html)
+        self.assertIn("id_parcelle", html)
+        self.assertIn("Limites de couverture", html)
+
 
 if __name__ == "__main__":
     unittest.main()

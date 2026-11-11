@@ -63,6 +63,17 @@ liste (jointure avec la source municipales 2026 T1), glossaire des codes nuance
 rencontrés, colonne `sieges_disponibles` rendant la limite de couverture explicite
 ligne par ligne. Détail complet dans `CHANGELOG.md`/`BACKLOG.md`.
 
+### Historique budget complet + glossaires (v4)
+
+Le JDD « Budget communal » publie désormais l'historique complet disponible
+(2000-2025, selon disponibilité pour la commune) au lieu du seul dernier exercice —
+union de 12 datasets DGFiP distincts, harmonisés par nom de colonne. Glossaire des
+codes structurants (sourcé depuis la fiche de métadonnées DGFiP officielle) ajouté à
+`budget.py`, `immobilier_dvf.py` et `marches_publics.py` ; `eau_potable.py` n'en a
+volontairement pas reçu (les codes qui semblaient opaques se sont révélés déjà
+auto-documentés dans la source, et les quelques codes réellement non expliqués n'ont
+aucune légende publique disponible). Détail complet dans `CHANGELOG.md`/`BACKLOG.md`.
+
 ### Garde-fou organisation
 
 Avant de lancer la moisson, vérifie si l'organisation de la commune existe et est
