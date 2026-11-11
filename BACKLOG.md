@@ -333,3 +333,50 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   Enrichissement optionnel (glossaire), comme la jointure de l'incrément B : un échec
   dégrade proprement sans faire échouer le run. Suite complète verte (421 tests).
   **Axe 5 désormais complet (incréments A+B+C) — release 0.5.0.**
+
+## Axe 4 — état de la recherche (2026-11-11, avant implémentation)
+
+Catalogue réel des datasets ODS « comptes individuels des communes » vérifié en
+direct (`data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/{id}`) — **corrige le
+plan initial** (qui annonçait une couverture 2000-2025) :
+
+| Exercice(s) | `dataset_id` réel | `dep`/`icom`/`an` présents |
+|---|---|---|
+| 2008 | `comptes-individuels-des-communes-fichier-global-2008` | oui |
+| 2009 | `comptes-individuels-des-communes-fichier-global-20090` (⚠️ typo source : `20090`, pas `2009`) | oui |
+| 2010 | `comptes-individuels-des-communes-fichier-global-2010` | oui |
+| 2011-2015 | `comptes-individuels-des-communes-fichier-global-2011-2015` | oui |
+| 2016 | `comptes-individuels-des-communes-fichier-global-2016` | oui |
+| 2017 | `comptes-individuels-des-communes-fichier-global-2017` | oui |
+| 2018 | `comptes-individuels-des-communes-fichier-global-2018` | oui |
+| 2019-2020 | `comptes-individuels-des-communes-fichier-global-2019-2020` | oui |
+| 2021 | `comptes-individuels-des-communes-fichier-global-2021` | oui |
+| 2022 | `comptes-individuels-des-communes-fichier-global-2022` | oui |
+| 2023-2024 | `comptes-individuels-des-communes-fichier-global-2023-2024` (déjà utilisé aujourd'hui) | oui |
+| 2025 | `comptes-individuels-des-communes-fichier-global-2025` | oui |
+
+**Aucun exercice avant 2008** : les id `...-2000` à `...-2007` et `...-2000-2008`
+renvoient tous 404 sur l'API ODS ; le dataset data.gouv.fr intitulé « (fichier global)
+2000-2008 » ne référence en réalité, une fois ses ressources inspectées, que le
+dataset ODS `...-2008` seul (titre trompeur côté data.gouv.fr, pas une vraie couverture
+2000-2008). **Couverture réelle retenue pour l'Axe 4 : 2008-2025 (12 datasets), pas
+2000-2025** — à corriger dans la description du JDD et le CHANGELOG le jour de
+l'implémentation (ne pas promettre 2000 si la source ne le permet pas).
+
+Bonne nouvelle pour la politique de dégradation (§ Axe 4 du plan, « si un dataset
+ancien n'expose pas dep/icom ») : **inutile** — les 12 datasets exposent tous `dep`,
+`icom` et `an` (vérifié champ par champ sur 5 échantillons dont le plus ancien, 2008 :
+173 champs, tous présents). Reste à vérifier à l'implémentation : l'union de schéma
+réelle entre les 12 (173 à ~254 colonnes selon le plan — noms de colonnes identiques
+ou renommés entre exercices, sur le modèle de `immobilier_dvf.py`).
+
+**Pas commencé au-delà de cette recherche** (session interrompue ici, suite de nuit —
+voir [[feedback_opencode_cli_gotchas]] pour le contexte opencode bloqué qui a consommé
+du temps sur l'incrément B d'Axe 5 juste avant). Prochaine étape : lire
+`immobilier_dvf.py` en entier pour copier son mécanisme d'union de schéma par année,
+puis écrire `budget.py` en conséquence (téléchargement des 12 ressources filtrées,
+empilage avec `an` déjà présent comme discriminant, description dynamique sur le
+modèle `annees_texte`), puis le glossaire (sous-chantier B, `glossaire=` déjà
+disponible sur `construire_description_structuree()` depuis l'incrément A de l'Axe 5)
+pour les 4 modules concernés (`budget.py`, `immobilier_dvf.py`, `marches_publics.py`,
+`eau_potable.py`).
