@@ -12,7 +12,7 @@ on:
       toolkit_ref:
         description: "Tag/branche de rudi-harvest-toolkit à utiliser pour le build"
         required: true
-        default: "v0.6.0"
+        default: "v0.5.0"
       version:
         description: "Nom de la release GitHub à créer (ex: v0.7.0-exe1)"
         required: true

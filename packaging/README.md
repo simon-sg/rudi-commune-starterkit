@@ -9,10 +9,12 @@ le contexte complet et les décisions actées.
 
 Sur GitHub : onglet *Actions* → workflow **Build executable (Windows, manuel)** →
 *Run workflow*. Renseigner :
-- `toolkit_ref` : le tag de `rudi-harvest-toolkit` à utiliser (ex. `v0.6.0`).
+- `toolkit_ref` : le tag de `rudi-harvest-toolkit` à utiliser (ex. `v0.5.0` —
+  **attention, c'est le tag du dépôt `rudi-harvest-toolkit`, pas celui de
+  `rudi-commune-starterkit` ; les deux numérotations ne sont pas synchronisées**).
 - `version` : le nom de la Release GitHub à créer (ex. `v0.7.0-exe1`).
 
-Équivalent en ligne de commande : `gh workflow run build-executable.yml -f toolkit_ref=v0.6.0 -f version=v0.7.0-exe1`.
+Équivalent en ligne de commande : `gh workflow run build-executable.yml -f toolkit_ref=v0.5.0 -f version=v0.7.0-exe1`.
 
 Le workflow construit l'exécutable puis publie une **Release GitHub en brouillon**
 (pas un simple artifact de workflow — un artifact exige un compte GitHub pour être
