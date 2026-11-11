@@ -98,32 +98,44 @@ def lire_mot_de_passe(invite: str = "Mot de passe : ") -> str:
     return getpass.getpass(invite)
 
 
-def _restreindre_acces_windows(chemin: str) -> None:
+def _restreindre_acces_windows(chemin: str) -> bool:
     """Restreint l'accès à ``chemin`` à l'utilisateur Windows courant via ``icacls``
     (outil natif, pas de dépendance ``pywin32``). NTFS n'a pas de permissions POSIX :
     ``os.chmod``/``os.stat().st_mode`` n'y pilotent que l'attribut lecture seule, jamais
     une restriction d'accès par compte — ``os.chmod(chemin, 0o600)` y est donc un no-op
     silencieux pour la confidentialité, ce qui a été découvert via un échec de test sous
     Windows (CI) le 2026-11-11, pas anticipé à l'écriture initiale de ce module.
-    N'échoue jamais : avertit si ``icacls`` est indisponible ou échoue plutôt que de
-    laisser croire que le fichier est protégé."""
+    N'échoue jamais (ni exception, ni faux positif) : retourne ``False`` et avertit si
+    ``icacls`` est indisponible ou échoue, plutôt que de laisser croire que le fichier
+    est protégé — y compris si ``icacls`` lui-même est introuvable (``FileNotFoundError``,
+    poste verrouillé/PATH corrompu), capturé explicitement plutôt que de laisser
+    l'exception remonter jusqu'à l'appelant."""
     utilisateur = os.environ.get("USERNAME", "")
     if not utilisateur:
         print(
             f"[sécurité] Attention : utilisateur Windows courant introuvable "
             f"(variable USERNAME absente), {chemin} reste avec les permissions par défaut."
         )
-        return
-    resultat = subprocess.run(
-        ["icacls", chemin, "/inheritance:r", "/grant:r", f"{utilisateur}:F"],
-        capture_output=True, text=True, check=False,
-    )
+        return False
+    try:
+        resultat = subprocess.run(
+            ["icacls", chemin, "/inheritance:r", "/grant:r", f"{utilisateur}:F"],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError as exc:
+        print(
+            f"[sécurité] Attention : impossible d'exécuter icacls ({exc}) — "
+            f"{chemin} reste avec les permissions par défaut."
+        )
+        return False
     if resultat.returncode != 0:
         print(
             f"[sécurité] Attention : restriction des permissions de {chemin} via icacls "
             f"a échoué ({resultat.stderr.strip()}) — le fichier peut rester lisible par "
             "d'autres comptes."
         )
+        return False
+    return True
 
 
 def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
@@ -132,16 +144,22 @@ def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
     ``O_CREAT|O_WRONLY|O_TRUNC``, pas ``chmod`` après coup, qui laisserait une fenêtre
     avec des permissions plus larges) ; si le fichier existait déjà avec des permissions
     plus larges, les corrige en plus via ``os.chmod``. Sous Windows (NTFS, pas de
-    permissions POSIX) : voir :func:`_restreindre_acces_windows`."""
+    permissions POSIX) : voir :func:`_restreindre_acces_windows` — le fichier est créé
+    vide puis restreint *avant* d'y écrire le contenu sensible, pour ne jamais laisser le
+    JSON en clair sur disque avec des permissions par défaut, même un court instant."""
     dossier = os.path.dirname(chemin)
     if dossier:
         os.makedirs(dossier, exist_ok=True)
 
     if sys.platform == "win32":
+        open(chemin, "w", encoding="utf-8").close()
+        restreint = _restreindre_acces_windows(chemin)
         with open(chemin, "w", encoding="utf-8") as f:
             json.dump(conf, f, ensure_ascii=False, indent=2)
-        _restreindre_acces_windows(chemin)
-        print(f"[sécurité] Identifiants écrits en clair dans {chemin} (accès restreint à l'utilisateur courant).")
+        if restreint:
+            print(f"[sécurité] Identifiants écrits en clair dans {chemin} (accès restreint à l'utilisateur courant).")
+        else:
+            print(f"[sécurité] Identifiants écrits en clair dans {chemin} — accès NON restreint, voir l'avertissement ci-dessus.")
         return
 
     permissions_prealables_trop_larges = (
@@ -162,17 +180,33 @@ def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
     print(f"[sécurité] Identifiants écrits en clair dans {chemin} (permissions 0600).")
 
 
+_ACL_WINDOWS_LARGES = ("Everyone", "Tout le monde", "BUILTIN\\Users", "BUILTIN\\Utilisateurs")
+
+
 def verifier_permissions_conf(chemin: str) -> None:
     """À la lecture d'un fichier de conf existant : avertit si ses permissions sont plus
     larges que ``0600``. Ne modifie rien. Ne fait rien si le fichier n'existe pas.
 
     Sous Windows : ``os.stat().st_mode`` ne reflète jamais une restriction d'accès par
-    compte (NTFS, pas de permissions POSIX) — un fichier correctement restreint via
-    :func:`_restreindre_acces_windows` déclencherait donc un faux positif systématique
-    ici. Ce contrôle est donc sans objet sous Windows (pas de vérification fiable
-    disponible sans dépendance supplémentaire), et volontairement ignoré plutôt que de
-    produire un avertissement trompeur à chaque lecture."""
-    if sys.platform == "win32" or not os.path.exists(chemin):
+    compte (NTFS, pas de permissions POSIX), donc inutilisable ici — repose plutôt sur
+    une interrogation ``icacls`` best-effort (avertit seulement sur des motifs connus
+    pour être trop larges ; silencieux si ``icacls`` échoue, par cohérence avec
+    :func:`_restreindre_acces_windows` qui n'échoue jamais). Sans ce filet, une
+    restriction qui aurait silencieusement échoué à l'écriture (voir
+    :func:`_restreindre_acces_windows`) ne serait jamais re-signalée — contrairement au
+    chemin POSIX, qui avertit à chaque lecture tant que le problème persiste."""
+    if not os.path.exists(chemin):
+        return
+    if sys.platform == "win32":
+        try:
+            resultat = subprocess.run(["icacls", chemin], capture_output=True, text=True, check=False)
+        except OSError:
+            return
+        if resultat.returncode == 0 and any(large in resultat.stdout for large in _ACL_WINDOWS_LARGES):
+            print(
+                f"[sécurité] Attention : {chemin} contient des identifiants en clair avec "
+                f"des permissions NTFS potentiellement trop larges ({resultat.stdout.strip()})."
+            )
         return
     mode = stat.S_IMODE(os.stat(chemin).st_mode)
     if mode != 0o600:

@@ -47,15 +47,24 @@ jobs:
         run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
 
       - name: Smoke-test (démarrage sans crash d'import/DLL)
+        # Stdin étant NUL, le wizard lève EOFError dès la première question (code de
+        # sortie 1 attendu et normal — pas un signe de crash). On vérifie l'absence de
+        # traceback Python (import/DLL manquant) plutôt que le code de sortie.
         shell: pwsh
         run: |
-          $proc = Start-Process -FilePath ".\dist\rudi-commune-starterkit.exe" -RedirectStandardInput "NUL" -PassThru
+          $proc = Start-Process -FilePath ".\dist\rudi-commune-starterkit.exe" `
+            -RedirectStandardInput "NUL" `
+            -RedirectStandardOutput "smoke-stdout.log" -RedirectStandardError "smoke-stderr.log" `
+            -PassThru
           Start-Sleep -Seconds 5
-          if ($proc.HasExited -and $proc.ExitCode -ne 0) {
-            Write-Error "L'exécutable s'est arrêté immédiatement avec le code $($proc.ExitCode)"
+          if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+          $sortie = (Get-Content smoke-stdout.log -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content smoke-stderr.log -Raw -ErrorAction SilentlyContinue)
+          if ($sortie -match "Traceback \(most recent call last\)") {
+            Write-Error "Traceback Python au démarrage (probable import/DLL manquant) :`n$sortie"
             exit 1
           }
-          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 
       - name: Publier une Release GitHub en brouillon
         uses: softprops/action-gh-release@v2

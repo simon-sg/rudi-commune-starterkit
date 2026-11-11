@@ -14,11 +14,24 @@ import sys
 from rudi_commune_starterkit.cli import main
 
 if __name__ == "__main__":
+    code = 1
     try:
         code = main()
+    except SystemExit as exc:
+        # argparse (--help, flag invalide) lève SystemExit, pas une Exception —
+        # non capturé par le except ci-dessous, il fermerait la fenêtre sans
+        # jamais atteindre la pause finale.
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
     except Exception as exc:  # noqa: BLE001 - affichage volontairement générique
         print(f"Erreur inattendue : {exc}")
         code = 1
+    finally:
+        # Si stdin est fermé/non interactif (ex. lancement non-console, smoke-test
+        # CI), ce input() lèverait lui-même EOFError — à ignorer, pas à laisser
+        # planter juste après avoir affiché le résultat.
+        try:
+            input("Appuyez sur Entrée pour fermer...")
+        except EOFError:
+            pass
 
-    input("Appuyez sur Entrée pour fermer...")
     sys.exit(code)
