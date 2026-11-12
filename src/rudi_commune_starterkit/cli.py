@@ -473,7 +473,7 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
 
     print("\nTest de connexion au nœud…")
     if not tester_connexion_noeud(conf):
-        print("  Échec : nœud injoignable ou identifiants invalides.")
+        print("  Échec : nœud injoignable (détail ci-dessus).")
         return EXIT_ECHEC_TOTAL
     print("  OK.\n")
 
@@ -663,7 +663,7 @@ def executer_interactif() -> int:
     # Étape 6 : test de connexion
     print("\nTest de connexion au nœud…")
     if not tester_connexion_noeud(conf):
-        print("  Échec : nœud injoignable ou identifiants invalides.")
+        print("  Échec : nœud injoignable (détail ci-dessus).")
         return EXIT_ECHEC_TOTAL
     print("  OK.\n")
 
@@ -895,7 +895,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             print(f"[cli] [sécurité] Attention : {avertissement}", file=sys.stderr)
 
     if not tester_connexion_noeud(conf):
-        print("[cli] Nœud injoignable ou identifiants invalides.", file=sys.stderr)
+        print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
         return EXIT_ECHEC_TOTAL
 
     only = set(args.only.split(",")) if args.only else None
