@@ -93,6 +93,30 @@ class TestConstruireDescriptionCommune(unittest.TestCase):
         self.assertIn("Ses habitants sont appelés les Gévézéens.", texte)
         self.assertNotIn("maire", texte.lower())
 
+    def test_tronque_si_depasse_800_caracteres_sans_perdre_attribution(self):
+        """Régression du 2026-11-13 : Abilly (37001) a produit un résumé Wikipédia de
+        1182 caractères, rejeté par le nœud RUDI (HTTP 400, limite 800). L'attribution
+        CC BY-SA doit rester intégrale même quand le texte source est tronqué."""
+        resume = {
+            **_RESUME_SANS_INFOS,
+            "summary": "Phrase longue. " * 100,  # 1500 caractères, largement > 800
+        }
+        with mock.patch(
+            "rudi_commune_starterkit.description_commune.resumer_commune_wikipedia",
+            return_value=resume,
+        ), mock.patch(
+            "rudi_commune_starterkit.description_commune.maire_actuel", return_value=None,
+        ):
+            resultat = construire_description_commune(_GEVEZE)
+        texte = resultat["organization_summary"]
+        self.assertLessEqual(len(texte), 800)
+        self.assertIn(
+            "Texte issu de Wikipédia (https://fr.wikipedia.org/wiki/G%C3%A9vez%C3%A9), "
+            "sous licence CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/deed.fr).",
+            texte,
+        )
+        self.assertTrue(texte.split("\n\nTexte issu de")[0].endswith("…"))
+
     def test_transmet_dossier_cache_rne_au_maire_actuel(self):
         with mock.patch(
             "rudi_commune_starterkit.description_commune.resumer_commune_wikipedia",

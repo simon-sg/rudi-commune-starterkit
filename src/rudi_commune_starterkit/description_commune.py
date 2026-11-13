@@ -15,6 +15,25 @@ from rudi_harvest_toolkit.wikipedia import resumer_commune_wikipedia
 
 _LICENCE_CC_BY_SA = "https://creativecommons.org/licenses/by-sa/4.0/deed.fr"
 
+# Limite constatée côté nœud RUDI (HTTP 400 « La description de l'organisation
+# est trop longue ( > 800 caractères) »), pas documentée dans l'API — reproduite
+# en conditions réelles sur Abilly (37001, intro Wikipédia + patrimoine → 1182
+# caractères) via starterkit-tester le 2026-11-13.
+_LONGUEUR_MAX_ORGANIZATION_SUMMARY = 800
+
+
+def _tronquer_sur_mot(texte: str, longueur_max: int) -> str:
+    """Tronque ``texte`` à ``longueur_max`` caractères sans couper un mot, suffixé
+    par « … ». Ne coupe jamais l'attribution CC BY-SA (appelant : toujours sur la
+    partie Wikipédia seule, avant concaténation avec l'attribution)."""
+    if len(texte) <= longueur_max:
+        return texte
+    tronque = texte[: longueur_max - 1]
+    dernier_espace = tronque.rfind(" ")
+    if dernier_espace > 0:
+        tronque = tronque[:dernier_espace]
+    return tronque.rstrip(".,;: \n") + "…"
+
 
 def _paragraphe_complementaire(
     code_insee: str, resume: dict, *, session_http, dossier_cache_rne: str | None,
@@ -77,10 +96,15 @@ def construire_description_commune(
         texte = resume["summary"]
         if paragraphe2:
             texte += f"\n\n{paragraphe2}"
-        texte += (
+        attribution = (
             f"\n\nTexte issu de Wikipédia ({resume['url']}), sous licence CC BY-SA 4.0 "
             f"({_LICENCE_CC_BY_SA})."
         )
+        # L'attribution CC BY-SA n'est jamais tronquée (obligation de licence) ; seul
+        # le texte Wikipédia variable l'est, sur le budget restant.
+        budget_texte = _LONGUEUR_MAX_ORGANIZATION_SUMMARY - len(attribution)
+        texte = _tronquer_sur_mot(texte, budget_texte)
+        texte += attribution
         return {"organization_summary": texte, "source": "wikipedia", "url": resume["url"]}
     return {
         "organization_summary": (
