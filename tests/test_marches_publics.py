@@ -13,6 +13,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import requests
+
 from rudi_commune_starterkit import licences
 from rudi_commune_starterkit.datasets import marches_publics
 from rudi_commune_starterkit.resultat import StatutConnecteur
@@ -52,6 +54,15 @@ def _reponse_metadata(
 
 def _ligne_decp(i, acheteur):
     return f"u{i};{i};marché;{acheteur};objet {i};1000\n"
+
+
+def _reponse_erreur_http(statut_http):
+    r = mock.Mock()
+    r.status_code = statut_http
+    erreur = requests.exceptions.HTTPError(f"{statut_http} Error")
+    erreur.response = r
+    r.raise_for_status = mock.Mock(side_effect=erreur)
+    return r
 
 
 class TestMoissonnerMarchesPublics(unittest.TestCase):
@@ -180,6 +191,28 @@ class TestMoissonnerMarchesPublics(unittest.TestCase):
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
         )
         self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+
+    def test_dataset_introuvable_404_message_clair(self):
+        """Backlog, fragilité #2 (2026-11-13) : le dataset data.gouv.fr est maintenu
+        par un contributeur externe, susceptible de changer d'identifiant — un 404
+        doit produire un message actionnable, pas le texte brut de `requests`."""
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_siren(), _reponse_erreur_http(404)]
+        resultat = marches_publics.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+        self.assertIn("introuvable", resultat.message)
+        self.assertIn(marches_publics._DATASET_ID, resultat.message)
+
+    def test_erreur_http_non_404_garde_le_message_brut(self):
+        session = mock.Mock()
+        session.get.side_effect = [_reponse_siren(), _reponse_erreur_http(500)]
+        resultat = marches_publics.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        self.assertEqual(resultat.statut, StatutConnecteur.ECHEC)
+        self.assertNotIn("introuvable", resultat.message)
 
     def test_contact_dynamique_contact_points_priorite_sur_la_source_generique(self):
         # v3, Axe 2 : contact réel confirmé sur ce dataset (Colin Maudry via

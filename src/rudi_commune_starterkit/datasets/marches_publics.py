@@ -44,6 +44,8 @@ import csv
 import os
 from datetime import datetime, timezone
 
+import requests
+
 from rudi_harvest_toolkit.commune import resoudre_siren_commune
 from rudi_harvest_toolkit.contacts import extraire_contacts_datagouv
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
@@ -160,6 +162,25 @@ def moissonner(
             ressource["url"], dossier=DOSSIER_CACHE_DECP, ttl_jours=1,
             session_http=session_http,
         )
+    except requests.exceptions.HTTPError as e:
+        # Backlog, fragilité #2 (2026-11-13) : le dataset data.gouv.fr est maintenu
+        # par un contributeur externe (Colin Maudry), mis à jour quasi quotidiennement
+        # — son identifiant peut un jour devenir invalide sans rapport avec la commune
+        # interrogée. Message explicite plutôt que le texte brut de `requests`, pas
+        # clair pour un agent municipal non technique (persona de l'exécutable packagé).
+        statut = e.response.status_code if e.response is not None else None
+        if statut == 404:
+            return ResultatConnecteur(
+                StatutConnecteur.ECHEC,
+                message=(
+                    f"Jeu de données DECP introuvable sur data.gouv.fr (dataset "
+                    f"{_DATASET_ID!r} — source tierce maintenue par Colin Maudry, "
+                    "susceptible de changer d'identifiant sans préavis). Vérifier "
+                    f"https://www.data.gouv.fr/datasets/{_DATASET_ID}/ et mettre à "
+                    "jour _DATASET_ID dans marches_publics.py si l'identifiant a changé."
+                ),
+            )
+        return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
     except Exception as e:  # noqa: BLE001
         return ResultatConnecteur(StatutConnecteur.ECHEC, message=str(e))
 

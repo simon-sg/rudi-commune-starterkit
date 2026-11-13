@@ -553,25 +553,34 @@ si l'organisation existait déjà suite à une tentative précédente. Testé (6
 tests, 387 verts au total), pas encore poussé (voir Journal).
 
 **2. `marches_publics.py` — 404 possible, `_DATASET_ID` codé en dur sur une source volatile.**
+Statut : **corrigé** (2026-11-13).
+
 L'ID de dataset data.gouv.fr (`marches_publics.py:79`, résolu via
 `get_dataset_metadata()` dans `rudi-harvest-toolkit/datagouv.py`) pointe vers un jeu
 maintenu par un seul contributeur externe (Colin Maudry), mis à jour quasi
 quotidiennement depuis la migration du 2026-11-10 — l'ID peut devenir invalide à tout
-moment, sans rapport avec le code INSEE ou la taille de la commune. Un 404 n'est pas
-géré spécifiquement (contrairement à `commune.py`) : il se propage comme
-`requests.exceptions.HTTPError` brut jusqu'à l'utilisateur. Déjà documenté comme
-réserve assumée au moment de la migration ; reste à décider si un message d'erreur
-plus clair en cas de 404 (sans résoudre la volatilité de la source elle-même, hors de
-notre contrôle) vaut le coup.
+moment, sans rapport avec le code INSEE ou la taille de la commune. Un 404 n'était pas
+géré spécifiquement (contrairement à `commune.py`) : il se propageait comme
+`requests.exceptions.HTTPError` brut jusqu'à l'utilisateur (déjà rattrapé en amont par
+le `except Exception` de `moissonner()` — le run ne plantait jamais — mais le message
+affiché était le texte technique brut, pas clair pour un agent municipal non
+technique). **Correctif** : `HTTPError` 404 sur `get_dataset_metadata()` intercepté
+spécifiquement, message explicite (dataset introuvable, source tierce susceptible de
+changer d'identifiant, lien vers la fiche data.gouv.fr + `_DATASET_ID` à vérifier) ;
+toute autre erreur HTTP garde son message brut inchangé. 2 nouveaux tests.
 
 **3. `immobilier_dvf.py` — "connection broken" possible sur le téléchargement national (609 Mo).**
+Statut : **corrigé** (2026-11-13, côté `rudi-harvest-toolkit`, pas ici).
+
 Depuis la migration du 2026-11-10 vers un fichier national unique (`immobilier_dvf.py:10-11`),
-`telecharger()` (`rudi-harvest-toolkit/download_cache.py:90-121`) ne retry qu'avant
+`telecharger()` (`rudi-harvest-toolkit/download_cache.py`) ne retryait qu'avant
 réception d'une réponse HTTP (429/5xx) — une coupure **en cours de flux**
-(`ProtocolError`/"Connection broken", observée en pratique le 2026-11-13) n'est pas
-retryée et fait échouer le module directement. Un réseau de mairie plus lent/restreint
-expose davantage ce téléchargement unique et volumineux qu'un réseau de dev. Piste :
-retry applicatif sur coupure mi-flux (pas seulement sur le statut HTTP), ou téléchargement
-par plages (`Range`) reprenable.
+(`ProtocolError`/"Connection broken", observée en pratique le 2026-11-13) n'était pas
+retryée et faisait échouer le module directement. Un réseau de mairie plus lent/restreint
+expose davantage ce téléchargement unique et volumineux qu'un réseau de dev.
+**Correctif (option retry simple retenue, pas de `Range`/reprise partielle)** :
+jusqu'à 3 tentatives sur `ConnectionError`/`ChunkedEncodingError` en cours de flux,
+chacune reprend le téléchargement depuis le début — bénéficie à tous les appelants du
+toolkit (pas que DVF). 2 nouveaux tests côté toolkit (389 tests verts au total).
 
 Suite complète verte (433 tests, +12 vs avant l'Axe 4). Release 0.6.0.
