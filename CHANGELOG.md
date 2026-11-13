@@ -14,6 +14,19 @@ manuellement (`.github/workflows/build-executable.yml`, `workflow_dispatch`),
 publié en Release GitHub brouillon pour revue avant publication publique (voir
 `packaging/README.md`).
 
+Diagnostic d'échec de connexion amélioré (dépend de `rudi-harvest-toolkit`
+>= 0.5.1) : le message affiché en cas d'échec montre maintenant la vraie cause
+(exception réseau ou code HTTP) au lieu du générique « nœud injoignable ou
+identifiants invalides », qui était trompeur — ce test ne vérifie jamais les
+identifiants. Nouveau flag `--ignorer-certificat-tls` (mode scriptable) / prompt
+de confirmation (assistant interactif) pour continuer malgré un certificat TLS
+non reconnu (ex. certificat auto-signé sur un nœud de test) — jamais par défaut,
+avertissement explicite sur le risque d'interception à chaque utilisation.
+
+L'exécutable affiche désormais un message de chargement au démarrage, et
+propose de relancer l'assistant depuis le début (au lieu de refermer puis
+redoubler-cliquer) en cas d'échec.
+
 ## 0.6.0 — 2026-11-11
 
 ### Historique budget complet (Axe 4, changement cassant) + glossaires

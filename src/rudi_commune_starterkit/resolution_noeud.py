@@ -7,14 +7,36 @@ différente (casse, accents, espaces).
 
 from __future__ import annotations
 
+import requests
+
 from rudi_harvest_toolkit import rudi_client
 from rudi_harvest_toolkit.tabular import normaliser_nom_colonne
 
 
-def tester_connexion_noeud(conf: dict) -> bool:
+def tester_connexion_noeud(conf: dict, erreur_sortie: dict | None = None) -> bool:
     """Wrapper direct autour de ``rudi_client.noeud_pret()`` — ``cli.py`` n'importe pas
-    ``rudi_client`` directement, frontière claire support/toolkit."""
-    return rudi_client.noeud_pret(conf)
+    ``rudi_client`` directement, frontière claire support/toolkit.
+
+    ``erreur_sortie``, si fourni, reçoit le détail de l'échec (voir
+    :func:`rudi_client.noeud_pret`) — utilisé par ``cli.py`` pour proposer d'ignorer
+    la vérification TLS uniquement en cas de certificat non reconnu, jamais pour les
+    autres causes d'échec (DNS, timeout, etc.)."""
+    return rudi_client.noeud_pret(conf, erreur_sortie=erreur_sortie)
+
+
+def erreur_est_certificat_tls(erreur_sortie: dict) -> bool:
+    """True si l'échec renvoyé par :func:`tester_connexion_noeud` vient d'un
+    certificat TLS non reconnu (ex. certificat auto-signé sur un nœud de test) —
+    seul cas où proposer d'ignorer la vérification TLS a un sens ; une erreur DNS ou
+    un timeout ne serait pas résolu en ignorant le certificat."""
+    return isinstance(erreur_sortie.get("exception"), requests.exceptions.SSLError)
+
+
+def desactiver_verification_tls_noeud() -> None:
+    """Ignore la vérification du certificat TLS pour le reste du run — seulement
+    après confirmation explicite de l'utilisateur final (risque d'interception,
+    voir :func:`rudi_client.desactiver_verification_tls`)."""
+    rudi_client.desactiver_verification_tls()
 
 
 def organisation_existante(conf: dict, organization_name: str) -> dict | None:
@@ -76,6 +98,8 @@ def resoudre_organisations_producteurs(
 
 
 __all__ = [
+    "desactiver_verification_tls_noeud",
+    "erreur_est_certificat_tls",
     "normaliser_nom_organisation",
     "organisation_existante",
     "rapprocher_organisation",
