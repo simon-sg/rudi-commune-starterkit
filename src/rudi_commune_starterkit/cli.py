@@ -41,6 +41,8 @@ from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
 from .profils_communes import charger_profils, enregistrer_profil, oublier_profil
 from .resolution_noeud import (
+    desactiver_verification_tls_noeud,
+    erreur_est_certificat_tls,
     organisation_existante,
     resoudre_organisations_producteurs,
     tester_connexion_noeud,
@@ -413,6 +415,33 @@ def _afficher_profil(profil: dict) -> None:
     print(f"  URL portail            : {profil.get('url_portail') or '(non renseignée)'}")
 
 
+def _tester_connexion_avec_repli_tls(conf: dict) -> bool:
+    """Teste la connexion au nœud ; si le seul problème est un certificat TLS non
+    reconnu (ex. nœud de test avec certificat auto-signé — rencontré en pratique sur
+    un nœud fourni par un tiers), propose explicitement de continuer sans le
+    vérifier. Jamais par défaut, jamais sans confirmation : une tierce personne sur
+    le même réseau pourrait sinon intercepter identifiants et données sans que rien
+    ne le signale. Affiche elle-même le message d'échec final si besoin."""
+    erreur: dict = {}
+    if tester_connexion_noeud(conf, erreur_sortie=erreur):
+        return True
+    if erreur_est_certificat_tls(erreur):
+        accepte = confirmer(
+            "\n  Certificat de sécurité (TLS) non reconnu pour ce nœud — souvent un "
+            "nœud de test avec un certificat auto-signé. Continuer SANS le vérifier "
+            "est risqué : une tierce personne sur le même réseau pourrait alors "
+            "intercepter vos identifiants et vos données. N'acceptez que si vous "
+            "faites confiance à ce nœud.",
+            mot_attendu="ACCEPTER",
+        )
+        if accepte:
+            desactiver_verification_tls_noeud()
+            if tester_connexion_noeud(conf):
+                return True
+    print("  Échec : nœud injoignable (détail ci-dessus).")
+    return False
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -472,8 +501,7 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
             print("  Champ inconnu (contact/mode/portail).")
 
     print("\nTest de connexion au nœud…")
-    if not tester_connexion_noeud(conf):
-        print("  Échec : nœud injoignable ou identifiants invalides.")
+    if not _tester_connexion_avec_repli_tls(conf):
         return EXIT_ECHEC_TOTAL
     print("  OK.\n")
 
@@ -662,8 +690,7 @@ def executer_interactif() -> int:
 
     # Étape 6 : test de connexion
     print("\nTest de connexion au nœud…")
-    if not tester_connexion_noeud(conf):
-        print("  Échec : nœud injoignable ou identifiants invalides.")
+    if not _tester_connexion_avec_repli_tls(conf):
         return EXIT_ECHEC_TOTAL
     print("  OK.\n")
 
@@ -730,6 +757,10 @@ def _construire_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rudi-conf", help="Fichier JSON url/url_catalog/usr/pwd.")
     parser.add_argument("--utiliser-trousseau", action="store_true",
                         help="Lit le mot de passe dans le trousseau système (--url-noeud/--usr requis).")
+    parser.add_argument("--ignorer-certificat-tls", action="store_true",
+                        help="Accepte un certificat TLS non reconnu (ex. certificat auto-signé "
+                             "sur un nœud de test) — RISQUÉ (interception possible), à n'utiliser "
+                             "que pour un nœud de confiance connu.")
     parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default="source")
     parser.add_argument("--organisation-par-jdd", help="Fichier JSON JDD -> commune|source.")
     parser.add_argument("--contact-commune", help="Email, obligatoire si au moins un JDD en mode commune.")
@@ -894,8 +925,18 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         if avertissement:
             print(f"[cli] [sécurité] Attention : {avertissement}", file=sys.stderr)
 
-    if not tester_connexion_noeud(conf):
-        print("[cli] Nœud injoignable ou identifiants invalides.", file=sys.stderr)
+    erreur_connexion: dict = {}
+    pret = tester_connexion_noeud(conf, erreur_sortie=erreur_connexion)
+    if not pret and erreur_est_certificat_tls(erreur_connexion) and args.ignorer_certificat_tls:
+        desactiver_verification_tls_noeud()
+        pret = tester_connexion_noeud(conf)
+    if not pret:
+        if erreur_est_certificat_tls(erreur_connexion) and not args.ignorer_certificat_tls:
+            print("[cli] Certificat TLS non reconnu — relancer avec "
+                  "--ignorer-certificat-tls si vous faites confiance à ce nœud "
+                  "(risque : interception possible).", file=sys.stderr)
+        else:
+            print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
         return EXIT_ECHEC_TOTAL
 
     only = set(args.only.split(",")) if args.only else None

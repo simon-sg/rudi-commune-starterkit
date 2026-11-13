@@ -501,4 +501,55 @@ national unique sans union de schéma) :
   la doc Hub'eau) — **aucun glossaire ajouté plutôt que d'inventer leur sens** ;
   documentés comme limite à la place.
 
+## Trouvé pendant le chantier exécutable municipal (2026-11-13), pas corrigé ici
+
+Repéré en testant l'exécutable packagé sur un vrai nœud de test (Rennes Métropole).
+Pas lié au packaging — préexistant dans le CLI/toolkit, mis au backlog plutôt que
+corrigé dans cette session.
+
+**1. Création d'organisation non idempotente (risque de doublon) — `rudi-harvest-toolkit`.**
+`demander_creation_organisation()` (`rudi_client.py:385-470`) tire un
+`organization_id` **aléatoire** (`uuid.uuid4()`) à chaque appel, sans état local, et
+son `except Exception` générique peut avaler un succès serveur dont la réponse a été
+perdue (le `POST catalog/organizations` passe par `io_connector.py` — `http.client`
+brut, sans timeout explicite — et déclenche un relais synchrone bloquant vers le
+portail). Un échec ambigu (serveur lent) suivi d'un nouvel essai (manuel, ou via le
+"Réessayer" de l'exécutable, voir `packaging/entrypoint.py`) peut alors créer une 2e
+organisation "Commune de XXX" distincte si le nœud n'a pas fini d'indexer la
+première au moment du rapprochement par nom (`resolution_noeud.py:72-99`) qui
+précède la (re-)création. Observé en pratique le 2026-11-13 sur le nœud de test RM —
+organisation en double effectivement créée, à nettoyer manuellement sur ce nœud.
+
+Mitigation déjà poussée en attendant : le prompt "Réessayer" de l'exécutable avertit
+désormais explicitement de vérifier le nœud avant de relancer après un échec
+survenu après une création d'organisation ou une publication.
+
+Vrai correctif (à faire côté `rudi-harvest-toolkit`, pas ici) : `organization_id`
+déterministe (ex. UUID5 dérivé de code INSEE + nom normalisé) au lieu d'aléatoire,
+pour que deux tentatives visent la même ressource plutôt que d'en créer deux ; et/ou
+timeout explicite + distinction propre entre "jamais créée" et "créée mais réponse
+perdue" dans `demander_creation_organisation()`.
+
+**2. `marches_publics.py` — 404 possible, `_DATASET_ID` codé en dur sur une source volatile.**
+L'ID de dataset data.gouv.fr (`marches_publics.py:79`, résolu via
+`get_dataset_metadata()` dans `rudi-harvest-toolkit/datagouv.py`) pointe vers un jeu
+maintenu par un seul contributeur externe (Colin Maudry), mis à jour quasi
+quotidiennement depuis la migration du 2026-11-10 — l'ID peut devenir invalide à tout
+moment, sans rapport avec le code INSEE ou la taille de la commune. Un 404 n'est pas
+géré spécifiquement (contrairement à `commune.py`) : il se propage comme
+`requests.exceptions.HTTPError` brut jusqu'à l'utilisateur. Déjà documenté comme
+réserve assumée au moment de la migration ; reste à décider si un message d'erreur
+plus clair en cas de 404 (sans résoudre la volatilité de la source elle-même, hors de
+notre contrôle) vaut le coup.
+
+**3. `immobilier_dvf.py` — "connection broken" possible sur le téléchargement national (609 Mo).**
+Depuis la migration du 2026-11-10 vers un fichier national unique (`immobilier_dvf.py:10-11`),
+`telecharger()` (`rudi-harvest-toolkit/download_cache.py:90-121`) ne retry qu'avant
+réception d'une réponse HTTP (429/5xx) — une coupure **en cours de flux**
+(`ProtocolError`/"Connection broken", observée en pratique le 2026-11-13) n'est pas
+retryée et fait échouer le module directement. Un réseau de mairie plus lent/restreint
+expose davantage ce téléchargement unique et volumineux qu'un réseau de dev. Piste :
+retry applicatif sur coupure mi-flux (pas seulement sur le statut HTTP), ou téléchargement
+par plages (`Range`) reprenable.
+
 Suite complète verte (433 tests, +12 vs avant l'Axe 4). Release 0.6.0.

@@ -3,6 +3,7 @@ import contextlib
 import io
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -88,6 +89,7 @@ class TestEcrireConfFichier(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.chemin = os.path.join(self._tmp.name, "sous_dossier", "rudi_node.json")
 
+    @unittest.skipIf(sys.platform == "win32", "permissions POSIX — sans objet sous Windows, voir TestEcrireConfFichierWindows")
     def test_ecrit_et_permissions_0600(self):
         securite.ecrire_conf_fichier(self.chemin, {"url": "https://x", "usr": "u", "pwd": "p"})
         mode = stat.S_IMODE(os.stat(self.chemin).st_mode)
@@ -96,6 +98,7 @@ class TestEcrireConfFichier(unittest.TestCase):
         with open(self.chemin, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["usr"], "u")
 
+    @unittest.skipIf(sys.platform == "win32", "permissions POSIX — sans objet sous Windows, voir TestEcrireConfFichierWindows")
     def test_corrige_permissions_trop_larges_preexistantes(self):
         os.makedirs(os.path.dirname(self.chemin), exist_ok=True)
         with open(self.chemin, "w", encoding="utf-8") as f:
@@ -105,12 +108,92 @@ class TestEcrireConfFichier(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(os.stat(self.chemin).st_mode), 0o600)
 
 
+class TestEcrireConfFichierWindows(unittest.TestCase):
+    """Chemin Windows de ecrire_conf_fichier() (icacls au lieu de chmod — NTFS n'a pas
+    de permissions POSIX). Patché via sys.platform/subprocess.run pour être exécutable
+    sur toute plateforme de développement, pas seulement sur un vrai Windows."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.chemin = os.path.join(self._tmp.name, "sous_dossier", "rudi_node.json")
+
+    def test_ecrit_et_appelle_icacls(self):
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": "agent_municipal"}), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run") as m_run:
+            m_run.return_value = mock.Mock(returncode=0, stderr="")
+            securite.ecrire_conf_fichier(self.chemin, {"url": "https://x", "usr": "u"})
+
+        m_run.assert_called_once()
+        args = m_run.call_args.args[0]
+        self.assertEqual(args[0], "icacls")
+        self.assertIn(self.chemin, args)
+        self.assertIn("agent_municipal:F", args)
+        import json
+        with open(self.chemin, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["usr"], "u")
+
+    def test_avertit_si_icacls_echoue(self):
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": "agent_municipal"}), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run") as m_run:
+            m_run.return_value = mock.Mock(returncode=1, stderr="erreur icacls")
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.ecrire_conf_fichier(self.chemin, {"url": "https://x"})
+        self.assertIn("icacls", tampon.getvalue())
+
+    def test_avertit_si_username_absent(self):
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": ""}), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run") as m_run:
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.ecrire_conf_fichier(self.chemin, {"url": "https://x"})
+        m_run.assert_not_called()
+        self.assertIn("USERNAME", tampon.getvalue())
+
+    def test_avertit_si_icacls_introuvable(self):
+        """subprocess.run peut lever (icacls absent du PATH, poste verrouillé) —
+        _restreindre_acces_windows() ne doit jamais laisser remonter l'exception."""
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": "agent_municipal"}), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run", side_effect=FileNotFoundError("icacls")):
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.ecrire_conf_fichier(self.chemin, {"url": "https://x"})
+        self.assertIn("icacls", tampon.getvalue())
+        import json
+        with open(self.chemin, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["url"], "https://x")
+
+    def test_restreint_avant_decrire_le_contenu_sensible(self):
+        """Le contenu JSON (identifiants en clair) ne doit jamais être présent sur
+        disque tant que la restriction icacls n'a pas été tentée — sinon on
+        réintroduit la fenêtre POSIX que ce module évite explicitement par ailleurs."""
+        contenu_au_moment_de_icacls = {}
+
+        def _capturer(*args, **kwargs):
+            with open(self.chemin, encoding="utf-8") as f:
+                contenu_au_moment_de_icacls["brut"] = f.read()
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch.dict(os.environ, {"USERNAME": "agent_municipal"}), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run", side_effect=_capturer):
+            securite.ecrire_conf_fichier(self.chemin, {"url": "https://x", "pwd": "secret"})
+
+        self.assertEqual(contenu_au_moment_de_icacls["brut"], "")
+
+
 class TestVerifierPermissionsConf(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.chemin = os.path.join(self._tmp.name, "rudi_node.json")
 
+    @unittest.skipIf(sys.platform == "win32", "permissions POSIX — verifier_permissions_conf() est un no-op sous Windows")
     def test_avertit_si_permissions_trop_larges(self):
         with open(self.chemin, "w", encoding="utf-8") as f:
             f.write("{}")
@@ -120,6 +203,7 @@ class TestVerifierPermissionsConf(unittest.TestCase):
             securite.verifier_permissions_conf(self.chemin)
         self.assertIn("0600", tampon.getvalue())
 
+    @unittest.skipIf(sys.platform == "win32", "permissions POSIX — verifier_permissions_conf() est un no-op sous Windows")
     def test_silencieux_si_permissions_correctes(self):
         with open(self.chemin, "w", encoding="utf-8") as f:
             f.write("{}")
@@ -133,6 +217,40 @@ class TestVerifierPermissionsConf(unittest.TestCase):
         tampon = io.StringIO()
         with contextlib.redirect_stdout(tampon):
             securite.verifier_permissions_conf(os.path.join(self._tmp.name, "absent.json"))
+        self.assertEqual(tampon.getvalue(), "")
+
+    def test_windows_avertit_si_acl_trop_large(self):
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{}")
+        sortie_icacls = f"{self.chemin} BUILTIN\\Users:(R)\n"
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run") as m_run:
+            m_run.return_value = mock.Mock(returncode=0, stdout=sortie_icacls)
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.verifier_permissions_conf(self.chemin)
+        self.assertIn("NTFS", tampon.getvalue())
+
+    def test_windows_silencieux_si_acl_restreinte(self):
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{}")
+        sortie_icacls = f"{self.chemin} agent_municipal:(F)\n"
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run") as m_run:
+            m_run.return_value = mock.Mock(returncode=0, stdout=sortie_icacls)
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.verifier_permissions_conf(self.chemin)
+        self.assertEqual(tampon.getvalue(), "")
+
+    def test_windows_silencieux_si_icacls_indisponible(self):
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{}")
+        with mock.patch("sys.platform", "win32"), \
+             mock.patch("rudi_commune_starterkit.securite.subprocess.run", side_effect=FileNotFoundError("icacls")):
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.verifier_permissions_conf(self.chemin)
         self.assertEqual(tampon.getvalue(), "")
 
 

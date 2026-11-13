@@ -2,6 +2,8 @@
 import unittest
 from unittest import mock
 
+import requests
+
 from rudi_commune_starterkit import resolution_noeud
 
 
@@ -10,7 +12,38 @@ class TestTesterConnexionNoeud(unittest.TestCase):
         with mock.patch("rudi_commune_starterkit.resolution_noeud.rudi_client.noeud_pret",
                          return_value=True) as m:
             self.assertTrue(resolution_noeud.tester_connexion_noeud({"url": "https://x"}))
-        m.assert_called_once_with({"url": "https://x"})
+        m.assert_called_once_with({"url": "https://x"}, erreur_sortie=None)
+
+    def test_transmet_erreur_sortie(self):
+        erreur: dict = {}
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.rudi_client.noeud_pret",
+                         return_value=False) as m:
+            resolution_noeud.tester_connexion_noeud({"url": "https://x"}, erreur_sortie=erreur)
+        m.assert_called_once_with({"url": "https://x"}, erreur_sortie=erreur)
+
+
+class TestErreurEstCertificatTls(unittest.TestCase):
+    def test_true_pour_sslerror(self):
+        erreur = {"exception": requests.exceptions.SSLError("auto-signé")}
+        self.assertTrue(resolution_noeud.erreur_est_certificat_tls(erreur))
+
+    def test_false_pour_autre_exception(self):
+        erreur = {"exception": requests.exceptions.ConnectionError("DNS cassé")}
+        self.assertFalse(resolution_noeud.erreur_est_certificat_tls(erreur))
+
+    def test_false_si_aucune_exception(self):
+        # Cas d'un code HTTP != 200 sans exception (nœud joignable mais mauvaise
+        # réponse) : jamais un problème de certificat.
+        self.assertFalse(resolution_noeud.erreur_est_certificat_tls({}))
+
+
+class TestDesactiverVerificationTlsNoeud(unittest.TestCase):
+    def test_delegue_a_rudi_client(self):
+        with mock.patch(
+            "rudi_commune_starterkit.resolution_noeud.rudi_client.desactiver_verification_tls",
+        ) as m:
+            resolution_noeud.desactiver_verification_tls_noeud()
+        m.assert_called_once_with()
 
 
 class TestOrganisationExistante(unittest.TestCase):

@@ -1,0 +1,83 @@
+name: Build executable (Windows, manuel)
+
+# Déclenchement manuel uniquement : chaque build est publié en Release GitHub
+# *brouillon* (draft) — un humain doit explicitement cliquer "Publish release"
+# sur GitHub pour le rendre public et téléchargeable par un agent municipal.
+# Un artifact de workflow (actions/upload-artifact) ne convient pas pour cet
+# usage : son téléchargement exige un compte GitHub avec accès au dépôt, ce
+# qu'un agent municipal externe n'a pas.
+on:
+  workflow_dispatch:
+    inputs:
+      toolkit_ref:
+        description: "Tag/branche de rudi-harvest-toolkit à utiliser pour le build"
+        required: true
+        default: "v0.5.2"
+      version:
+        description: "Nom de la release GitHub à créer (ex: v0.7.0-exe1)"
+        required: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    # Requis pour que le GITHUB_TOKEN par défaut puisse créer la Release en
+    # brouillon (softprops/action-gh-release) — sans ce bloc, échec
+    # "Resource not accessible by integration" (constaté en CI le 2026-11-11).
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
+        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
+
+      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+        # --no-deps : évite que pip tente de résoudre la dépendance locale
+        # file:///... du pyproject.toml de dev (absente sur ce runner). Le
+        # toolkit est déjà installé explicitement ci-dessus, keyring/requests
+        # ci-dessous.
+        run: pip install --no-deps .
+
+      - name: Installer les dépendances restantes + outils de build
+        run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
+
+      - name: Tests (filet de régression avant tout packaging)
+        run: pytest
+
+      - name: Build PyInstaller
+        run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
+
+      - name: Smoke-test (démarrage sans crash d'import/DLL)
+        # Stdin vide (PowerShell Start-Process -RedirectStandardInput exige un vrai
+        # fichier, "NUL" n'est pas résolu comme le périphérique nul contrairement à
+        # cmd.exe) : le wizard lève EOFError dès la première question (code de sortie
+        # 1 attendu et normal — pas un signe de crash). On vérifie l'absence de
+        # traceback Python (import/DLL manquant) plutôt que le code de sortie.
+        shell: pwsh
+        run: |
+          New-Item -ItemType File -Path "smoke-stdin-vide.txt" -Force | Out-Null
+          $proc = Start-Process -FilePath ".\dist\rudi-commune-starterkit.exe" `
+            -RedirectStandardInput "smoke-stdin-vide.txt" `
+            -RedirectStandardOutput "smoke-stdout.log" -RedirectStandardError "smoke-stderr.log" `
+            -PassThru
+          Start-Sleep -Seconds 5
+          if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+          $sortie = (Get-Content smoke-stdout.log -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content smoke-stderr.log -Raw -ErrorAction SilentlyContinue)
+          if ($sortie -match "Traceback \(most recent call last\)") {
+            Write-Error "Traceback Python au démarrage (probable import/DLL manquant) :`n$sortie"
+            exit 1
+          }
+
+      - name: Publier une Release GitHub en brouillon
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          draft: true
+          files: dist/rudi-commune-starterkit.exe

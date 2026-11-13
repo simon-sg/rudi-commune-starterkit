@@ -346,6 +346,39 @@ class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
         m_verif.assert_not_called()
 
 
+class TestTesterConnexionAvecRepliTls(unittest.TestCase):
+    def test_succes_direct_ne_propose_rien(self):
+        with mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            self.assertTrue(cli._tester_connexion_avec_repli_tls({"url": "https://x"}))
+        m_confirmer.assert_not_called()
+
+    def test_echec_non_tls_pas_de_proposition(self):
+        with mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=False), \
+             mock.patch("rudi_commune_starterkit.cli.erreur_est_certificat_tls", return_value=False), \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            self.assertFalse(cli._tester_connexion_avec_repli_tls({"url": "https://x"}))
+        m_confirmer.assert_not_called()
+
+    def test_echec_tls_refuse_reste_en_echec(self):
+        with mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=False), \
+             mock.patch("rudi_commune_starterkit.cli.erreur_est_certificat_tls", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=False), \
+             mock.patch("rudi_commune_starterkit.cli.desactiver_verification_tls_noeud") as m_desact:
+            self.assertFalse(cli._tester_connexion_avec_repli_tls({"url": "https://x"}))
+        m_desact.assert_not_called()
+
+    def test_echec_tls_accepte_desactive_et_reessaie(self):
+        with mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud",
+                         side_effect=[False, True]) as m_test, \
+             mock.patch("rudi_commune_starterkit.cli.erreur_est_certificat_tls", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.desactiver_verification_tls_noeud") as m_desact:
+            self.assertTrue(cli._tester_connexion_avec_repli_tls({"url": "https://x"}))
+        m_desact.assert_called_once()
+        self.assertEqual(m_test.call_count, 2)
+
+
 class TestResoudreConfScriptable(unittest.TestCase):
     def test_rudi_conf_fichier(self):
         args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
@@ -420,6 +453,40 @@ class TestExecuterScriptable(unittest.TestCase):
         self.assertEqual(code, 0)
         m_run.assert_called_once()
         self.assertEqual(m_run.call_args.kwargs["only"], {"population"})
+
+    def test_certificat_tls_non_reconnu_sans_flag_echec(self):
+        # Certificat auto-signé détecté mais --ignorer-certificat-tls absent : échec
+        # explicite, jamais de contournement silencieux.
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json",
+        ])
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=_CONF), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE), \
+             mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=False), \
+             mock.patch("rudi_commune_starterkit.cli.erreur_est_certificat_tls", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.desactiver_verification_tls_noeud") as m_desact:
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+        m_desact.assert_not_called()
+
+    def test_certificat_tls_non_reconnu_avec_flag_reessaie(self):
+        # Avec --ignorer-certificat-tls : désactive la vérification TLS puis
+        # retente la connexion avant de poursuivre.
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--ignorer-certificat-tls",
+            "--only", "population",
+        ])
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=_CONF), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE), \
+             mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud",
+                        side_effect=[False, True]) as m_test, \
+             mock.patch("rudi_commune_starterkit.cli.erreur_est_certificat_tls", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.desactiver_verification_tls_noeud") as m_desact, \
+             mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, 0)
+        m_desact.assert_called_once()
+        self.assertEqual(m_test.call_count, 2)
 
 
 class TestExecuterScriptableViderCommune(unittest.TestCase):
