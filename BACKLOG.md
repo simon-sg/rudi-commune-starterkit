@@ -508,27 +508,37 @@ Pas lié au packaging — préexistant dans le CLI/toolkit, mis au backlog plut�
 corrigé dans cette session.
 
 **1. Création d'organisation non idempotente (risque de doublon) — `rudi-harvest-toolkit`.**
-`demander_creation_organisation()` (`rudi_client.py:385-470`) tire un
+Statut : **corrigé** (2026-11-13, côté `rudi-harvest-toolkit`, pas ici).
+
+`demander_creation_organisation()` (`rudi_client.py:385-470`) tirait un
 `organization_id` **aléatoire** (`uuid.uuid4()`) à chaque appel, sans état local, et
-son `except Exception` générique peut avaler un succès serveur dont la réponse a été
-perdue (le `POST catalog/organizations` passe par `io_connector.py` — `http.client`
-brut, sans timeout explicite — et déclenche un relais synchrone bloquant vers le
-portail). Un échec ambigu (serveur lent) suivi d'un nouvel essai (manuel, ou via le
-"Réessayer" de l'exécutable, voir `packaging/entrypoint.py`) peut alors créer une 2e
-organisation "Commune de XXX" distincte si le nœud n'a pas fini d'indexer la
-première au moment du rapprochement par nom (`resolution_noeud.py:72-99`) qui
-précède la (re-)création. Observé en pratique le 2026-11-13 sur le nœud de test RM —
-organisation en double effectivement créée, à nettoyer manuellement sur ce nœud.
+son `except Exception` générique pouvait avaler un succès serveur dont la réponse
+avait été perdue (le `POST catalog/organizations` passe par `io_connector.py` —
+`http.client` brut, sans timeout explicite — et déclenche un relais synchrone
+bloquant vers le portail). Un échec ambigu (serveur lent) suivi d'un nouvel essai
+(manuel, ou via le "Réessayer" de l'exécutable, voir `packaging/entrypoint.py`)
+pouvait alors créer une 2e organisation "Commune de XXX" distincte si le nœud
+n'avait pas fini d'indexer la première au moment du rapprochement par nom
+(`resolution_noeud.py:72-99`) qui précède la (re-)création. Observé en pratique le
+2026-11-13 sur le nœud de test RM — organisation en double effectivement créée,
+nettoyée manuellement sur ce nœud.
 
-Mitigation déjà poussée en attendant : le prompt "Réessayer" de l'exécutable avertit
-désormais explicitement de vérifier le nœud avant de relancer après un échec
-survenu après une création d'organisation ou une publication.
+Mitigation déjà poussée en attendant (conservée) : le prompt "Réessayer" de
+l'exécutable avertit explicitement de vérifier le nœud avant de relancer après un
+échec survenu après une création d'organisation ou une publication.
 
-Vrai correctif (à faire côté `rudi-harvest-toolkit`, pas ici) : `organization_id`
-déterministe (ex. UUID5 dérivé de code INSEE + nom normalisé) au lieu d'aléatoire,
-pour que deux tentatives visent la même ressource plutôt que d'en créer deux ; et/ou
-timeout explicite + distinction propre entre "jamais créée" et "créée mais réponse
-perdue" dans `demander_creation_organisation()`.
+**Correctif** : `organization_id` désormais **déterministe**
+(`uuid.uuid5(_NAMESPACE_ORGANISATION_RUDI, nom_normalisé)`, namespace fixe généré une
+fois — aligné sur la clé de dédoublonnage déjà utilisée par
+`resolution_noeud.rapprocher_organisation()`, donc pas de code_insee nécessaire en
+plus du nom). Confirmé dans le code source du nœud (`rudi-node-catalog-pr`,
+`src/definitions/schemas/Identifiers.js`, `UuidV4Schema` : `unique: true, index:
+true`) qu'une 2e tentative avec le même id échoue proprement (contrainte MongoDB)
+plutôt que de créer un doublon. En cas d'échec de création, nouvelle récupération
+**explicite** par cet id (`organisation_par_id()`, nouveau, même mécanisme HTTP que
+`organisation_par_nom()`) avant d'abandonner — pour ne pas perdre le lien dès ce run
+si l'organisation existait déjà suite à une tentative précédente. Testé (6 nouveaux
+tests, 387 verts au total), pas encore poussé (voir Journal).
 
 **2. `marches_publics.py` — 404 possible, `_DATASET_ID` codé en dur sur une source volatile.**
 L'ID de dataset data.gouv.fr (`marches_publics.py:79`, résolu via
