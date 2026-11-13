@@ -42,7 +42,7 @@ jobs:
       - name: Générer le contenu du guide (docs/, jamais versionné)
         run: python -m guide.generer
 
-      - name: Build MkDocs (mode strict : tout lien/page manquant fait échouer le build)
+      - name: "Build MkDocs (mode strict : tout lien/page manquant fait échouer le build)"
         run: mkdocs build --strict
 
       - uses: actions/upload-pages-artifact@v3
