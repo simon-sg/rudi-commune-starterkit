@@ -71,8 +71,21 @@ Pour obtenir un vrai binaire PE Windows sans attendre un run CI à chaque essai 
 vraie session Windows. Le wizard propose réellement d'enregistrer les identifiants
 dans ce trousseau — ce chemin de code sera exercé par un usage réel. Un test Wine
 positif ne valide donc que la mécanique d'empaquetage et l'UX générale, jamais le
-trousseau. Seul un test sur `windows-latest` (CI) ou une vraie machine/VM Windows
-valide ce point.
+trousseau.
+
+**2e limite trouvée en pratique (2026-11-13)** : l'assistant **interactif**
+(plusieurs questions, `input()` répétés) peut **bloquer indéfiniment** sous Wine
+dès la 1ère question (ex. code INSEE), même avec un vrai pseudo-terminal (`script`,
+voir § suivante) et toutes les réponses déjà présentes dans son entrée — reproduit
+avec un simple `timeout 20 wine ... < reponses.txt`, tué par le timeout sans
+qu'aucune suite du wizard ne s'affiche. Le mode **scriptable** (`--code-insee ...`,
+pas d'`input()` du tout) n'a lui jamais ce problème et reste fiable sous Wine pour
+valider la mécanique d'empaquetage (testé avec succès pour la v0.7.0). Cause
+probable : la couche console de Wine gère mal des lectures `input()` répétées sur un
+stdin nourri via pty, indépendamment de l'application — jamais observé sur
+`windows-latest` (CI) ni à prévoir sur une vraie machine Windows. **Pour valider le
+wizard interactif lui-même, seul un test sur une vraie machine/VM Windows compte** —
+Wine ne sert qu'au mode scriptable et aux vérifications de démarrage.
 
 ## Lancer un `.exe` déjà construit sous Wine (sans rebuild)
 
