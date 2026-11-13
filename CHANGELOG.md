@@ -2,6 +2,27 @@
 
 ## Non publié
 
+### Backlog v5 — doublon d'organisation, 404 DECP, menu Quitter, attente validation
+
+4 corrections ponctuelles trouvées en testant l'exécutable municipal sur un nœud réel
+(Rennes Métropole, 2026-11-13) :
+
+- **Doublon d'organisation** (corrigé côté `rudi-harvest-toolkit` >= non publié) :
+  `organization_id` déterministe au lieu d'aléatoire — une organisation créée par une
+  tentative précédente n'est plus jamais dupliquée par un nouvel essai.
+- **404 sur le dataset DECP** (`marches_publics.py`) : message clair et actionnable au
+  lieu du texte brut `requests` quand le dataset tiers (Colin Maudry, mis à jour quasi
+  quotidiennement) devient introuvable.
+- **Menu « Quitter » (`q`)** dans l'assistant interactif — jusqu'ici seul Ctrl+C
+  permettait de sortir proprement.
+- **Détection des doublons de commune** : la branche « Nouvelle commune » signale
+  désormais un profil existant pour le même code INSEE (éventuellement sur un autre
+  nœud) et propose de le reprendre directement.
+- **Attente de validation animateur sans relance complète** : après une création
+  d'organisation en attente de validation, l'assistant propose de vérifier sur demande
+  et reprend automatiquement la suite du run dès que validée (au lieu d'obliger à tout
+  relancer).
+
 ### Exécutable Windows autonome (agent municipal)
 
 Nouveau mode de distribution, sans changement fonctionnel du CLI existant : un
