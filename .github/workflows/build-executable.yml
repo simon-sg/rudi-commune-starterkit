@@ -1,11 +1,18 @@
 name: Build executable (Windows, manuel)
 
-# Déclenchement manuel uniquement : chaque build est publié en Release GitHub
-# *brouillon* (draft) — un humain doit explicitement cliquer "Publish release"
-# sur GitHub pour le rendre public et téléchargeable par un agent municipal.
-# Un artifact de workflow (actions/upload-artifact) ne convient pas pour cet
-# usage : son téléchargement exige un compte GitHub avec accès au dépôt, ce
-# qu'un agent municipal externe n'a pas.
+# Déclenchement manuel uniquement : chaque build Windows est publié en Release
+# GitHub *brouillon* (draft) — un humain doit explicitement cliquer "Publish
+# release" sur GitHub pour le rendre public et téléchargeable par un agent
+# municipal. Un artifact de workflow (actions/upload-artifact) ne convient pas
+# pour CET usage : son téléchargement exige un compte GitHub avec accès au
+# dépôt, ce qu'un agent municipal externe n'a pas.
+#
+# Le job build-linux, lui, publie un simple artifact de workflow (pas une
+# Release) : il n'est PAS destiné à un agent municipal (aucun agent municipal
+# visé n'utilise Linux à ce jour), seulement au confort de test de Simon —
+# pouvoir vérifier le vrai binaire packagé sans passer par Wine (pseudo-
+# terminal, bugs de redirection stdin spécifiques à Wine, etc., rencontrés en
+# pratique le 2026-11-13).
 on:
   workflow_dispatch:
     inputs:
@@ -18,7 +25,7 @@ on:
         required: true
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     # Requis pour que le GITHUB_TOKEN par défaut puisse créer la Release en
     # brouillon (softprops/action-gh-release) — sans ce bloc, échec
@@ -81,3 +88,50 @@ jobs:
           name: ${{ inputs.version }}
           draft: true
           files: dist/rudi-commune-starterkit.exe
+
+  build-linux:
+    # Confort de test pour Simon (binaire natif à lancer sans Wine) — pas une
+    # distribution publique. Indépendant de build-windows, aucune Release créée.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
+        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
+
+      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+        run: pip install --no-deps .
+
+      - name: Installer les dépendances restantes + outils de build
+        run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
+
+      - name: Tests (filet de régression avant tout packaging)
+        run: pytest
+
+      - name: Build PyInstaller
+        run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
+
+      - name: Smoke-test (démarrage sans crash d'import)
+        # Même logique que le smoke-test Windows : stdin vide -> EOFError dès la
+        # première question (code de sortie 1 attendu, pas un crash). On vérifie
+        # l'absence de traceback plutôt que le code de sortie.
+        run: |
+          : > smoke-stdin-vide.txt
+          timeout 10 ./dist/rudi-commune-starterkit < smoke-stdin-vide.txt \
+            > smoke-stdout.log 2> smoke-stderr.log || true
+          if grep -q "Traceback (most recent call last)" smoke-stdout.log smoke-stderr.log; then
+            echo "Traceback Python au démarrage (probable import manquant) :"
+            cat smoke-stdout.log smoke-stderr.log
+            exit 1
+          fi
+
+      - name: Publier le binaire Linux comme artifact (test interne)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rudi-commune-starterkit-linux
+          path: dist/rudi-commune-starterkit
+          retention-days: 14

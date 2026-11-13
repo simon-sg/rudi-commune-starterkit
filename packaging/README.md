@@ -21,6 +21,19 @@ Le workflow construit l'exécutable puis publie une **Release GitHub en brouillo
 téléchargé, inutilisable pour un agent municipal externe). **Rien n'est public tant
 que la release reste en brouillon.**
 
+## Build Linux (confort de test, pas pour distribution)
+
+Le même déclenchement (`workflow_dispatch`) lance aussi un job `build-linux`
+(`ubuntu-latest`), indépendant du build Windows : même `packaging/entrypoint.py`,
+mais publié comme un **simple artifact de workflow** (onglet *Actions* → le run →
+section *Artifacts*, `rudi-commune-starterkit-linux`, rétention 14 jours) — pas une
+Release. **Ce n'est pas destiné à un agent municipal** (aucun agent municipal visé
+n'utilise Linux à ce jour) : c'est uniquement pour pouvoir tester le vrai binaire
+packagé nativement sous Linux, sans les contorsions Wine (pseudo-terminal, bugs de
+redirection stdin spécifiques à Wine — voir § Wine ci-dessous) rencontrées en
+pratique le 2026-11-13. Télécharger l'artifact, `chmod +x`, puis lancer directement
+(`./rudi-commune-starterkit`) — pas de SmartScreen/signature à gérer ici.
+
 ## Avant de publier
 
 1. Ouvrir la Release brouillon créée par le workflow (onglet *Releases*).
