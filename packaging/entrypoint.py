@@ -46,9 +46,21 @@ if __name__ == "__main__":
         # début sans refermer la fenêtre, plutôt que de forcer à redoubler-cliquer
         # l'exécutable. « Depuis le début » : aucune donnée déjà saisie n'est
         # réutilisée, main() est simplement rappelée.
+        #
+        # Avertissement ci-dessous : la création d'organisation (côté
+        # rudi_harvest_toolkit) n'est pas garantie idempotente — un échec ambigu
+        # (ex. serveur lent) peut avoir réussi côté nœud sans que la réponse soit
+        # arrivée, et un nouvel essai immédiat (ce « R », ou tout relancement
+        # manuel du même exécutable) peut alors créer une organisation en double
+        # si le nœud n'a pas encore fini d'indexer la précédente. Vrai correctif
+        # (organization_id déterministe/idempotent côté toolkit) hors scope de ce
+        # fichier — voir le backlog.
         try:
             reponse = input(
-                "\nÉchec. Taper R puis Entrée pour réessayer depuis le début, "
+                "\nÉchec. Si l'échec s'est produit après la création d'une "
+                "organisation ou la publication d'un JDD, vérifiez sur le nœud "
+                "avant de relancer (un nouvel essai immédiat peut créer un "
+                "doublon). Taper R puis Entrée pour réessayer depuis le début, "
                 "ou appuyer sur Entrée pour fermer : "
             ).strip().upper()
         except EOFError:
