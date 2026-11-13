@@ -1,6 +1,6 @@
 # Changelog
 
-## Non publié
+## 0.7.0 — 2026-11-13
 
 ### Guide utilisateur HTML (GitHub Pages)
 
@@ -24,7 +24,7 @@ voir BACKLOG.md pour le détail. Comportement et codes de sortie inchangés.
 4 corrections ponctuelles trouvées en testant l'exécutable municipal sur un nœud réel
 (Rennes Métropole, 2026-11-13) :
 
-- **Doublon d'organisation** (corrigé côté `rudi-harvest-toolkit` >= non publié) :
+- **Doublon d'organisation** (corrigé côté `rudi-harvest-toolkit` >= 0.5.3) :
   `organization_id` déterministe au lieu d'aléatoire — une organisation créée par une
   tentative précédente n'est plus jamais dupliquée par un nouvel essai.
 - **404 sur le dataset DECP** (`marches_publics.py`) : message clair et actionnable au
