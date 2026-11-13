@@ -54,8 +54,8 @@ TITRE = "Valeurs foncières (DVF)"
 SYNOPSIS_PATRON = "Transactions immobilières (DVF) à {commune} ({code_insee})"
 DESCRIPTION_PATRON = (
     "Valeurs foncières (DVF) des transactions immobilières réalisées sur la commune de "
-    "{commune} ({code_insee}), sur les années disponibles ({annees}), sourcées auprès "
-    "de la DGFiP (fichier national unique, filtré par commune)."
+    "{commune} ({code_insee}), sur les années disponibles, sourcées auprès de la DGFiP "
+    "(fichier national unique, filtré par commune)."
 )
 FREQUENCE_MAJ = "annuelle"
 
