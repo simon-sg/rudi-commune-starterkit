@@ -3,6 +3,13 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+.venv*/
+
+# Guide utilisateur HTML (MkDocs) : entièrement généré par guide/generer.py à partir
+# du code (registre.py + guide/contenu_statique.py) — jamais de contenu à versionner
+# ici, voir guide/README.md.
+docs/
+site/
 
 # Configuration locale (ne pas versionner — identifiants nœud RUDI)
 conf/rudi_node*.json

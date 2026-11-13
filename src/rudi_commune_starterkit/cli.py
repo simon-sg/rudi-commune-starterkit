@@ -230,8 +230,8 @@ def executer_run(
                         organisation_creation_echouee = True
                     else:
                         print(f"[cli] Organisation « {nom_org_commune} » créée (id={organisation_id}), "
-                              "en attente de validation par l'animateur du portail — relancer une "
-                              "fois validée.")
+                              "en attente de validation par l'animateur du portail (la personne qui "
+                              "valide les nouvelles organisations) — relancer une fois validée.")
                         organisation_en_attente = True
         elif etat_org == "en_attente":
             print(f"[cli] Organisation « {nom_org_commune} » en attente de validation par "
@@ -338,11 +338,23 @@ def executer_run(
     return code
 
 
+def _libelle_jdd(cle: str) -> str:
+    """Nom lisible d'un JDD pour l'affichage humain (``TITRE`` du module, ex. « Valeurs
+    foncières (DVF) » plutôt que ``immobilier_dvf``) — jamais utilisé pour une clé
+    interne (hash d'état, ``organisation_par_jdd``...), qui reste la ``CLE`` partout
+    ailleurs. Repli sur la clé brute si le module n'est pas (ou plus) au registre,
+    plutôt qu'une exception qui casserait l'affichage du rapport."""
+    try:
+        return registre.module_par_cle(cle).TITRE
+    except KeyError:
+        return cle
+
+
 def _afficher_rapport(rapport: dict[str, list[str]]) -> None:
     print("\n=== Rapport ===")
     for categorie, cles in rapport.items():
         if cles:
-            print(f"  {categorie} : {', '.join(cles)}")
+            print(f"  {categorie} : {', '.join(_libelle_jdd(cle) for cle in cles)}")
 
 
 # --------------------------------------------------------------------------------------
@@ -367,10 +379,11 @@ def _demander_oui_non(invite: str, *, defaut: bool = False) -> bool:
 def _choisir_mode_producteur() -> tuple[str, dict | None]:
     """Étape « mode producteur » — factorisée pour être réutilisable aussi bien pour
     une nouvelle commune que pour corriger un profil repris du registre."""
-    print("Qui doit apparaître comme producteur Rudi ?")
-    print("  1) la commune pour tous les JDD")
-    print("  2) le vrai organisme producteur pour chaque JDD (par défaut)")
-    print("  3) choisir JDD par JDD")
+    print("Qui doit être présenté comme l'auteur de vos données sur le portail ?")
+    print("  1) Toujours la mairie")
+    print("  2) L'organisme réellement à l'origine de chaque donnée (ex. l'INSEE pour "
+          "la population) — recommandé, par défaut")
+    print("  3) Je choisis donnée par donnée")
     choix = _demander("Choix", defaut="2")
     organisation_par_jdd = None
     if choix == "1":
@@ -379,7 +392,7 @@ def _choisir_mode_producteur() -> tuple[str, dict | None]:
         organisation_producteur = "par-jdd"
         organisation_par_jdd = {}
         for module in registre.MODULES:
-            if _demander_oui_non(f"  {module.CLE} : producteur = la commune", defaut=False):
+            if _demander_oui_non(f"  {module.TITRE} : auteur = la mairie", defaut=False):
                 organisation_par_jdd[module.CLE] = "commune"
         chemin_export = _demander(
             "  Exporter cette correspondance pour un futur run (vide = ne pas exporter)",
@@ -396,7 +409,10 @@ def _choisir_mode_producteur() -> tuple[str, dict | None]:
 
 def _demander_email_contact_commune(*, defaut: str | None = None) -> str:
     while True:
-        contact_email_commune = _demander("Email de contact de la commune", defaut=defaut)
+        contact_email_commune = _demander(
+            "Email de contact de la commune (sera visible publiquement sur les fiches "
+            "de données concernées)", defaut=defaut,
+        )
         if email_valide(contact_email_commune):
             avertissement = email_suspect(contact_email_commune)
             if avertissement:
@@ -405,12 +421,20 @@ def _demander_email_contact_commune(*, defaut: str | None = None) -> str:
         print("  Adresse email invalide.")
 
 
+_LIBELLE_MODE_PRODUCTEUR = {
+    "source": "l'organisme réel par donnée (recommandé)",
+    "commune": "toujours la mairie",
+    "par-jdd": "au cas par cas, donnée par donnée",
+}
+
+
 def _afficher_profil(profil: dict) -> None:
     print("Résumé du profil enregistré :")
     print(f"  Commune                : {profil['nom']} ({profil['code_insee']})")
     print(f"  Nœud                   : {profil['url_noeud']}")
     print(f"  Utilisateur            : {profil['usr']}")
-    print(f"  Mode producteur        : {profil['mode_producteur']}")
+    mode = profil['mode_producteur']
+    print(f"  Auteur des données     : {_LIBELLE_MODE_PRODUCTEUR.get(mode, mode)}")
     print(f"  Email contact commune  : {profil.get('contact_email_commune') or '(aucun)'}")
     print(f"  URL portail            : {profil.get('url_portail') or '(non renseignée)'}")
 
@@ -544,7 +568,8 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     modes_par_jdd = resoudre_modes_par_jdd(organisation_producteur, organisation_par_jdd)
 
     forcer_maj = _demander_oui_non(
-        "Mettre à jour les JDD déjà publiés même sans changement détecté", defaut=False,
+        "Republier aussi les données qui n'ont pas changé depuis la dernière fois "
+        "(plus lent, rarement nécessaire)", defaut=False,
     )
 
     dossier_sortie = os.path.join(".sortie_rudi_commune_starterkit", commune["code_insee"])
@@ -585,8 +610,8 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         conf["url_portail"] = profil["url_portail"]
 
     supprimer_organisation = _demander_oui_non(
-        "Supprimer aussi l'organisation de la commune (si plus aucun JDD du nœud ne la "
-        "référence)", defaut=False,
+        "Supprimer aussi l'organisation de la commune (si aucune autre donnée du nœud "
+        "ne s'y réfère encore)", defaut=False,
     )
 
     rapport = vider_commune(conf, profil["code_insee"], supprimer_organisation=supprimer_organisation)
@@ -641,7 +666,8 @@ def executer_interactif() -> int:
             if choix.isdigit() and 1 <= int(choix) <= len(profils):
                 profil = profils[int(choix) - 1]
                 action = _demander(
-                    "  1) Lancer la moisson  2) Vider cette commune — Action", defaut="1",
+                    "  1) Publier/mettre à jour les données  2) Annuler une publication "
+                    "de test (vider cette commune) — Action", defaut="1",
                 )
                 if action == "2":
                     return _vider_commune_interactif(profil, chemin_profils)
@@ -683,14 +709,18 @@ def executer_interactif() -> int:
         print("  Poursuite avec un nouveau profil pour cette commune.\n")
 
     # Étape 2 : diagnostic de couverture structurelle
-    print("Diagnostic de couverture (structurel uniquement) :")
+    print("Avant de commencer, un aperçu rapide de ce qui pourra être publié pour votre "
+          "commune :")
     for cle, statut in diagnostic_couverture_structurelle(commune).items():
-        print(f"  - {cle} : {statut}")
+        print(f"  - {_libelle_jdd(cle)} : {statut}")
     print()
 
     # Étape 3 : URL du nœud
     while True:
-        url_noeud = _demander("URL du nœud RUDI (https://...)")
+        url_noeud = _demander(
+            "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
+            "de votre territoire",
+        )
         try:
             url_noeud = valider_url_noeud(url_noeud)
             break
@@ -702,16 +732,19 @@ def executer_interactif() -> int:
                     break
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
-    url_catalog = _demander("URL catalogue (vide = déduite de l'URL du nœud)", defaut="") or None
+    url_catalog = _demander(
+        "URL catalogue (laissez vide dans la grande majorité des cas — déduite "
+        "automatiquement)", defaut="",
+    ) or None
     url_portail = _demander(
-        "URL du portail (optionnelle — sans elle, --vider-commune restera "
-        "indisponible pour cette commune)", defaut="",
+        "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+        "d'annuler une publication de test plus tard)", defaut="",
     ) or None
 
     # Étape 4 : identifiants
-    usr = _demander("Nom d'utilisateur")
+    usr = _demander("Nom d'utilisateur (fourni par l'administrateur du nœud)")
     try:
-        pwd = lire_mot_de_passe()
+        pwd = lire_mot_de_passe("Mot de passe (fourni par l'administrateur du nœud) : ")
     except AbsenceTerminalError as e:
         print(f"  {e}")
         return EXIT_ECHEC_TOTAL
@@ -765,7 +798,8 @@ def executer_interactif() -> int:
 
     # Étape 8 : mise à jour
     forcer_maj = _demander_oui_non(
-        "Mettre à jour les JDD déjà publiés même sans changement détecté", defaut=False,
+        "Republier aussi les données qui n'ont pas changé depuis la dernière fois "
+        "(plus lent, rarement nécessaire)", defaut=False,
     )
 
     # Étape 9 : exécution
