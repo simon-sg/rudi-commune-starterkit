@@ -166,6 +166,109 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
   `LICENCES_DATAGOUV_CONNUES` du toolkit au lieu de sa copie locale~~ — **fait** (Axe 1),
   voir Journal.
 
+## Backlog v5 — idées non planifiées (2026-11-11)
+
+- **Détection des doublons de commune** : à l'ajout d'une commune déjà présente sur le
+  nœud (même code INSEE ou organisation déjà existante), demander explicitement à
+  l'utilisateur s'il veut fusionner avec l'existant ou en créer une nouvelle — plutôt
+  que de laisser deux entrées coexister silencieusement.
+- **Menu « Quitter » au CLI** : ajouter une option de sortie explicite dans le menu
+  interactif (actuellement pas de sortie propre listée).
+- **Attente de validation animateur, sans relance complète** : après une demande de
+  création/suppression d'organisation, proposer à l'utilisateur d'attendre que
+  l'animateur RUDI valide (plutôt que de quitter le script). Si l'animateur valide
+  pendant l'attente, permettre d'indiquer directement au script que c'est fait pour
+  reprendre la suite du traitement sans avoir à relancer tout le run depuis le début.
+
+## Backlog v5 — 3 chantiers cadrés (2026-11-11, à implémenter dans 3 sessions séparées)
+
+Suite à une phase de recherche/analyse dédiée (3 forks indépendants), pour préparer 3
+sessions d'implémentation distinctes. Décisions déjà tranchées par Simon notées
+explicitement ; le reste reste à affiner en session d'implémentation.
+
+### A. Scénario de recettage E2E (outil interne, hors starterkit)
+
+**Important, tranché explicitement par Simon** : ce scénario est un outil de recettage
+interne, **séparé du code du starterkit** — le starterkit lui-même ne doit **jamais**
+avoir de compte animateur portail. Simon fournira les identifiants animateur
+directement à Claude Code (en session d'implémentation, pas en session de cadrage)
+pour que la validation création/suppression d'organisation puisse être automatisée
+**côté outil de recettage uniquement**, en appelant l'API/le workflow Strukture que
+l'animateur utilise réellement dans l'UI (à identifier — aucune API de ce type n'est
+exposée/wrappée par `rudi-harvest-toolkit`/`rudi-commune-starterkit` aujourd'hui,
+volontairement : la frontière de sécurité actuelle du socle doit rester intacte).
+
+Forme recommandée : hybride — script Python autonome (hors `tests/`, qui restent
+zéro-réseau) pour tout ce qui est automatisable (ajout, vérifications réelles nœud +
+portail, vidage, idempotence, `--forcer-maj`, cas pièges géographiques Corse/DOM-TOM/
+arrondissements municipaux/communes fusionnées), + la validation animateur désormais
+automatisable (voir ci-dessus, grâce aux identifiants fournis) plutôt qu'un point
+d'arrêt humain.
+
+**Décidé** : toujours `--vider-commune` en fin de run (nœud reste propre entre deux
+recettages).
+
+**« Mettre à jour une organisation »** : `demander_mise_a_jour_organisation()` est du
+code mort (aucun chemin ne l'appelle) — la lecture la plus probable de la demande
+initiale de Simon est l'**idempotence** (relancer sans rien changer côté source → rien
+republié) et `--forcer-maj` (republie même sans changement détecté), à tester comme 2
+cas distincts. Une vraie "mise à jour du nom/description d'une organisation" n'a pas de
+chemin de code existant — si c'est vraiment ça qui est voulu, c'est un prérequis de
+développement, pas un scénario de test sur l'existant, à clarifier en session
+d'implémentation.
+
+**Restent à trancher en session d'implémentation** : communes pièges ciblées
+explicitement (liste fixe de ~5-8 communes connues comme fragiles) + 1 commune
+aléatoire "normale" par run, vs sélection purement aléatoire sur tout le territoire ;
+fréquence (ponctuel avant release vs cron régulier) ; granularité du rapport (pass/fail
+simple vs rapport détaillé par module, conservé comme preuve de non-régression).
+
+### B. Mode exécutable plug-n-play (agent municipal non technique)
+
+**Décidé** : public = agent municipal non technique, usage ponctuel pour sa propre
+commune — pas Simon lui-même. Conséquence directe : URL nœud/catalogue/portail
+**figées en dur dans le build** packagé, seuls le code INSEE et les identifiants
+restent à saisir (pas tout le formulaire actuel du CLI).
+
+**Approche recommandée** : PyInstaller (ou Nuitka) `--onefile` autour de l'assistant
+interactif existant (`cli.py::executer_interactif`) — déjà un wizard pas-à-pas sans
+flag à connaître, donc pas de réécriture d'UX nécessaire pour une v1. `.html`/Pyodide
+écarté (CORS vers data.gouv.fr/RUDI bloquant de toute façon, `pyarrow` sans build
+WASM). Point de vigilance : tous les 14 modules JDD sont importés au chargement
+(`registre.py`), donc `pyarrow` (utilisé seulement par `elections.py`) gonfle
+systématiquement l'exécutable à ~150-250 Mo.
+
+**Restent à trancher en session d'implémentation** : quels identifiants l'agent
+municipal utilisera (compte RUDI dédié par commune vs compte partagé communiqué par
+Simon — détermine si `--organisation-producteur commune` devient le seul mode
+pertinent) ; Windows seul ou aussi Mac/Linux (CI multi-OS dès la v1 ?) ; simple console
+ou vraie fenêtre (`pywebview`) ; stratégie de mise à jour/distribution (taille ~150-250
+Mo par version, lien stable via GitHub Actions).
+
+### C. Guide utilisateur HTML (GitHub Pages)
+
+**Décidé** : public prioritaire = élus/agents municipaux (ton institutionnel : quelles
+données sur leur commune sont publiées, comment demander un retrait) — pas les
+citoyens grand public en priorité.
+
+**Approche recommandée** : MkDocs + thème Material, déployé via une Action GitHub
+Pages. Génération **automatique** des 13 fiches JDD depuis le code réaliste et peu
+coûteuse : chaque module expose déjà `TITRE`/`SYNOPSIS_PATRON`/`DESCRIPTION_PATRON`/
+`THEME`/`FREQUENCE_MAJ` comme constantes énumérées par `registre.lister_modules()` —
+un générateur peut les extraire sans dupliquer, sans risque de divergence doc/code à
+entretenir à la main (`DESCRIPTION_PATRON` à rendre avec une commune d'exemple, pas
+laisser les accolades littérales). Jekyll écarté (rendu daté), Docusaurus écarté
+(écosystème Node disproportionné dans un repo 100% Python).
+
+**Synergie avec B** : une Action GitHub qui build l'exécutable à chaque release
+pourrait vivre à côté de celle qui déploie ce guide — même mécanique de distribution.
+
+**Restent à trancher en session d'implémentation** : contenu 100% automatique (y
+compris intro/FAQ) ou pages d'intro rédigées à la main une fois + fiches JDD
+automatiques ; profondeur par fiche (titre+synopsis seul, ou aussi limites/glossaires
+déjà écrits dans le code) ; renvoi vers de vraies fiches publiées en exemple ou guide
+générique ; même repo (`docs/`) ou dépôt séparé.
+
 ## Décisions actées v4
 
 - **2026-11-11 (Axe 5, incrément A)** : périmètre régionales/départementales/
