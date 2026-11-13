@@ -1,0 +1,66 @@
+site_name: Les données ouvertes de votre commune
+site_description: >-
+  Guide d'utilisation de rudi-commune-starterkit et présentation des données publiées
+  pour une commune — à l'intention d'un agent municipal non technique.
+site_url: ""
+
+theme:
+  name: material
+  language: fr
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Passer au thème sombre
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Passer au thème clair
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+# Nav volontairement limitée aux pages non générées dynamiquement par JDD — « Les
+# données publiées » ne référence que donnees/index.md : les 13 fiches (une par JDD
+# de registre.py) sont atteintes depuis cet index et par la recherche, jamais listées
+# ici en dur, pour ne jamais avoir à toucher ce fichier quand un JDD est ajouté/retiré
+# (voir guide/generer.py).
+nav:
+  - Accueil: index.md
+  - Guide d'utilisation:
+      - Prérequis: guide/prerequis.md
+      - Télécharger et lancer l'outil: guide/telecharger.md
+      - Premiers avertissements: guide/avertissements.md
+      - Le pas-à-pas, écran par écran: guide/pas-a-pas.md
+      - Relancer et mettre à jour: guide/relancer.md
+      - Annuler une publication de test: guide/vider.md
+      - En cas de problème: guide/depannage.md
+  - Les données publiées: donnees/index.md
+  - FAQ: faq.md
+  - Glossaire: glossaire.md
+  - Licences et réutilisation: licences.md
+
+markdown_extensions:
+  - admonition
+  - def_list
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search

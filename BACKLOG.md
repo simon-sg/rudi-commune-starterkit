@@ -259,6 +259,8 @@ Mo par version, lien stable via GitHub Actions).
 
 ### C. Guide utilisateur HTML (GitHub Pages)
 
+Statut : **fait** (2026-11-13). Voir Journal pour le détail de l'implémentation.
+
 **Décidé** : public prioritaire = élus/agents municipaux (ton institutionnel : quelles
 données sur leur commune sont publiées, comment demander un retrait) — pas les
 citoyens grand public en priorité.
@@ -275,11 +277,31 @@ laisser les accolades littérales). Jekyll écarté (rendu daté), Docusaurus é
 **Synergie avec B** : une Action GitHub qui build l'exécutable à chaque release
 pourrait vivre à côté de celle qui déploie ce guide — même mécanique de distribution.
 
-**Restent à trancher en session d'implémentation** : contenu 100% automatique (y
-compris intro/FAQ) ou pages d'intro rédigées à la main une fois + fiches JDD
-automatiques ; profondeur par fiche (titre+synopsis seul, ou aussi limites/glossaires
-déjà écrits dans le code) ; renvoi vers de vraies fiches publiées en exemple ou guide
-générique ; même repo (`docs/`) ou dépôt séparé.
+**Tranché en session d'implémentation (2026-11-13)** : contenu 100% généré (aucun
+Markdown édité à la main, y compris intro/FAQ — voir `guide/contenu_statique.py`) ;
+fiches JDD simples (titre/synopsis/description/thème/fréquence, les 5 constantes
+module-level déjà écrites à la main — glossaire/limites, dépendants d'une commune
+réelle, laissés à la vraie fiche RUDI, vers laquelle chaque fiche renvoie) ; commune
+d'exemple fixe (Gévezé, cohérente avec les fixtures de test du dépôt), pas une
+« vraie » commune choisie au hasard ; même dépôt (`docs/`, jamais versionné —
+reconstruit par `guide/generer.py`), synergie de CI avec le chantier B confirmée.
+
+**Ajout non prévu au cadrage initial, fait dans la même session** : une partie
+« Guide d'utilisation » (prérequis, téléchargement, avertissements Windows normaux,
+pas-à-pas écran par écran, relancer/mettre à jour, annuler une publication de test,
+dépannage) insérée entre l'accueil et les fiches de données — demande explicite de
+Simon après relecture du plan initial, le cadrage du 2026-11-11 ne couvrait que la
+présentation des données, pas le mode d'emploi de l'outil lui-même (rendu pertinent
+entre-temps par l'implémentation réelle du chantier B, voir plus haut). Cette partie
+cite mot pour mot des invites du wizard interactif (`cli.py`) — `CITATIONS_WIZARD_A_
+VERIFIER` dans `contenu_statique.py` + `tests/test_guide.py::TestAntiDeriveWizard`
+détectent toute dérive future entre les deux.
+
+**Au passage, reformulation UX du wizard interactif lui-même** (`cli.py`), demandée
+par Simon en écrivant ce tutoriel : jargon interne (clé technique de JDD, « producteur
+Rudi », « la moisson », nom d'un flag CLI cité dans un prompt interactif) remplacé par
+du langage métier — voir Journal pour le détail. Comportement et codes de sortie
+inchangés.
 
 ## Décisions actées v4
 
@@ -449,6 +471,43 @@ générique ; même repo (`docs/`) ou dépôt séparé.
   Enrichissement optionnel (glossaire), comme la jointure de l'incrément B : un échec
   dégrade proprement sans faire échouer le run. Suite complète verte (421 tests).
   **Axe 5 désormais complet (incréments A+B+C) — release 0.5.0.**
+- 2026-11-13 : chantier C (guide utilisateur HTML, MkDocs Material) implémenté et
+  testé — `guide/generer.py` + `guide/contenu_statique.py` (nouveau package hors
+  `src/`, build-time only) génèrent entièrement `docs/` (jamais versionné) à partir de
+  `registre.lister_modules()` pour les 13 fiches JDD et du contenu statique pour le
+  reste (accueil, FAQ, glossaire, licences) — zéro appel réseau, commune d'exemple
+  fixe (Gévezé). Ajout, demandé par Simon en cours de session et non prévu au cadrage
+  initial, d'une partie « Guide d'utilisation » (7 pages : prérequis, téléchargement,
+  avertissements Windows normaux, pas-à-pas écran par écran, relancer/mettre à jour,
+  annuler une publication de test, dépannage) entre l'accueil et les fiches JDD,
+  rendue pertinente par l'implémentation déjà faite du chantier B. Cette partie cite
+  mot pour mot des invites du wizard interactif (`cli.py`) — contrat statique anti-
+  dérive (`tests/test_guide.py::TestAntiDeriveWizard`, 8 nouveaux tests) vérifiant que
+  ces citations restent synchronisées dans les deux sens. `mkdocs.yml` liste les 7
+  pages du tutoriel en dur dans sa nav, jamais les 13 fiches JDD (seul
+  `donnees/index.md` y figure — ajouter/retirer un JDD n'implique jamais de toucher
+  `mkdocs.yml`). Correctif découvert en écrivant le générateur :
+  `immobilier_dvf.py::DESCRIPTION_PATRON` référençait un placeholder `{annees}` mort
+  (jamais formaté par le code de publication réel, qui utilise
+  `construire_description_structuree()`) — supprimé, sans impact sur la publication.
+  Déploiement : `.github/workflows/deploy-docs.yml`, manuel (`workflow_dispatch`),
+  même convention que `build-executable.yml` — reste à activer Pages une fois dans
+  Settings du dépôt GitHub (action humaine).
+
+  **Au passage, reformulation UX du wizard interactif** (`cli.py`), demandée
+  explicitement par Simon à l'occasion de la rédaction de ce tutoriel — jargon interne
+  remplacé par du langage métier pour un agent municipal non technique : clé technique
+  de JDD affichée nulle part (son `TITRE` humain partout, y compris dans le rapport
+  final et le mode « producteur par JDD »), « Qui doit apparaître comme producteur
+  Rudi ? » → « Qui doit être présenté comme l'auteur de vos données sur le portail ? »
+  (options reformulées en conséquence), mode producteur traduit en clair sur un profil
+  repris (`_LIBELLE_MODE_PRODUCTEUR`), nom du flag `--vider-commune` retiré d'un prompt
+  interactif (jamais vu par cet agent), contexte ajouté sur la portée de l'email de
+  contact et l'origine des identifiants, « l'animateur du portail » clarifié au premier
+  usage (« la personne qui valide les nouvelles organisations »). Comportement et
+  codes de sortie inchangés — vérifié avant modification que les tests ne pinnent pas
+  le texte des prompts (mock de `builtins.input` par position, jamais par contenu).
+  Suite complète verte (472 tests, +8 vs avant ce chantier).
 
 ## Axe 4 — fait (2026-11-11)
 

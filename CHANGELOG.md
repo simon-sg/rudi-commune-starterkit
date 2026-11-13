@@ -2,6 +2,23 @@
 
 ## Non publié
 
+### Guide utilisateur HTML (GitHub Pages)
+
+Nouveau site statique (MkDocs Material, `guide/` + `docs/` jamais versionné) pour un
+agent municipal non technique : une partie « Guide d'utilisation » (prérequis,
+téléchargement, avertissements Windows normaux, pas-à-pas écran par écran,
+relancer/mettre à jour, annuler une publication de test, dépannage) suivie des 13
+fiches de données regroupées par thème, puis FAQ/glossaire/licences. Généré
+entièrement depuis le code (`registre.py` pour les fiches, `guide/contenu_statique.py`
+pour le reste) — aucun Markdown édité à la main, aucun appel réseau à la génération.
+Déploiement manuel (`.github/workflows/deploy-docs.yml`, GitHub Pages).
+
+### Reformulation du wizard interactif pour un agent municipal non technique
+
+`cli.py` : jargon interne (clé technique de JDD, « producteur Rudi », « la moisson »,
+nom d'un flag CLI cité dans un prompt interactif) remplacé par du langage métier —
+voir BACKLOG.md pour le détail. Comportement et codes de sortie inchangés.
+
 ### Backlog v5 — doublon d'organisation, 404 DECP, menu Quitter, attente validation
 
 4 corrections ponctuelles trouvées en testant l'exécutable municipal sur un nœud réel

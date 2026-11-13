@@ -1,0 +1,60 @@
+name: Déployer le guide utilisateur (GitHub Pages, manuel)
+
+# Déclenchement manuel uniquement, comme build-executable.yml : un déploiement de
+# documentation publique n'est pas quelque chose qu'on veut voir partir
+# automatiquement sur un push, surtout tant que le contenu éditorial évolue.
+# Re-déclencher ce workflow après chaque nouvelle release de l'exécutable (voir
+# packaging/README.md) tient le lien de téléchargement du guide à jour.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
+        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@main"
+
+      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+        run: pip install --no-deps -e .
+
+      - name: Installer les dépendances restantes + outils de build du guide
+        run: pip install requests keyring pytest mkdocs-material
+
+      - name: Tests (filet de régression avant tout déploiement)
+        run: pytest
+
+      - name: Générer le contenu du guide (docs/, jamais versionné)
+        run: python -m guide.generer
+
+      - name: Build MkDocs (mode strict : tout lien/page manquant fait échouer le build)
+        run: mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
