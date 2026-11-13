@@ -442,6 +442,32 @@ def _tester_connexion_avec_repli_tls(conf: dict) -> bool:
     return False
 
 
+def _executer_run_avec_attente_validation(**kwargs) -> int:
+    """Wrapper interactif autour de :func:`executer_run` (backlog v5) — jamais utilisé
+    en mode scriptable, qui n'a pas d'utilisateur à qui demander d'attendre.
+
+    Si le run se termine en attente de validation de l'organisation par l'animateur
+    du portail (``EXIT_EN_ATTENTE_VALIDATION``), proposer de quitter pour relancer
+    plus tard obligeait jusqu'ici à tout rejouer depuis le début. Ici, on propose de
+    vérifier sur demande (pas de polling automatique en tâche de fond, pour rester
+    aussi simple que le reste du CLI) et de reprendre directement dès que validée —
+    en rappelant ``executer_run()`` avec les **mêmes** paramètres : grâce au hash
+    d'état (``doit_republier()``), les JDD déjà publiés sans changement sont sautés
+    à ce 2e appel, seuls ceux bloqués par l'organisation sont réellement traités. Pas
+    une relance complète, même si l'appel ressemble à la 1ère."""
+    code = executer_run(**kwargs)
+    while code == EXIT_EN_ATTENTE_VALIDATION:
+        reponse = input(
+            "\n  [Entrée] pour vérifier si l'animateur a validé et reprendre, "
+            "'q' pour quitter et relancer plus tard : "
+        ).strip().lower()
+        if reponse in ("q", "quitter"):
+            break
+        print()
+        code = executer_run(**kwargs)
+    return code
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -524,7 +550,7 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     dossier_sortie = os.path.join(".sortie_rudi_commune_starterkit", commune["code_insee"])
     chemin_etat = os.path.join(".etat_rudi_commune_starterkit", f"{commune['code_insee']}.json")
     print()
-    return executer_run(
+    return _executer_run_avec_attente_validation(
         commune=commune, conf=conf, modes_par_jdd=modes_par_jdd,
         contact_email_commune=contact_email_commune, forcer_maj=forcer_maj,
         only=None, skip=None, dry_run=False,
@@ -605,8 +631,11 @@ def executer_interactif() -> int:
         for i, p in enumerate(profils, start=1):
             print(f"  {i}) {p['nom']} ({p['code_insee']}) — {p['url_noeud']}")
         print("  0) Nouvelle commune")
+        print("  q) Quitter")
         while True:
             choix = _demander("Reprendre quelle commune", defaut="0")
+            if choix.strip().lower() in ("q", "quitter"):
+                return EXIT_SUCCES
             if choix in ("0", ""):
                 break
             if choix.isdigit() and 1 <= int(choix) <= len(profils):
@@ -637,6 +666,21 @@ def executer_interactif() -> int:
         f"  → {commune['nom']} ({commune['code_insee']}), {commune['departement']} "
         f"({commune['region']}), population {commune.get('population') or '?'}\n"
     )
+
+    # Détection des doublons de commune (backlog v5) : rien ne signalait qu'un profil
+    # existe déjà pour cette commune (éventuellement sur un autre nœud) quand on passe
+    # par « 0) Nouvelle commune » plutôt que par la liste de reprise ci-dessus — risque
+    # de créer un 2e profil local pour la même commune sans s'en rendre compte.
+    profils_meme_commune = [p for p in profils if p["code_insee"] == commune["code_insee"]]
+    if profils_meme_commune:
+        print("  Cette commune a déjà un profil enregistré :")
+        for p in profils_meme_commune:
+            print(f"    - {p['url_noeud']}")
+        if len(profils_meme_commune) == 1 and _demander_oui_non(
+            "  Reprendre ce profil existant au lieu d'en créer un nouveau", defaut=True,
+        ):
+            return _executer_depuis_profil(profils_meme_commune[0], chemin_profils)
+        print("  Poursuite avec un nouveau profil pour cette commune.\n")
 
     # Étape 2 : diagnostic de couverture structurelle
     print("Diagnostic de couverture (structurel uniquement) :")
@@ -728,7 +772,7 @@ def executer_interactif() -> int:
     dossier_sortie = os.path.join(".sortie_rudi_commune_starterkit", commune["code_insee"])
     chemin_etat = os.path.join(".etat_rudi_commune_starterkit", f"{commune['code_insee']}.json")
     print()
-    return executer_run(
+    return _executer_run_avec_attente_validation(
         commune=commune, conf=conf, modes_par_jdd=modes_par_jdd,
         contact_email_commune=contact_email_commune, forcer_maj=forcer_maj,
         only=None, skip=None, dry_run=False,

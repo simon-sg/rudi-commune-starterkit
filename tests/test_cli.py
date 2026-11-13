@@ -727,6 +727,117 @@ class TestExecuterInteractifRegistre(unittest.TestCase):
         ):
             self.assertEqual(cli.executer_interactif(), cli.EXIT_ECHEC_TOTAL)
 
+    def test_choix_q_quitte_proprement(self):
+        """Backlog v5 : menu « Quitter » — jusqu'ici seul Ctrl+C permettait de sortir
+        proprement de cette boucle."""
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[_PROFIL_GEVEZE]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune") as m_resoudre, \
+             mock.patch("builtins.input", side_effect=["q"]):
+            code = cli.executer_interactif()
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_resoudre.assert_not_called()
+
+
+class TestExecuterInteractifDetectionDoublonCommune(unittest.TestCase):
+    """Backlog v5 : rien ne signalait qu'un profil existe déjà pour cette commune
+    (éventuellement sur un autre nœud) quand on passe par « 0) Nouvelle commune »
+    plutôt que par la liste de reprise."""
+
+    def test_un_seul_profil_existant_et_acceptation_reprend_directement(self):
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[_PROFIL_GEVEZE]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli._executer_depuis_profil", return_value=0,
+             ) as m_reprise, \
+             mock.patch("builtins.input", side_effect=["0", "35120", "o"]):
+            code = cli.executer_interactif()
+        self.assertEqual(code, 0)
+        m_reprise.assert_called_once_with(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+
+    def test_un_seul_profil_existant_et_refus_poursuit_la_saisie(self):
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[_PROFIL_GEVEZE]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli._executer_depuis_profil",
+             ) as m_reprise, \
+             mock.patch("builtins.input", side_effect=["0", "35120", "non"]):
+            # S'arrête à la question suivante (URL du nœud, jamais saisie ici) : la
+            # saisie se poursuit normalement après le refus de reprendre l'existant.
+            with self.assertRaises(StopIteration):
+                cli.executer_interactif()
+        m_reprise.assert_not_called()
+
+    def test_aucun_profil_existant_namorce_pas_la_question(self):
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch("builtins.input", side_effect=["35120"]):
+            with self.assertRaises(StopIteration):
+                cli.executer_interactif()
+
+    def test_plusieurs_profils_existants_signale_sans_proposer_de_reprise_automatique(self):
+        autre_noeud = {**_PROFIL_GEVEZE, "url_noeud": "https://autre-noeud"}
+        with mock.patch(
+            "rudi_commune_starterkit.cli.charger_profils",
+            return_value=[_PROFIL_GEVEZE, autre_noeud],
+        ), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli._executer_depuis_profil",
+             ) as m_reprise, \
+             mock.patch("builtins.input", side_effect=["0", "35120"]):
+            # Ambiguïté (2 nœuds) : pas de question oui/non posée, la saisie se
+            # poursuit directement — s'arrête à l'URL du nœud, jamais saisie ici.
+            with self.assertRaises(StopIteration):
+                cli.executer_interactif()
+        m_reprise.assert_not_called()
+
+
+class TestExecuterRunAvecAttenteValidation(unittest.TestCase):
+    """Backlog v5 : reprendre après validation de l'animateur sans tout relancer."""
+
+    _KWARGS = {"commune": _GEVEZE, "conf": _CONF, "modes_par_jdd": {},
+               "contact_email_commune": None, "forcer_maj": False,
+               "only": None, "skip": None, "dry_run": False,
+               "dossier_sortie": "/d", "chemin_etat": "/e"}
+
+    def test_pas_dattente_ne_demande_rien(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.executer_run", return_value=cli.EXIT_SUCCES,
+        ) as m_run, mock.patch("builtins.input") as m_input:
+            code = cli._executer_run_avec_attente_validation(**self._KWARGS)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_run.assert_called_once_with(**self._KWARGS)
+        m_input.assert_not_called()
+
+    def test_q_quitte_sans_relancer_executer_run(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.executer_run",
+            return_value=cli.EXIT_EN_ATTENTE_VALIDATION,
+        ) as m_run, mock.patch("builtins.input", side_effect=["q"]):
+            code = cli._executer_run_avec_attente_validation(**self._KWARGS)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+        m_run.assert_called_once_with(**self._KWARGS)
+
+    def test_validation_detectee_reprend_automatiquement(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.executer_run",
+            side_effect=[cli.EXIT_EN_ATTENTE_VALIDATION, cli.EXIT_SUCCES],
+        ) as m_run, mock.patch("builtins.input", side_effect=[""]):
+            code = cli._executer_run_avec_attente_validation(**self._KWARGS)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(m_run.call_count, 2)
+        for appel in m_run.call_args_list:
+            self.assertEqual(appel.kwargs, self._KWARGS)
+
+    def test_toujours_en_attente_redemande_jusquau_q(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.executer_run",
+            return_value=cli.EXIT_EN_ATTENTE_VALIDATION,
+        ) as m_run, mock.patch("builtins.input", side_effect=["", "", "q"]):
+            code = cli._executer_run_avec_attente_validation(**self._KWARGS)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+        self.assertEqual(m_run.call_count, 3)
+
 
 class TestViderCommuneInteractif(unittest.TestCase):
     def test_affiche_les_jdd_tiers(self):

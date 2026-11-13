@@ -168,17 +168,29 @@ est absent — jamais de bbox devinée. Vérifié par un test de contrat statiqu
 
 ## Backlog v5 — idées non planifiées (2026-11-11)
 
-- **Détection des doublons de commune** : à l'ajout d'une commune déjà présente sur le
-  nœud (même code INSEE ou organisation déjà existante), demander explicitement à
-  l'utilisateur s'il veut fusionner avec l'existant ou en créer une nouvelle — plutôt
-  que de laisser deux entrées coexister silencieusement.
-- **Menu « Quitter » au CLI** : ajouter une option de sortie explicite dans le menu
-  interactif (actuellement pas de sortie propre listée).
-- **Attente de validation animateur, sans relance complète** : après une demande de
-  création/suppression d'organisation, proposer à l'utilisateur d'attendre que
-  l'animateur RUDI valide (plutôt que de quitter le script). Si l'animateur valide
-  pendant l'attente, permettre d'indiquer directement au script que c'est fait pour
-  reprendre la suite du traitement sans avoir à relancer tout le run depuis le début.
+Les 3 idées ci-dessous sont **faites** (2026-11-13) :
+
+- **Détection des doublons de commune** — à l'ajout d'une commune déjà présente dans
+  le registre local (même code INSEE, éventuellement sur un autre nœud), l'assistant
+  interactif le signale désormais explicitement (branche « 0) Nouvelle commune ») et
+  propose de reprendre directement le profil existant plutôt que d'en créer un nouveau
+  sans s'en rendre compte — sauf en cas d'ambiguïté (plusieurs nœuds pour la même
+  commune), où il se contente d'avertir sans choisir à la place de l'utilisateur. Le
+  volet « organisation déjà existante sur le nœud » n'a pas eu besoin d'un prompt
+  séparé : il est déjà couvert sans silence par `executer_run()` (message explicite
+  + réutilisation via l'`organization_id` déterministe, voir plus haut).
+- **Menu « Quitter » au CLI** — option `q` explicite ajoutée au menu de reprise de
+  l'assistant interactif (jusqu'ici, seul Ctrl+C permettait de sortir proprement).
+- **Attente de validation animateur, sans relance complète** — nouveau
+  `_executer_run_avec_attente_validation()` (wrapper autour de `executer_run()`,
+  utilisé uniquement en mode interactif) : si le run se termine en attente de
+  validation (`EXIT_EN_ATTENTE_VALIDATION`), propose de vérifier sur demande
+  ([Entrée] pour vérifier, `q` pour quitter) plutôt que d'obliger à relancer tout le
+  script. Grâce au mécanisme de hash/état déjà en place (`doit_republier()`), rappeler
+  `executer_run()` une fois validée ne refait pas le travail déjà fait — seuls les JDD
+  bloqués par l'organisation sont traités au 2e appel.
+
+9 nouveaux tests (`test_cli.py`), suite complète verte (462 tests).
 
 ## Backlog v5 — 3 chantiers cadrés (2026-11-11, à implémenter dans 3 sessions séparées)
 
