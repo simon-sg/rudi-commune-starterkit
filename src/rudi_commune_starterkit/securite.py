@@ -275,6 +275,24 @@ def verifier_permissions_conf(chemin: str) -> None:
 
 _BACKENDS_EN_CLAIR_CONNUS = ("keyrings.alt.file.PlaintextKeyring",)
 
+# Liste blanche des backends système reconnus comme sûrs (coffre-fort natif de l'OS).
+# Bug réel corrigé le 2026-11-14 : backend_trousseau_est_sain() était une liste NOIRE
+# (seul un backend explicitement connu pour stocker en clair était refusé, tout le
+# reste — y compris un backend jamais vu — passait par défaut). Inversé en liste
+# blanche : seul un backend explicitement reconnu comme sûr passe par défaut ; un
+# backend non reconnu (ni ici, ni dans _BACKENDS_EN_CLAIR_CONNUS) est refusé par
+# précaution, mais reste contournable explicitement (voir
+# ``autoriser_backend_non_reconnu`` sur :func:`enregistrer_mot_de_passe_trousseau`/
+# :func:`lire_mot_de_passe_trousseau`) si l'utilisateur sait qu'il est légitime.
+_BACKENDS_SURS_CONNUS = (
+    "keyring.backends.Windows.WinVaultKeyring",
+    "keyring.backends.macOS.Keyring",
+    "keyring.backends.SecretService.Keyring",
+    "keyring.backends.kwallet.DBusKeyring",
+    "keyring.backends.kwallet.DBusKeyringKWallet4",
+    "keyring.backends.libsecret.Keyring",
+)
+
 
 def _nom_qualifie(obj: object) -> str:
     classe = type(obj)
@@ -282,15 +300,29 @@ def _nom_qualifie(obj: object) -> str:
 
 
 def backend_trousseau_est_sain() -> tuple[bool, str]:
-    """Résout ``keyring.get_keyring()`` et indique s'il s'agit d'un backend connu pour
-    stocker en clair. Ne lève jamais — c'est à l'appelant de décider quoi faire."""
+    """Résout ``keyring.get_keyring()`` et indique s'il figure dans la liste blanche
+    des backends système reconnus comme sûrs (voir :data:`_BACKENDS_SURS_CONNUS`) —
+    ``False`` aussi bien pour un backend connu en clair que pour un backend jamais vu.
+    Ne lève jamais — c'est à l'appelant de décider quoi faire (voir
+    ``autoriser_backend_non_reconnu`` sur :func:`enregistrer_mot_de_passe_trousseau`/
+    :func:`lire_mot_de_passe_trousseau` pour le cas « jamais vu »)."""
     backend = keyring.get_keyring()
     nom = _nom_qualifie(backend)
-    return (nom not in _BACKENDS_EN_CLAIR_CONNUS, nom)
+    return (nom in _BACKENDS_SURS_CONNUS, nom)
 
 
 class TrousseauEnClairError(RuntimeError):
     """Le backend de trousseau résolu est connu pour stocker en clair."""
+
+
+class TrousseauBackendNonReconnuError(TrousseauEnClairError):
+    """Le backend de trousseau résolu n'est ni dans la liste blanche des backends
+    connus comme sûrs, ni dans la liste des backends connus pour stocker en clair —
+    refusé par précaution (sous-classe de :class:`TrousseauEnClairError` : un
+    appelant qui n'attrape que cette dernière continue de se comporter comme avant,
+    sans régression). Contournable explicitement via
+    ``autoriser_backend_non_reconnu=True`` si l'utilisateur sait que ce backend est
+    légitime (ex. un gestionnaire de secrets d'entreprise non encore répertorié)."""
 
 
 class TrousseauIndisponibleError(RuntimeError):
@@ -313,13 +345,32 @@ def _cle_trousseau(url_noeud: str, usr: str) -> str:
     return f"{_PREFIXE_SERVICE}:{url_noeud}:{usr}"
 
 
-def enregistrer_mot_de_passe_trousseau(url_noeud: str, usr: str, mot_de_passe: str) -> None:
-    sain, nom_backend = backend_trousseau_est_sain()
-    if not sain:
+def _verifier_backend_trousseau(
+    nom_backend: str, sain: bool, *, autoriser_backend_non_reconnu: bool, action: str,
+) -> None:
+    if sain:
+        return
+    if nom_backend in _BACKENDS_EN_CLAIR_CONNUS:
         raise TrousseauEnClairError(
             f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
-            "refus d'y enregistrer un mot de passe."
+            f"refus d'y {action}."
         )
+    if not autoriser_backend_non_reconnu:
+        raise TrousseauBackendNonReconnuError(
+            f"Backend de trousseau {nom_backend!r} non reconnu comme sûr — refus par "
+            f"précaution d'y {action} (passer autoriser_backend_non_reconnu=True si "
+            "vous savez que ce backend est légitime)."
+        )
+
+
+def enregistrer_mot_de_passe_trousseau(
+    url_noeud: str, usr: str, mot_de_passe: str, *, autoriser_backend_non_reconnu: bool = False,
+) -> None:
+    sain, nom_backend = backend_trousseau_est_sain()
+    _verifier_backend_trousseau(
+        nom_backend, sain, autoriser_backend_non_reconnu=autoriser_backend_non_reconnu,
+        action="enregistrer un mot de passe",
+    )
     try:
         keyring.set_password(_cle_trousseau(url_noeud, usr), usr, mot_de_passe)
     except keyring.errors.NoKeyringError as e:
@@ -329,13 +380,14 @@ def enregistrer_mot_de_passe_trousseau(url_noeud: str, usr: str, mot_de_passe: s
         ) from e
 
 
-def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
+def lire_mot_de_passe_trousseau(
+    url_noeud: str, usr: str, *, autoriser_backend_non_reconnu: bool = False,
+) -> str | None:
     sain, nom_backend = backend_trousseau_est_sain()
-    if not sain:
-        raise TrousseauEnClairError(
-            f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
-            "refus d'y lire un mot de passe."
-        )
+    _verifier_backend_trousseau(
+        nom_backend, sain, autoriser_backend_non_reconnu=autoriser_backend_non_reconnu,
+        action="lire un mot de passe",
+    )
     try:
         return keyring.get_password(_cle_trousseau(url_noeud, usr), usr)
     except keyring.errors.NoKeyringError as e:
@@ -347,6 +399,7 @@ def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
 
 __all__ = [
     "AbsenceTerminalError",
+    "TrousseauBackendNonReconnuError",
     "TrousseauEnClairError",
     "TrousseauIndisponibleError",
     "UrlNoeudNonSecurisee",

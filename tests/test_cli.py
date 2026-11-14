@@ -485,17 +485,28 @@ class TestResoudreConfScriptable(unittest.TestCase):
 
     def test_trousseau_sans_mot_de_passe_enregistre_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
-                                   utiliser_trousseau=True)
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=False)
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None):
             with self.assertRaises(ValueError):
                 cli._resoudre_conf_scriptable(args)
 
     def test_trousseau_ok(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
-                                   utiliser_trousseau=True)
-        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret"):
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=False)
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
             conf = cli._resoudre_conf_scriptable(args)
         self.assertEqual(conf["pwd"], "secret")
+        m.assert_called_once_with("https://x", "u", autoriser_backend_non_reconnu=False)
+
+    def test_trousseau_autorise_backend_non_reconnu_transmis(self):
+        args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=True)
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
+            cli._resoudre_conf_scriptable(args)
+        m.assert_called_once_with("https://x", "u", autoriser_backend_non_reconnu=True)
 
 
 class TestExecuterScriptable(unittest.TestCase):
@@ -745,7 +756,9 @@ class TestExecuterScriptableDepuisRegistre(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0) as m_run:
             code = cli.executer_scriptable(args)
         self.assertEqual(code, 0)
-        m_pwd.assert_called_once_with(_PROFIL_GEVEZE["url_noeud"], _PROFIL_GEVEZE["usr"])
+        m_pwd.assert_called_once_with(
+            _PROFIL_GEVEZE["url_noeud"], _PROFIL_GEVEZE["usr"], autoriser_backend_non_reconnu=False,
+        )
         self.assertEqual(
             m_run.call_args.kwargs["modes_par_jdd"][organisations.POPULATION],
             _PROFIL_GEVEZE["mode_producteur"],
