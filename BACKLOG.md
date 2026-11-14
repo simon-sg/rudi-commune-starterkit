@@ -1,4 +1,4 @@
-# Backlog v3
+# Backlog
 
 Suivi d'avancement de la v3 (demande du 2026-11-09). Statuts possibles : fait /
 en cours / bloqué — attend Simon / pas commencé. Chaque ligne porte sa propre date de

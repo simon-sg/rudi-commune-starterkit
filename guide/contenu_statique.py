@@ -574,11 +574,15 @@ propre « nœud » RUDI — le serveur qui stocke effectivement les données —
 
 ## Est-ce que mes données personnelles sont publiées ?
 
-Non. Les 13 données décrites dans ce guide sont toutes des données publiques agrégées
-ou déjà ouvertes par d'autres administrations (INSEE, DGFiP, data.gouv.fr...) — aucune
-donnée personnelle nominative n'est publiée par cet outil. Les coordonnées de contact
-qui apparaissent sur certaines fiches sont celles d'un service (la mairie, un
-organisme producteur), jamais celles d'une personne privée.
+Non, à une exception près. Les 13 données décrites dans ce guide sont très
+majoritairement des données publiques agrégées ou déjà ouvertes par d'autres
+administrations (INSEE, DGFiP, data.gouv.fr...). La seule exception est le nom et le
+prénom des élus en mandat (donnée « Élus ») : ils sont republiés précisément parce
+qu'il s'agit d'un mandat public (une fonction élective), et uniquement avec une liste
+de colonnes volontairement restreinte — ni date de naissance, ni catégorie
+socio-professionnelle, ni sexe. Les coordonnées de contact qui apparaissent sur
+certaines fiches sont celles d'un service (la mairie, un organisme producteur), jamais
+celles d'une personne privée.
 
 ## C'est quoi une « licence ouverte » ?
 

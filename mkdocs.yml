@@ -2,7 +2,7 @@ site_name: Les données ouvertes de votre commune
 site_description: >-
   Guide d'utilisation de rudi-commune-starterkit et présentation des données publiées
   pour une commune — à l'intention d'un agent municipal non technique.
-site_url: ""
+site_url: https://simon-sg.github.io/rudi-commune-starterkit/
 
 theme:
   name: material

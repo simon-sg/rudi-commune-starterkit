@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+*.exe
 .venv*/
 
 # Guide utilisateur HTML (MkDocs) : entièrement généré par guide/generer.py à partir
@@ -25,6 +26,10 @@ conf/organisation_par_jdd*.json
 
 # Cache DECP partagé (v3, Axe 4) — CSV.gz ~435 Mo, jamais par commune, jamais versionné
 .cache_decp/
+
+# Cache RNE partagé (Répertoire National des Élus) — fichier national, jamais par commune,
+# jamais versionné
+.cache_rne/
 
 # Registre de communes (emails de contact, pas de mot de passe — reste local quand même)
 .rudi_commune_starterkit/

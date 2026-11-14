@@ -41,13 +41,17 @@ if __name__ == "__main__":
     while True:
         code = _executer_une_fois()
         if code != 0:
-            # Avertissement ci-dessous : la création d'organisation (côté
-            # rudi_harvest_toolkit) n'est pas garantie idempotente — un échec
-            # ambigu (ex. serveur lent) peut avoir réussi côté nœud sans que la
-            # réponse soit arrivée, et un nouvel essai immédiat peut alors créer
-            # une organisation en double si le nœud n'a pas encore fini d'indexer
-            # la précédente. Vrai correctif (organization_id déterministe/
-            # idempotent côté toolkit) hors scope de ce fichier — voir le backlog.
+            # Avertissement ci-dessous : la création d'organisation est
+            # désormais protégée contre le doublon grâce à l'id déterministe du
+            # toolkit (`_organization_id_deterministe()` dans
+            # rudi_harvest_toolkit/rudi_client.py — UUID5 dérivé du nom), donc
+            # une 2e tentative vise la même ressource au lieu d'en créer une en
+            # double. L'avertissement reste en revanche légitime pour les
+            # autres opérations de ce bloc (publication de JDD, upload de média),
+            # qui n'ont pas cette même garantie : un échec ambigu (ex. serveur
+            # lent) peut avoir réussi côté nœud sans que la réponse soit
+            # arrivée, et un nouvel essai immédiat peut alors créer un doublon
+            # si le nœud n'a pas encore fini d'indexer la précédente.
             print(
                 "\nÉchec (ou succès partiel). Si cela s'est produit après la "
                 "création d'une organisation ou la publication d'un JDD, "
