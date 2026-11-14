@@ -12,6 +12,15 @@
   cet appel. Le GeoJSON est désormais construit localement (comme `irve.py`) et déposé
   comme un fichier normal sur le nœud — la carte ne dépend plus de ce proxy, quel que
   soit le nœud qui héberge la commune.
+- **Carte « Valeurs foncières (DVF) » ajoutée** : les lignes déjà filtrées en mémoire
+  portent nativement `longitude`/`latitude` — un second média GeoJSON est désormais
+  construit depuis ces mêmes lignes (aucun téléchargement supplémentaire) et déposé
+  sur le nœud, selon le même principe que les correctifs ci-dessus. Audit des 13 JDD :
+  `irve`/`entreprises`/`adresses`/`associations` le faisaient déjà correctement,
+  `eau_potable` n'a aucune coordonnée exploitable dans sa source (déjà documenté),
+  les 5 autres (population, élections, marchés publics, délibérations, budget, élus)
+  ne portent pas de données géolocalisées ligne à ligne — aucune carte n'y est
+  pertinente.
 
 - **Détachement/archivage d'organisation sans possibilité d'attendre la
   validation** : contrairement à la création d'organisation, demander le

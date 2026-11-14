@@ -30,16 +30,26 @@ clair dans une colonne adjacente (``code_type_local``/``type_local``,
 ``code_nature_culture``/``nature_culture``) — pas besoin d'un glossaire pour ceux-là. Les
 deux identifiants réellement non triviaux sans explication (``id_mutation``,
 ``id_parcelle``) sont glossés via ``construire_description_structuree(glossaire=...)``.
+
+**Carte (2026-11-14)** : les lignes filtrées portent déjà ``longitude``/``latitude``
+natifs (colonnes de la source, confirmées ci-dessus) — un second média GeoJSON est
+construit depuis ces mêmes lignes déjà en mémoire (aucun téléchargement
+supplémentaire, contrairement à ``irve.py``/``etablissements_scolaires.py``) et déposé
+comme un fichier normal sur le nœud, jamais hybride — voir le docstring de
+``etablissements_scolaires.py`` pour le bug d'apigateway que ça évite sur un nœud
+tiers.
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 from rudi_harvest_toolkit.datagouv import get_dataset_metadata, selectionner_ressource
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.download_cache import date_fichier_cache, telecharger
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
 from rudi_harvest_toolkit.tabular import lire_csv_filtre
@@ -165,6 +175,47 @@ def moissonner(
         local_id, nom_fichier, commune["nom"],
         caption=f"Valeurs foncières (DVF), {annees_texte} - {commune['nom']} (CSV)",
     )
+    medias = [media]
+    fichiers_filtres = [chemin]
+
+    # GeoJSON construit depuis les lignes déjà filtrées en mémoire (aucun
+    # téléchargement supplémentaire) et déposé sur le nœud, jamais hybride — voir le
+    # docstring du module. La carte est un bonus, jamais au prix du CSV déjà
+    # publiable.
+    try:
+        fc = construire_feature_collection(
+            lignes, champ_lon="longitude", champ_lat="latitude",
+            proprietes=["date_mutation", "valeur_fonciere", "type_local", "surface_reelle_bati"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+    except Exception as e:  # noqa: BLE001 — carte en bonus, jamais au prix du CSV déjà publiable
+        print(
+            "[immobilier_dvf] AVERTISSEMENT : construction du GeoJSON impossible "
+            f"({commune['nom']}) : {e}"
+        )
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[immobilier_dvf] AVERTISSEMENT : {nb_omises} mutation(s) sans "
+                f"coordonnées exploitables, absente(s) de la carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"immobilier_dvf_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        # Ordre obligatoire pour valider_alignement_medias() : le média FILE réellement
+        # à uploader (GeoJSON) doit précéder le média FILE déjà complet (CSV) — jamais
+        # l'inverse (corruption silencieuse, voir rudi_client.py).
+        media_geojson = media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Valeurs foncières (DVF), {commune['nom']}",
+        )
+        medias = [media_geojson, media]
+        fichiers_filtres = [chemin_geojson, chemin]
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -188,14 +239,14 @@ def moissonner(
             "demandes-de-valeurs-foncieres-geolocalisees/"
         ),
         date_source=date_fichier_cache(chemin_cache),
-        medias=[media],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[chemin],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 

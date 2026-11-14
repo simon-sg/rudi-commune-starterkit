@@ -27,6 +27,12 @@ _ENTETES = ["id_mutation", "date_mutation", "code_commune", "nom_commune", "vale
 _LIGNE_2024 = {"id_mutation": "1", "date_mutation": "2024-05-01", "code_commune": "35120",
                "nom_commune": "Gévezé", "valeur_fonciere": "150000"}
 
+_ENTETES_AVEC_COORDONNEES = _ENTETES + ["type_local", "surface_reelle_bati", "longitude", "latitude"]
+_LIGNE_AVEC_COORDONNEES = {
+    **_LIGNE_2024, "type_local": "Maison", "surface_reelle_bati": "90",
+    "longitude": "-1.791200372", "latitude": "48.219343653",
+}
+
 
 def _csv_dvf_gz(lignes, entetes=_ENTETES):
     tampon = io.StringIO()
@@ -158,6 +164,45 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         self.assertIn("</a>", html)
         self.assertIn("DVF", html)
         self.assertIn("mutations", resultat.rudi_metadata["keywords"])
+
+    def test_geojson_construit_depuis_longitude_latitude_et_depose_sur_le_noeud(self):
+        session = self._session([_LIGNE_AVEC_COORDONNEES], entetes=_ENTETES_AVEC_COORDONNEES)
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        medias_geojson = [m for m in medias if m["media_name"].endswith(".geojson")]
+        self.assertEqual(len(medias_geojson), 1)
+        self.assertEqual(medias_geojson[0]["media_type"], "FILE")
+        self.assertIn("GeoJSON", medias_geojson[0]["media_caption"])
+        self.assertNotIn("data.gouv.fr", medias_geojson[0]["connector"]["url"])
+        self.assertEqual(len(resultat.fichiers_filtres), 2)
+        self.assertTrue(resultat.fichiers_filtres[0].endswith(".geojson"))
+        self.assertTrue(resultat.fichiers_filtres[1].endswith(".csv"))
+
+    def test_media_geojson_precede_le_media_csv_dans_available_formats(self):
+        # Garde-fou valider_alignement_medias() : les deux médias FILE réellement à
+        # uploader (ni l'un ni l'autre n'est hybride ici) doivent apparaître dans le
+        # même ordre que fichiers_filtres — geojson avant csv.
+        session = self._session([_LIGNE_AVEC_COORDONNEES], entetes=_ENTETES_AVEC_COORDONNEES)
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_file = resultat.rudi_metadata["available_formats"]
+        self.assertTrue(medias_file[0]["media_name"].endswith(".geojson"))
+        self.assertTrue(medias_file[1]["media_name"].endswith(".csv"))
+
+    def test_sans_longitude_latitude_pas_de_media_geojson(self):
+        # Fixture par défaut (_ENTETES) : aucune colonne longitude/latitude — la
+        # carte est un bonus, jamais au prix du CSV déjà publiable, aucun crash.
+        session = self._session([_LIGNE_2024])
+        resultat = immobilier_dvf.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        self.assertFalse(any(m["media_name"].endswith(".geojson") for m in medias))
+        self.assertEqual(resultat.fichiers_filtres, [resultat.fichiers_filtres[0]])
+        self.assertTrue(resultat.fichiers_filtres[0].endswith(".csv"))
 
     def test_description_riche_glossaire_et_limites(self):
         session = self._session([_LIGNE_2024])
