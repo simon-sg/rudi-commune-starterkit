@@ -250,6 +250,28 @@ class TestVerifierPermissionsConf(unittest.TestCase):
             securite.verifier_permissions_conf(os.path.join(self._tmp.name, "absent.json"))
         self.assertEqual(tampon.getvalue(), "")
 
+    @unittest.skipIf(sys.platform == "win32", "chemin POSIX — os.stat() n'est appelé que hors Windows")
+    def test_fail_open_avec_avertissement_si_stat_echoue(self):
+        """Décision Simon (revue de code 2026-11-14) : fail-open explicite — une
+        course entre os.path.exists() et os.stat() (ou tout autre OSError à la
+        vérification) ne doit jamais faire planter l'appelant, mais ne doit jamais
+        non plus rester silencieuse."""
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{}")
+        # os.path.exists() avale elle-même un OSError de os.stat() (renvoie False) —
+        # il faut donc laisser son appel interne réussir normalement et ne faire
+        # échouer que le second appel, celui fait par verifier_permissions_conf(),
+        # pour simuler une vraie course entre les deux.
+        stat_reel = os.stat(self.chemin)
+        with mock.patch(
+            "rudi_commune_starterkit.securite.os.stat",
+            side_effect=[stat_reel, OSError("boom")],
+        ):
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.verifier_permissions_conf(self.chemin)  # ne lève pas
+        self.assertIn("impossible de vérifier", tampon.getvalue())
+
     def test_windows_avertit_si_acl_trop_large(self):
         with open(self.chemin, "w", encoding="utf-8") as f:
             f.write("{}")

@@ -251,7 +251,15 @@ def verifier_permissions_conf(chemin: str) -> None:
     :func:`_restreindre_acces_windows` qui n'échoue jamais). Sans ce filet, une
     restriction qui aurait silencieusement échoué à l'écriture (voir
     :func:`_restreindre_acces_windows`) ne serait jamais re-signalée — contrairement au
-    chemin POSIX, qui avertit à chaque lecture tant que le problème persiste."""
+    chemin POSIX, qui avertit à chaque lecture tant que le problème persiste.
+
+    **Fail-open explicite** (décision Simon, revue de code 2026-11-14) : si la
+    vérification elle-même échoue (``OSError`` — course avec une suppression du
+    fichier entre ``exists()`` et ``stat()``, montage réseau capricieux, panne
+    ``stat`` ponctuelle...), ne bloque jamais l'utilisation du fichier, mais ne reste
+    jamais silencieux non plus — avertit explicitement que la vérification a échoué,
+    pour ne pas laisser croire que les permissions ont été contrôlées quand elles ne
+    l'ont pas été."""
     if not os.path.exists(chemin):
         return
     if sys.platform == "win32":
@@ -265,7 +273,14 @@ def verifier_permissions_conf(chemin: str) -> None:
                 f"des permissions NTFS potentiellement trop larges ({resultat.stdout.strip()})."
             )
         return
-    mode = stat.S_IMODE(os.stat(chemin).st_mode)
+    try:
+        mode = stat.S_IMODE(os.stat(chemin).st_mode)
+    except OSError as e:
+        print(
+            f"[sécurité] Attention : impossible de vérifier les permissions de {chemin} "
+            f"({e}) — vérification ignorée, le fichier reste utilisable."
+        )
+        return
     if mode != 0o600:
         print(
             f"[sécurité] Attention : {chemin} contient des identifiants en clair avec "
