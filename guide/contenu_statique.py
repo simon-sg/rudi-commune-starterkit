@@ -100,7 +100,7 @@ Trois entrées, selon ce que vous cherchez :
     Les exemples de ce site (commune, chiffres, adresses) sont illustratifs — ils
     servent à montrer la forme des données publiées, pas leur contenu réel pour une
     commune précise. Les vraies données de votre commune sont consultables sur le
-    portail RUDI qui vous a été indiqué par l'administrateur de votre territoire.
+    portail RUDI qui vous a été indiqué par l'administrateur du nœud.
 """
 
 
@@ -269,18 +269,18 @@ avant même de commencer.
 ## 3. Adresses du nœud
 
 ```text
-URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur de
-votre territoire :
-URL catalogue (si l'administrateur de votre territoire vous en a transmis une,
-indiquez-la ici ; sinon laissez vide — la déduction automatique ne fonctionne
-pas sur tous les nœuds, notamment ceux hébergés par un tiers) [] :
+URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur du
+nœud :
+URL catalogue (si l'administrateur du nœud vous en a transmis une, indiquez-la
+ici ; sinon laissez vide — la déduction automatique ne fonctionne pas sur tous
+les nœuds, notamment ceux hébergés par un tiers) [] :
 URL du portail (optionnelle, mais recommandée — sans elle, impossible d'annuler
 une publication de test plus tard) [] :
 ```
 
 - La première adresse est **obligatoire** — celle réunie à l'étape
   [Prérequis](prerequis.md).
-- La deuxième : si l'administrateur vous en a transmis une, indiquez-la. Sinon,
+- La deuxième : si l'administrateur du nœud vous en a transmis une, indiquez-la. Sinon,
   laissez vide — mais si le programme vous signale ensuite qu'il n'arrive pas à
   joindre le catalogue, c'est le signe qu'il faut la demander à l'administrateur
   plutôt que de laisser vide.
@@ -321,7 +321,7 @@ si le nœud utilise un certificat de sécurité que Windows ne reconnaît pas (f
 sur un nœud de test), l'outil affiche un avertissement détaillé et demande de taper
 `ACCEPTER` en toutes lettres pour continuer malgré tout. **N'acceptez que si vous
 savez que ce nœud est bien celui de votre territoire** — en cas de doute, arrêtez-vous
-et contactez l'administrateur de votre nœud plutôt que de valider à l'aveugle (voir
+et contactez l'administrateur du nœud plutôt que de valider à l'aveugle (voir
 [En cas de problème](depannage.md)).
 
 ## 7. Qui doit apparaître comme auteur de vos données ?
@@ -484,7 +484,7 @@ _PAGE_DEPANNAGE = """# En cas de problème
 | Ce qui s'affiche | Ce que ça veut dire | Quoi faire |
 |---|---|---|
 | « Windows a protégé votre ordinateur » | Avertissement normal, fichier non signé | Voir [Premiers avertissements](avertissements.md) |
-| Certificat de sécurité (TLS) non reconnu | Le nœud utilise un certificat que Windows ne reconnaît pas (fréquent sur un nœud de test) | N'acceptez (`ACCEPTER`) que si vous êtes certain de l'adresse du nœud ; sinon contactez l'administrateur de votre territoire |
+| Certificat de sécurité (TLS) non reconnu | Le nœud utilise un certificat que Windows ne reconnaît pas (fréquent sur un nœud de test) | N'acceptez (`ACCEPTER`) que si vous êtes certain de l'adresse du nœud ; sinon contactez l'administrateur du nœud |
 | « Nœud injoignable » | L'adresse du nœud est incorrecte, ou le réseau/internet est indisponible | Vérifiez l'adresse (copier-coller plutôt que recopier à la main) et votre connexion internet |
 | Échec sur une seule donnée (ex. marchés publics) pendant que les autres réussissent | La source de cette donnée en particulier est temporairement indisponible | Rien à faire de votre côté — relancez plus tard, les autres données ne sont pas concernées |
 | Coupure réseau pendant une donnée volumineuse (ex. valeurs foncières) | Coupure réseau en cours de téléchargement | L'outil retente automatiquement plusieurs fois ; si l'échec persiste, réessayez depuis un réseau plus stable |
@@ -513,7 +513,7 @@ PAGES_GUIDE: dict[str, str] = {
 CITATIONS_WIZARD_A_VERIFIER = [
     "Avant de commencer, un aperçu rapide de ce qui pourra être publié pour votre",
     "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur",
-    "URL catalogue (si l'administrateur de votre territoire vous en a transmis",
+    "URL catalogue (si l'administrateur du nœud vous en a transmis une,",
     "URL du portail (optionnelle, mais recommandée — sans elle, impossible",
     "Nom d'utilisateur (fourni par l'administrateur du nœud)",
     "Mot de passe (fourni par l'administrateur du nœud)",

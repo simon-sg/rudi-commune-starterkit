@@ -720,7 +720,7 @@ def executer_interactif() -> int:
     while True:
         url_noeud = _demander(
             "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
-            "de votre territoire",
+            "du nœud",
         )
         try:
             url_noeud = valider_url_noeud(url_noeud)
@@ -734,8 +734,8 @@ def executer_interactif() -> int:
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
     url_catalog = _demander(
-        "URL catalogue (si l'administrateur de votre territoire vous en a transmis "
-        "une, indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
+        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
+        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
         "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
         defaut="",
     ) or None
