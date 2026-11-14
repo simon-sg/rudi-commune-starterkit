@@ -1,6 +1,8 @@
 """Tests de profils_communes.py — upsert composite, écriture atomique, oubli de profil."""
 import json
 import os
+import stat
+import sys
 import tempfile
 import unittest
 
@@ -78,6 +80,15 @@ class TestEnregistrerProfil(unittest.TestCase):
     def test_ecriture_atomique_pas_de_fichier_temporaire_residuel(self):
         enregistrer_profil(_PROFIL_GEVEZE, self.chemin)
         self.assertFalse(os.path.exists(f"{self.chemin}.tmp"))
+
+    @unittest.skipIf(sys.platform == "win32", "permissions POSIX uniquement")
+    def test_acces_restreint_a_lutilisateur_courant(self):
+        """Bug réel corrigé le 2026-11-14 : fichier écrit avec les permissions par
+        défaut du système (souvent lisible par le groupe/les autres) alors qu'il
+        contient l'identifiant utilisateur du nœud et l'email de contact de chaque
+        commune."""
+        enregistrer_profil(_PROFIL_GEVEZE, self.chemin)
+        self.assertEqual(stat.S_IMODE(os.stat(self.chemin).st_mode), 0o600)
 
 
 class TestOublierProfil(unittest.TestCase):

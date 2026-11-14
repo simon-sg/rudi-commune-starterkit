@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import os
 
+from .securite import restreindre_acces_fichier
+
 _CHEMIN_DEFAUT = os.path.join(".rudi_commune_starterkit", "profils.json")
 
 
@@ -53,7 +55,11 @@ def enregistrer_profil(profil: dict, chemin: str = _CHEMIN_DEFAUT) -> None:
     temporaire + ``os.replace``), jamais de verrou de fichier (outil mono-utilisateur,
     pas d'exécution concurrente à protéger). ``profil`` ne doit jamais contenir de
     mot de passe : ce module ne le vérifie pas, c'est à l'appelant de ne jamais le lui
-    donner (voir ``cli.py``, qui sépare toujours ``pwd`` du dict profil)."""
+    donner (voir ``cli.py``, qui sépare toujours ``pwd`` du dict profil). Accès
+    restreint à l'utilisateur courant (``restreindre_acces_fichier()``, bug réel
+    corrigé le 2026-11-14 : ce fichier contient malgré tout l'identifiant utilisateur
+    du nœud et l'email de contact de chaque commune, jamais un mot de passe mais
+    pas anodin non plus)."""
     profils = charger_profils(chemin)
     cle_cible = (profil["code_insee"], _normaliser_url(profil["url_noeud"]))
     profils = [
@@ -68,6 +74,7 @@ def enregistrer_profil(profil: dict, chemin: str = _CHEMIN_DEFAUT) -> None:
     chemin_temporaire = f"{chemin}.tmp"
     with open(chemin_temporaire, "w", encoding="utf-8") as f:
         json.dump(profils, f, ensure_ascii=False, indent=2)
+    restreindre_acces_fichier(chemin_temporaire)
     os.replace(chemin_temporaire, chemin)
 
 
@@ -89,6 +96,7 @@ def oublier_profil(code_insee: str, url_noeud: str, chemin: str = _CHEMIN_DEFAUT
     chemin_temporaire = f"{chemin}.tmp"
     with open(chemin_temporaire, "w", encoding="utf-8") as f:
         json.dump(profils_restants, f, ensure_ascii=False, indent=2)
+    restreindre_acces_fichier(chemin_temporaire)
     os.replace(chemin_temporaire, chemin)
     return True
 

@@ -164,6 +164,23 @@ def _restreindre_acces_windows(chemin: str) -> bool:
     return True
 
 
+def restreindre_acces_fichier(chemin: str) -> bool:
+    """Restreint l'accès à un fichier **déjà écrit** à l'utilisateur courant (``0600``
+    POSIX, ``icacls`` Windows via :func:`_restreindre_acces_windows`) — pour un
+    contenu qui n'est pas un mot de passe mais reste sensible (ex. le registre de
+    communes, qui contient des emails de contact et l'identifiant utilisateur du
+    nœud, voir ``profils_communes.py``), donc ne justifie pas le message
+    « identifiants en clair » d':func:`ecrire_conf_fichier`. Retourne ``True`` si la
+    restriction a réussi, ``False`` sinon (jamais d'exception)."""
+    if sys.platform == "win32":
+        return _restreindre_acces_windows(chemin)
+    try:
+        os.chmod(chemin, 0o600)
+        return True
+    except OSError:
+        return False
+
+
 def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
     """Écrit ``conf`` en JSON dans ``chemin`` avec un accès restreint à l'utilisateur
     courant. Sous POSIX : permissions ``0600`` dès la création (``os.open`` avec
@@ -326,6 +343,7 @@ __all__ = [
     "enregistrer_mot_de_passe_trousseau",
     "lire_mot_de_passe",
     "lire_mot_de_passe_trousseau",
+    "restreindre_acces_fichier",
     "valider_url_noeud",
     "verifier_permissions_conf",
 ]
