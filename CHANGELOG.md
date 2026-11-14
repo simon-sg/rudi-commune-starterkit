@@ -1,6 +1,6 @@
 # Changelog
 
-## Non publié
+## 0.7.2 — 2026-11-14 (revue de code, phase 3 + points d'arbitrage)
 
 ### Revue de code — phase 3 (2026-11-14)
 
