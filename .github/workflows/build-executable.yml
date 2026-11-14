@@ -97,13 +97,24 @@ jobs:
             exit 1
           }
 
+      - name: Calculer le SHA-256 de l'exécutable
+        # Permet à un agent municipal (ou à Simon) de vérifier l'intégrité du
+        # téléchargement avant de lancer un binaire non signé (voir « Premiers
+        # avertissements » du guide) — pas un remplacement de la signature de code.
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/rudi-commune-starterkit.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  rudi-commune-starterkit.exe" | Out-File -Encoding ascii dist/rudi-commune-starterkit.exe.sha256
+
       - name: Publier une Release GitHub en brouillon
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.version }}
           name: ${{ inputs.version }}
           draft: true
-          files: dist/rudi-commune-starterkit.exe
+          files: |
+            dist/rudi-commune-starterkit.exe
+            dist/rudi-commune-starterkit.exe.sha256
 
   build-linux:
     # Confort de test pour Simon (binaire natif à lancer sans Wine) — pas une

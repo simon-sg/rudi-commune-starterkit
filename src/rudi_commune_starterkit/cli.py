@@ -34,7 +34,7 @@ from rudi_harvest_toolkit.commune import (
 from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
-from . import organisations, registre
+from . import __version__, organisations, registre
 from .description_commune import construire_description_commune
 from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
@@ -939,6 +939,7 @@ def _construire_parser() -> argparse.ArgumentParser:
         prog="rudi-commune-starterkit",
         description="Peuple un nœud RUDI avec le socle de JDD communaux à partir d'un code INSEE.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--code-insee")
     parser.add_argument("--depuis-registre", action="store_true",
                         help="Résout nœud/identifiants/mode/contact depuis le registre "

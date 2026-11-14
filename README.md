@@ -163,6 +163,7 @@ ensuite le mot de passe (trousseau système en priorité), le mode de publicatio
 
 | Flag | Rôle |
 |---|---|
+| `--version` | Affiche la version installée et quitte (code 0). |
 | `--code-insee` | Requis. Code INSEE de la commune cible. |
 | `--depuis-registre` [`--url-noeud`] | Résout nœud/identifiants/mode/contact depuis le registre local plutôt que depuis les flags suivants ; `--url-noeud` désambiguïse si plusieurs nœuds existent pour le même code INSEE. |
 | `--url-noeud` / `--usr` / `--rudi-conf` / `--utiliser-trousseau` | Identifiants du nœud, en alternative au registre. |

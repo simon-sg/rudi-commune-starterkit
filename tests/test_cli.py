@@ -5,6 +5,7 @@
 connecteurs réels référencés par registre.MODULES.
 """
 import argparse
+import io
 import tempfile
 import unittest
 from unittest import mock
@@ -1204,6 +1205,13 @@ class TestMain(unittest.TestCase):
         with mock.patch("rudi_commune_starterkit.cli.executer_scriptable", return_value=0) as m:
             self.assertEqual(cli.main(["--code-insee", "35120"]), 0)
         m.assert_called_once()
+
+    def test_version_affiche_et_quitte_code_zero(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as m_stdout:
+            with self.assertRaises(SystemExit) as ctx:
+                cli.main(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn(cli.__version__, m_stdout.getvalue())
 
 
 if __name__ == "__main__":
