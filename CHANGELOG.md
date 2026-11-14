@@ -1,19 +1,30 @@
 # Changelog
 
-## Non publié
+## 0.7.1 — 2026-11-14
 
-### Correctifs trouvés en testant l'exécutable v0.7.0 (Windows + Linux)
+### Correctifs trouvés en testant l'exécutable v0.7.0 (Windows + Linux, nœud réel)
 
 - **Mot de passe pouvait s'afficher en clair** (`securite.lire_mot_de_passe`) : sous
   le binaire PyInstaller Linux (`/dev/tty` s'ouvre mais `termios.tcgetattr` échoue
   avec ENOTTY), `getpass` dégradait silencieusement vers une saisie échoique — un cas
   que `sys.stdin.isatty()` seul ne détecte pas. Élève maintenant cet avertissement en
   erreur (`AbsenceTerminalError`) avant toute saisie, plutôt que de laisser le mot de
-  passe s'afficher.
+  passe s'afficher. Volontairement multiplateforme (Windows dégrade aussi via
+  `sys.stdin` substitué, pas seulement le cas Linux/ENOTTY qui l'a révélé).
 - **Reprise après validation d'organisation sans retour visuel** : entre la question
   « [Entrée] pour vérifier... » et le début effectif du premier JDD, un délai réseau
   (résolution des organisations, description de la commune) pouvait laisser l'écran
   silencieux. Ajout d'un message « Vérification en cours, merci de patienter… ».
+- **Hint « URL catalogue » trompeur** : « laissez vide dans la grande majorité des
+  cas » encourageait une déduction automatique qui suppose la disposition Docker
+  standard (port 3030) — fausse sur un nœud hébergé par un tiers, le cas normal pour
+  un agent municipal. Reformulé pour inviter à demander l'URL à l'administrateur du
+  nœud plutôt que de la déduire à l'aveugle (guide HTML mis à jour en miroir).
+- **Wording incohérent « administrateur de votre territoire »** : uniformisé sur
+  « administrateur du nœud » partout dans le wizard et le guide HTML (le
+  « territoire » prêtait à confusion avec le territoire de la commune elle-même).
+- Dépend de `rudi-harvest-toolkit` 0.5.4 (cache `_api_version`, timeouts organisation
+  abaissés, reprise partielle Range sur coupure réseau — voir son propre changelog).
 
 ## 0.7.0 — 2026-11-13
 
