@@ -92,10 +92,16 @@ def lire_mot_de_passe(invite: str = "Mot de passe : ") -> str:
     """Lit un mot de passe sans écho. Lève :class:`AbsenceTerminalError` si
     ``sys.stdin`` n'est pas un terminal, ou si le terminal est présent mais que
     ``getpass`` ne peut pas en désactiver l'écho — plutôt que de le laisser dégrader
-    silencieusement vers une saisie affichée en clair (observé en pratique avec le
-    binaire PyInstaller Linux le 2026-11-14 : ``/dev/tty`` s'ouvre mais
-    ``termios.tcgetattr`` échoue avec ENOTTY, un cas que ``sys.stdin.isatty()`` seul
-    ne détecte pas)."""
+    silencieusement vers une saisie affichée en clair.
+
+    Volontairement multiplateforme, pas seulement le cas Linux qui l'a révélé
+    (binaire PyInstaller, 2026-11-14 : ``/dev/tty`` s'ouvre mais
+    ``termios.tcgetattr`` échoue avec ENOTTY, non détecté par ``sys.stdin.isatty()``
+    seul) : sous Windows, ``getpass.win_getpass`` dégrade de la même façon (écho en
+    clair, ``GetPassWarning``) dès que ``sys.stdin`` a été substitué (terminal/
+    lanceur non standard, ex. Git Bash/MSYS2) même si ``isatty()`` reste vrai — même
+    protection, même raison : jamais d'écho silencieux, quitte à devoir utiliser
+    ``--rudi-conf``/``--utiliser-trousseau`` dans ce cas plutôt que l'assistant."""
     if not sys.stdin.isatty():
         raise AbsenceTerminalError(
             "Aucun terminal disponible pour saisir un mot de passe sans écho "

@@ -1,4 +1,4 @@
-name: Build executable (Windows, manuel)
+name: Build executable (Windows + Linux, manuel)
 
 # Déclenchement manuel uniquement : chaque build Windows est publié en Release
 # GitHub *brouillon* (draft) — un humain doit explicitement cliquer "Publish
@@ -104,6 +104,10 @@ jobs:
         run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
 
       - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+        # --no-deps : évite que pip tente de résoudre la dépendance locale
+        # file:///... du pyproject.toml de dev (absente sur ce runner). Le
+        # toolkit est déjà installé explicitement ci-dessus, keyring/requests
+        # ci-dessous.
         run: pip install --no-deps .
 
       - name: Installer les dépendances restantes + outils de build
