@@ -182,9 +182,22 @@ Exemple, moisson complète d'une commune déjà enregistrée :
 python3 -m rudi_commune_starterkit.cli --depuis-registre --code-insee 35120
 ```
 
+### Codes de sortie (mode scriptable)
+
+Pensés pour qu'un cron/CI puisse distinguer sans parser la sortie texte :
+
+| Code | Constante | Signification |
+|---|---|---|
+| 0 | `EXIT_SUCCES` | Tous les JDD sélectionnés ont réussi (ou ont été sautés sans erreur : hors couverture, déjà à jour). |
+| 1 | `EXIT_ECHECS_PARTIELS` | Au moins un JDD a échoué, au moins un autre a réussi. |
+| 2 | `EXIT_ECHEC_TOTAL` | Tous les JDD sélectionnés ont échoué, ou erreur de configuration/arguments (ex. clé `--only`/`--skip` inconnue, `--code-insee` absent). |
+| 3 | `EXIT_EN_ATTENTE_VALIDATION` | Prioritaire sur les deux précédents (voir « Garde-fou organisation » ci-dessus) : l'organisation de la commune attend une validation par l'animateur du portail — relancer une fois validée, ce n'est pas un échec à corriger. |
+
 ## Dépendance
 
-Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (chemin local), en
+Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (dépôt séparé, installé
+depuis GitHub en production — voir `pyproject.toml` ; en édition locale en
+développement, voir « Développement » ci-dessus), en
 particulier des modules ajoutés pour ce projet : `commune` (résolution code INSEE →
 nom/géographie/SIREN), `fichier_hybride` (média `FILE` dont l'URL reste distante),
 `tabular` (lecteur CSV streaming), `datagouv` (résolution dataset → ressource),

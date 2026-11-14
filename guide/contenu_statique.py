@@ -474,13 +474,17 @@ s'y réfère encore) (o/N) :
 4. Un rapport final indique ce qui a été supprimé, et ce qui, le cas échéant, n'a pas
    pu l'être.
 
-!!! info "Détachement en attente de validation"
+!!! info "Suppression de l'organisation en attente de validation"
     Si l'organisation de la commune a déjà été validée par l'animateur du portail,
-    sa suppression se fait en deux temps : un détachement est demandé, puis
-    l'outil propose d'appuyer sur Entrée pour vérifier si l'animateur l'a validé et
-    poursuivre (même principe que pour la création, voir l'encart du
+    sa suppression complète passe par plusieurs étapes, chacune nécessitant une
+    validation de l'animateur avant de pouvoir enchaîner la suivante : détachement
+    du producteur → validation → demande d'archivage → validation → nettoyage de
+    la copie locale du nœud. Après chaque demande, l'outil propose d'appuyer sur
+    Entrée pour vérifier si l'animateur a validé l'étape en cours et poursuivre
+    (même principe que pour la création, voir l'encart du
     [pas-à-pas](pas-a-pas.md#10-lancement-et-rapport-final), étape 10), ou de taper
-    `q` pour revenir au menu et réessayer plus tard.
+    `q` pour revenir au menu et réessayer plus tard — sans jamais redéposer la même
+    demande en double tant qu'elle est encore en attente.
 
 Cette opération est pensée pour un usage de test — elle n'est pas nécessaire dans le
 cadre d'un usage normal, où l'on relance simplement l'outil pour mettre à jour (voir
