@@ -40,7 +40,9 @@ from rudi_harvest_toolkit.commune import (
     resoudre_commune,
 )
 from rudi_harvest_toolkit.rudi_client import (
+    demander_archivage_organisation,
     demander_detachement_producteur,
+    etat_tache_organisation_portail,
     global_id_pour_local_id,
     supprimer_dataset,
     supprimer_organisation as supprimer_organisation_noeud,
@@ -57,7 +59,6 @@ def vider_commune(
     conf: dict,
     code_insee: str,
     *,
-    nom_commune: str | None = None,
     chemin_etat: str | None = None,
     supprimer_organisation: bool = False,
     confirmer_fn=confirmer,
@@ -66,26 +67,24 @@ def vider_commune(
     l'organisation de la commune si ``supprimer_organisation`` et que plus aucun JDD du
     nœud ne la référence.
 
-    ``nom_commune`` (optionnel) : évite l'appel réseau à ``geo.api.gouv.fr`` pour
-    déterminer le nom de l'organisation quand l'appelant le connaît déjà (ex. profil du
-    registre local, qui stocke ``nom`` depuis sa résolution initiale) — le nom de
-    l'organisation ne dépend que du nom de la commune, jamais du reste de la fiche
-    ``geo.api.gouv.fr`` (voir :func:`organisations.organisation_commune`). Bug réel
-    (2026-11-14) : sans ce paramètre, une coupure réseau transitoire bloquait tout le
-    traitement de l'organisation d'une commune déjà connue localement, alors qu'aucun
-    appel réseau n'était en réalité nécessaire pour cette partie. Sans lui, retombe sur
-    :func:`resoudre_commune` comme avant (seul cas où il manque vraiment : mode
-    scriptable sans profil enregistré).
-
     Retourne un rapport ``dict`` : ``jdd_supprimes``/``jdd_echecs`` (listes de
     ``local_id``, les JDD connus de l'état local), ``jdd_tiers_supprimes``/
     ``jdd_tiers_echecs`` (listes de ``local_id``/``global_id``, les JDD **non suivis**
     par ce socle mais référençant l'organisation — proposés à la suppression
     séparément, uniquement si ``supprimer_organisation``), ``organisation`` (``None`` si
     non demandé, sinon un statut parmi ``"supprimee"``/``"deja_absente"``/
-    ``"detachement_demande"``/``"refus_jdd_restants"``/
-    ``"attente_suppression_portail_manuelle"``/``"echec_suppression_noeud"``) et
-    ``message`` (texte explicatif, toujours renseigné sauf succès silencieux).
+    ``"detachement_demande"``/``"attente_validation_detachement"``/
+    ``"refus_jdd_restants"``/``"archivage_demande"``/
+    ``"attente_validation_archivage"``/``"echec_demande_archivage"``/
+    ``"echec_suppression_noeud"``) et ``message`` (texte explicatif, toujours
+    renseigné sauf succès silencieux).
+
+    La suppression d'organisation est désormais **entièrement automatisable**
+    (confirmé de bout en bout le 2026-11-14) : détachement du producteur → validation
+    animateur → demande d'archivage → validation animateur → nettoyage de la copie
+    locale du nœud. Chaque étape nécessite un nouvel appel à cette fonction une fois
+    l'étape précédente validée côté portail (pas de boucle d'attente ici — le plan
+    d'ensemble, pas cette fonction, décide quand relancer).
     """
     chemin_etat = chemin_etat or f".etat_rudi_commune_starterkit/{code_insee}.json"
     rapport: dict = {
@@ -152,15 +151,12 @@ def vider_commune(
     if not supprimer_organisation:
         return rapport
 
-    if nom_commune is not None:
-        commune = {"nom": nom_commune, "code_insee": code_insee}
-    else:
-        try:
-            commune = resoudre_commune(code_insee)
-        except (CodeInseeInvalide, ArrondissementMunicipalError, CommuneIntrouvableError,
-                ErreurReseauCommune) as e:
-            rapport["message"] = f"Organisation non traitée : impossible de résoudre la commune ({e})."
-            return rapport
+    try:
+        commune = resoudre_commune(code_insee)
+    except (CodeInseeInvalide, ArrondissementMunicipalError, CommuneIntrouvableError,
+            ErreurReseauCommune) as e:
+        rapport["message"] = f"Organisation non traitée : impossible de résoudre la commune ({e})."
+        return rapport
 
     nom_org_commune = organisations.organisation_commune(commune)["organization_name"]
 
@@ -221,7 +217,8 @@ def vider_commune(
         return rapport
 
     organization_id = organisation.get("organization_id")
-    if organisation.get("linked_producer_status") == "VALIDATED":
+    statut_producteur = organisation.get("linked_producer_status")
+    if statut_producteur == "VALIDATED":
         demander_detachement_producteur(conf, organization_id)
         rapport["organisation"] = "detachement_demande"
         rapport["message"] = (
@@ -230,44 +227,74 @@ def vider_commune(
         )
         return rapport
 
-    # Pas d'appel automatisé à demander_suppression_organisation() : la suppression
-    # d'une organisation côté portail (Strukture, OrganizationServiceImpl.
-    # deleteOrganization) exige un rôle PROVIDER applicatif — contrairement à la
-    # création/au détachement, il n'existe aucun relais nœud pour cette opération
-    # précise (seuls les actes "attach"/"detach"/"has_task" existent côté nœud), et
-    # aucun compte ROBOT séparé n'a jamais existé pour ce socle (testé 3 façons,
-    # toujours 401 — voir mémoire project_rudi_organisation_validation_workflow).
-    # Seul l'animateur du portail (l'utilisateur lui-même) peut la supprimer, dans
-    # l'UI Strukture — mot de confirmation distinct de SUPPRIMER pour qu'un lancement
-    # scriptable habituel (--confirmer SUPPRIMER) ne puisse jamais prétendre
-    # faussement que cette action manuelle a eu lieu.
-    if not confirmer_fn(
-        f"Organisation « {nom_org_commune} » détachée. Sa suppression côté portail "
-        "(Strukture) nécessite ton accès animateur — à faire toi-même dans l'UI "
-        "Strukture. Une fois cette suppression portail faite, retape "
-        "SUPPRIME_PORTAIL pour nettoyer aussi la copie locale du nœud.",
-        mot_attendu="SUPPRIME_PORTAIL",
-    ):
-        rapport["organisation"] = "attente_suppression_portail_manuelle"
+    # Bug réel rencontré le 2026-11-14 (test E2E automatisé) : un détachement déjà
+    # demandé mais pas encore validé par l'animateur (``IN_PROGRESS``/
+    # ``DETACH_IN_PROGRESS``, cf. NodeLinkedProducerStatus côté Java) n'est **pas** la
+    # même chose qu'un détachement validé (``DISENGAGED``) — y foncer directement vers
+    # une demande d'archivage fait échouer le portail en ``409 invalidStateException``
+    # (« votre organisation est en cours de rattachement ou de détachement »). Ne
+    # tenter l'archivage qu'une fois cette tâche ``linked-producer-process`` validée.
+    if statut_producteur in ("IN_PROGRESS", "DETACH_IN_PROGRESS"):
+        rapport["organisation"] = "attente_validation_detachement"
         rapport["message"] = (
-            f"Organisation « {nom_org_commune} » détachée, suppression portail "
-            "manuelle non confirmée — copie locale du nœud conservée (pas "
-            "d'orpheline créée). Supprime-la toi-même dans l'UI Strukture, puis "
-            "relance en confirmant SUPPRIME_PORTAIL."
+            f"Détachement du producteur « {nom_org_commune} » déjà demandé, en "
+            "attente de validation par l'animateur du portail — relancer une fois "
+            "validé avant de pouvoir demander l'archivage."
         )
         return rapport
 
-    ok_noeud = supprimer_organisation_noeud(conf, organization_id)
-    if not ok_noeud:
-        rapport["organisation"] = "echec_suppression_noeud"
+    # Détachement validé ou organisation jamais rattachée (``DISENGAGED``/
+    # ``CANCELLED``/``DRAFT``/absent) : demander
+    # l'archivage portail — confirmé de bout en bout le 2026-11-14 (identité PROVIDER
+    # du nœud, pas de compte animateur requis) comme la vraie route fonctionnelle de
+    # suppression d'une organisation côté portail (voir rudi-harvest-toolkit/README.md
+    # § demander_archivage_organisation). Remplace l'ancienne étape manuelle dans l'UI
+    # Strukture. Le nœud ne reflète JAMAIS cet archivage une fois validé (rapport
+    # Method.DELETE non géré côté nœud, confirmé par le code source) — on doit donc lire
+    # l'état réel côté portail pour savoir où on en est, plutôt que linked_producer_status
+    # (qui ne change plus à partir d'ici).
+    etat_portail = etat_tache_organisation_portail(conf, organization_id)
+    if etat_portail is None:
+        # Organisation disparue du portail : archivage déjà validé lors d'un appel
+        # précédent — ne reste que le nettoyage de la copie locale du nœud.
+        ok_noeud = supprimer_organisation_noeud(conf, organization_id)
+        if not ok_noeud:
+            rapport["organisation"] = "echec_suppression_noeud"
+            rapport["message"] = (
+                f"Organisation « {nom_org_commune} » archivée côté portail (confirmé), "
+                "échec de la suppression côté nœud."
+            )
+            return rapport
+        rapport["organisation"] = "supprimee"
+        rapport["message"] = f"Organisation « {nom_org_commune} » supprimée (portail + nœud)."
+        return rapport
+
+    if etat_portail.get("status") == "PENDING":
+        # Une tâche organization-process est déjà en attente (demande d'archivage
+        # précédente non encore traitée) — ne jamais en redéposer une 2e : POST
+        # /organizations/tasks ne vérifie pas lui-même l'absence d'une tâche en cours.
+        rapport["organisation"] = "attente_validation_archivage"
         rapport["message"] = (
-            f"Organisation « {nom_org_commune} » supprimée côté portail (confirmé "
-            "manuellement), échec de la suppression côté nœud."
+            f"Demande d'archivage de « {nom_org_commune} » déjà en attente de "
+            "validation par l'animateur du portail — relancer une fois validée."
         )
         return rapport
 
-    rapport["organisation"] = "supprimee"
-    rapport["message"] = f"Organisation « {nom_org_commune} » supprimée (portail + nœud)."
+    resultat_archivage = demander_archivage_organisation(conf, organization_id, nom_org_commune)
+    if not resultat_archivage:
+        rapport["organisation"] = "echec_demande_archivage"
+        rapport["message"] = (
+            f"Demande d'archivage refusée par le portail pour « {nom_org_commune} » — "
+            "voir le journal ci-dessus pour la raison exacte (souvent : des JDD liés "
+            "encore publiés côté portail, y compris des brouillons orphelins)."
+        )
+        return rapport
+
+    rapport["organisation"] = "archivage_demande"
+    rapport["message"] = (
+        f"Demande d'archivage envoyée pour « {nom_org_commune} » — relancer une fois "
+        "validée par l'animateur du portail, pour nettoyer aussi la copie locale du nœud."
+    )
     return rapport
 
 

@@ -14,7 +14,6 @@ import re
 import stat
 import subprocess
 import sys
-import warnings
 from urllib.parse import urlsplit
 
 import keyring
@@ -62,10 +61,15 @@ def email_suspect(adresse: str) -> str | None:
     termine par un TLD réservé RFC 2606/6761 (``.local``, ``.test``, ``.example``,
     ``.invalid``) : jamais routable publiquement, donc jamais un vrai contact.
 
-    Un domaine ``.local`` a été corrélé une fois à un ``403 Forbidden`` Dataverse
-    silencieux (le `403` a disparu quand le contact a été changé) — hypothèse de
-    diagnostic forte mais **non prouvée** au niveau Dataverse ; traité ici comme un
-    signal d'hygiène visible, pas comme une garantie, donc pas un échec bloquant.
+    Un domaine ``.local`` cause bien un ``403 Forbidden`` Dataverse — **confirmé** le
+    2026-11-13 en inspectant le corps de réponse réel (``AbstractDataverseAPI.
+    handleError`` avale silencieusement ce corps côté Kalim, bug de format SLF4J sans
+    rapport avec RUDI/ce starterkit : ``log.info("...:", corps)`` sans ``{}``). Le
+    message exact : « Point of Contact E-mail ... is not a valid email address » —
+    Dataverse rejette ``.local`` (et vraisemblablement les autres TLD RFC 2606/6761)
+    à la validation du contact, pour toute commune, de façon systématique et non
+    transitoire. Resté un avertissement non bloquant ici (hygiène), mais le starterkit
+    lui-même doit utiliser un domaine réel type ``example.com`` pour ses propres tests.
 
     Retourne le message d'avertissement si suspect, ``None`` sinon (y compris pour une
     adresse déjà mal formée — c'est le rôle de :func:`email_valide`, pas de celle-ci)."""
@@ -83,40 +87,20 @@ def email_suspect(adresse: str) -> str | None:
 
 
 class AbsenceTerminalError(RuntimeError):
-    """Pas de TTY (pipe/CI), ou TTY présent mais incapable de masquer la saisie
-    (``termios`` en échec, ex. ENOTTY) : dans les deux cas, ``getpass`` afficherait
-    le mot de passe en clair ou bloquerait."""
+    """Pas de TTY (pipe/CI) : getpass afficherait le mot de passe en clair ou bloquerait."""
 
 
 def lire_mot_de_passe(invite: str = "Mot de passe : ") -> str:
     """Lit un mot de passe sans écho. Lève :class:`AbsenceTerminalError` si
-    ``sys.stdin`` n'est pas un terminal, ou si le terminal est présent mais que
-    ``getpass`` ne peut pas en désactiver l'écho — plutôt que de le laisser dégrader
-    silencieusement vers une saisie affichée en clair.
-
-    Volontairement multiplateforme, pas seulement le cas Linux qui l'a révélé
-    (binaire PyInstaller, 2026-11-14 : ``/dev/tty`` s'ouvre mais
-    ``termios.tcgetattr`` échoue avec ENOTTY, non détecté par ``sys.stdin.isatty()``
-    seul) : sous Windows, ``getpass.win_getpass`` dégrade de la même façon (écho en
-    clair, ``GetPassWarning``) dès que ``sys.stdin`` a été substitué (terminal/
-    lanceur non standard, ex. Git Bash/MSYS2) même si ``isatty()`` reste vrai — même
-    protection, même raison : jamais d'écho silencieux, quitte à devoir utiliser
-    ``--rudi-conf``/``--utiliser-trousseau`` dans ce cas plutôt que l'assistant."""
+    ``sys.stdin`` n'est pas un terminal plutôt que de laisser ``getpass`` dégrader
+    silencieusement son comportement."""
     if not sys.stdin.isatty():
         raise AbsenceTerminalError(
             "Aucun terminal disponible pour saisir un mot de passe sans écho "
             "(invocation depuis un pipe/CI ?) — utiliser --rudi-conf ou "
             "--utiliser-trousseau en mode scriptable."
         )
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", getpass.GetPassWarning)
-        try:
-            return getpass.getpass(invite)
-        except getpass.GetPassWarning as e:
-            raise AbsenceTerminalError(
-                f"Terminal incapable de masquer la saisie du mot de passe ({e}) — "
-                "utiliser --rudi-conf ou --utiliser-trousseau en mode scriptable."
-            ) from e
+    return getpass.getpass(invite)
 
 
 def _restreindre_acces_windows(chemin: str) -> bool:

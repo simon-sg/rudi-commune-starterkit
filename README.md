@@ -101,14 +101,13 @@ avec `--supprimer-organisation`, l'organisation de la commune :
 2. Si le producteur est encore rattaché (`linked_producer_status: VALIDATED`), un
    détachement est demandé — la suite nécessite la validation de l'animateur du
    portail dans l'UI Strukture, puis un nouveau run.
-3. Une fois détaché, **la suppression de l'organisation côté portail n'est jamais
-   automatisée** : aucun relais nœud n'existe pour cette opération précise (seuls
-   les actes attacher/détacher existent), et aucun compte applicatif séparé n'a
-   jamais existé pour ce socle. Seul l'animateur (l'utilisateur) peut la faire, dans
-   l'UI Strukture. Une fois cette suppression portail faite à la main, relancer en
-   tapant `SUPPRIME_PORTAIL` (mot distinct de `SUPPRIMER`) pour nettoyer la copie
-   locale du nœud — tant que ce n'est pas confirmé, l'organisation reste détachée
-   mais présente des deux côtés (état dégradé acceptable, jamais d'orpheline créée).
+3. Une fois détaché, une demande d'archivage est envoyée automatiquement au portail
+   (identité `PROVIDER` du nœud — confirmé de bout en bout le 2026-11-14, plus de
+   geste manuel dans l'UI Strukture). Elle nécessite elle aussi la validation de
+   l'animateur du portail ; tant qu'elle n'est pas validée, un nouveau run détecte la
+   demande déjà en cours et ne la redépose pas (`"attente_validation_archivage"`).
+   Une fois validée, le run suivant nettoie la copie locale du nœud
+   (jamais automatique côté nœud) et rapporte `"supprimee"`.
 
 Aussi disponible depuis l'assistant interactif : en reprenant une commune du
 registre, un choix *« Lancer la moisson / Vider cette commune »* propose le vidage

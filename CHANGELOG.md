@@ -43,6 +43,22 @@
   Il revient maintenant automatiquement au menu principal (Entrée) ; `q` permet de
   fermer directement. Le choix d'action (publier/vider) propose désormais aussi
   `q) Quitter`.
+- **Suppression d'organisation côté portail : plus de geste manuel dans l'UI
+  Strukture.** `vider_commune(..., supprimer_organisation=True)` demandait
+  jusqu'ici à l'utilisateur de supprimer lui-même l'organisation dans Strukture
+  (confirmation `SUPPRIME_PORTAIL`), une limitation plateforme supposée (aucun
+  compte applicatif séparé). Confirmé de bout en bout le 2026-11-14 contre un vrai
+  nœud/portail : la route existait déjà (`demander_archivage_organisation()`, voir
+  `rudi-harvest-toolkit`), bloquée par deux bugs toolkit (identifiants portail
+  jamais câblés + champ de formulaire manquant), désormais corrigés. Le flux
+  détachement → validation → archivage → validation → nettoyage nœud est maintenant
+  entièrement automatique (nouveaux statuts de rapport `"archivage_demande"`/
+  `"attente_validation_archivage"`/`"echec_demande_archivage"`, qui remplacent
+  `"attente_suppression_portail_manuelle"`). Corrige aussi un bug réel trouvé en
+  testant ce flux automatisé de bout en bout : un détachement demandé mais pas
+  encore validé (`linked_producer_status` `IN_PROGRESS`/`DETACH_IN_PROGRESS`) était
+  traité comme déjà détaché, faisant échouer la demande d'archivage en `409`
+  (nouveau statut `"attente_validation_detachement"`).
 
 ## 0.7.1 — 2026-11-14
 
