@@ -59,6 +59,20 @@
   encore validé (`linked_producer_status` `IN_PROGRESS`/`DETACH_IN_PROGRESS`) était
   traité comme déjà détaché, faisant échouer la demande d'archivage en `409`
   (nouveau statut `"attente_validation_detachement"`).
+- **Régression introduite par le commit précédent, trouvée par une revue de code
+  indépendante (opencode) le jour même** : prépublié en copiant des fichiers d'un
+  checkout resté 11 commits en retard sur `origin/main`, le commit ci-dessus a
+  écrasé par erreur (copie de fichier entier, pas fusion) 3 correctifs déjà mergés
+  en amont — le garde-fou `GetPassWarning` contre l'écho en clair du mot de passe
+  (`securite.py`), la boucle d'attente interactive du vidage et le paramètre
+  `nom_commune` (`cli.py`/`vidage.py`). Restaurés par fusion à 3 voies (zéro
+  conflit réel), avec en prime la boucle d'attente étendue aux nouveaux statuts
+  d'archivage (elle ne connaissait jusque-là que `"detachement_demande"`, donc
+  sortait immédiatement sur `"archivage_demande"`/les 2 statuts d'attente —
+  jamais exercé par les tests existants, nouveau test ajouté). 485 tests passent
+  de nouveau (régression confirmée ET corrigée dans un venv de vérification
+  dédié, l'install éditable partagée pointant de façon trompeuse vers l'ancien
+  checkout — voir `pip -e stale après EnterWorktree` dans les notes internes).
 
 ## 0.7.1 — 2026-11-14
 
