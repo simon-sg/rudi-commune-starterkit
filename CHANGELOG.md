@@ -1,5 +1,20 @@
 # Changelog
 
+## Non publié
+
+### Correctifs trouvés en testant l'exécutable v0.7.0 (Windows + Linux)
+
+- **Mot de passe pouvait s'afficher en clair** (`securite.lire_mot_de_passe`) : sous
+  le binaire PyInstaller Linux (`/dev/tty` s'ouvre mais `termios.tcgetattr` échoue
+  avec ENOTTY), `getpass` dégradait silencieusement vers une saisie échoique — un cas
+  que `sys.stdin.isatty()` seul ne détecte pas. Élève maintenant cet avertissement en
+  erreur (`AbsenceTerminalError`) avant toute saisie, plutôt que de laisser le mot de
+  passe s'afficher.
+- **Reprise après validation d'organisation sans retour visuel** : entre la question
+  « [Entrée] pour vérifier... » et le début effectif du premier JDD, un délai réseau
+  (résolution des organisations, description de la commune) pouvait laisser l'écran
+  silencieux. Ajout d'un message « Vérification en cours, merci de patienter… ».
+
 ## 0.7.0 — 2026-11-13
 
 ### Guide utilisateur HTML (GitHub Pages)

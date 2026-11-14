@@ -1,11 +1,13 @@
 """Tests de securite.py — URL/email, getpass+TTY, permissions fichier, trousseau."""
 import contextlib
+import getpass
 import io
 import os
 import stat
 import sys
 import tempfile
 import unittest
+import warnings
 from unittest import mock
 
 from rudi_commune_starterkit import securite
@@ -81,6 +83,19 @@ class TestLireMotDePasse(unittest.TestCase):
              mock.patch("getpass.getpass", return_value="secret") as m:
             self.assertEqual(securite.lire_mot_de_passe("invite"), "secret")
             m.assert_called_once_with("invite")
+
+    def test_tty_incapable_de_masquer_leve_plutot_que_decho(self):
+        # TTY présent (isatty() True) mais getpass incapable de désactiver l'écho
+        # (ex. termios ENOTTY, rencontré avec le binaire PyInstaller Linux) : ne
+        # doit jamais dégrader silencieusement vers une saisie affichée en clair.
+        def getpass_qui_echoue(invite):
+            warnings.warn("Can not control echo on the terminal.", getpass.GetPassWarning)
+            return "mot_de_passe_echo"  # jamais atteint si l'avertissement est bien élevé en erreur
+
+        with mock.patch("sys.stdin.isatty", return_value=True), \
+             mock.patch("getpass.getpass", side_effect=getpass_qui_echoue):
+            with self.assertRaises(securite.AbsenceTerminalError):
+                securite.lire_mot_de_passe()
 
 
 class TestEcrireConfFichier(unittest.TestCase):

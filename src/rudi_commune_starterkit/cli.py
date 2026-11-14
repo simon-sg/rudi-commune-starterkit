@@ -488,6 +488,7 @@ def _executer_run_avec_attente_validation(**kwargs) -> int:
         if reponse in ("q", "quitter"):
             break
         print()
+        print("Vérification en cours, merci de patienter…")
         code = executer_run(**kwargs)
     return code
 
