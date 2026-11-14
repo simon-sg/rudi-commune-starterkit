@@ -167,6 +167,7 @@ ensuite le mot de passe (trousseau système en priorité), le mode de publicatio
 | `--code-insee` | Requis. Code INSEE de la commune cible. |
 | `--depuis-registre` [`--url-noeud`] | Résout nœud/identifiants/mode/contact depuis le registre local plutôt que depuis les flags suivants ; `--url-noeud` désambiguïse si plusieurs nœuds existent pour le même code INSEE. |
 | `--url-noeud` / `--usr` / `--rudi-conf` / `--utiliser-trousseau` | Identifiants du nœud, en alternative au registre. |
+| `--autoriser-backend-trousseau-non-reconnu` | Accepte un backend de trousseau système non reconnu comme sûr (ni dans la liste blanche des backends natifs connus, ni connu pour stocker en clair) — à utiliser seulement si vous savez que ce backend est légitime. |
 | `--organisation-producteur {source,commune,par-jdd}` | Mode de publication (défaut `source`). |
 | `--organisation-par-jdd` | Fichier JSON JDD → `commune`\|`source`, pour le mode `par-jdd`. |
 | `--contact-commune` | Email de contact, obligatoire si au moins un JDD publie au nom de la commune. |

@@ -250,6 +250,28 @@ class TestVerifierPermissionsConf(unittest.TestCase):
             securite.verifier_permissions_conf(os.path.join(self._tmp.name, "absent.json"))
         self.assertEqual(tampon.getvalue(), "")
 
+    @unittest.skipIf(sys.platform == "win32", "chemin POSIX — os.stat() n'est appelé que hors Windows")
+    def test_fail_open_avec_avertissement_si_stat_echoue(self):
+        """Décision Simon (revue de code 2026-11-14) : fail-open explicite — une
+        course entre os.path.exists() et os.stat() (ou tout autre OSError à la
+        vérification) ne doit jamais faire planter l'appelant, mais ne doit jamais
+        non plus rester silencieuse."""
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            f.write("{}")
+        # os.path.exists() avale elle-même un OSError de os.stat() (renvoie False) —
+        # il faut donc laisser son appel interne réussir normalement et ne faire
+        # échouer que le second appel, celui fait par verifier_permissions_conf(),
+        # pour simuler une vraie course entre les deux.
+        stat_reel = os.stat(self.chemin)
+        with mock.patch(
+            "rudi_commune_starterkit.securite.os.stat",
+            side_effect=[stat_reel, OSError("boom")],
+        ):
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                securite.verifier_permissions_conf(self.chemin)  # ne lève pas
+        self.assertIn("impossible de vérifier", tampon.getvalue())
+
     def test_windows_avertit_si_acl_trop_large(self):
         with open(self.chemin, "w", encoding="utf-8") as f:
             f.write("{}")
@@ -301,10 +323,24 @@ class TestBackendTrousseauEstSain(unittest.TestCase):
         self.assertFalse(sain)
         self.assertEqual(nom, "keyrings.alt.file.PlaintextKeyring")
 
-    def test_autre_backend_sain(self):
+    def test_backend_non_reconnu_refuse_par_defaut(self):
+        """Bug réel corrigé le 2026-11-14 : c'était une liste NOIRE (seul un backend
+        explicitement connu pour stocker en clair était refusé, tout le reste — y
+        compris un backend jamais vu — passait par défaut). Inversé en liste blanche :
+        un backend non reconnu est désormais refusé par défaut (contournable
+        explicitement, voir TestTrousseau)."""
         with mock.patch("keyring.get_keyring", return_value=_AutreBackendFactice()):
             sain, _nom = securite.backend_trousseau_est_sain()
+        self.assertFalse(sain)
+
+    def test_backend_liste_blanche_sain(self):
+        class _BackendSurFactice:
+            __module__ = "keyring.backends.SecretService"
+            __qualname__ = "Keyring"
+        with mock.patch("keyring.get_keyring", return_value=_BackendSurFactice()):
+            sain, nom = securite.backend_trousseau_est_sain()
         self.assertTrue(sain)
+        self.assertEqual(nom, "keyring.backends.SecretService.Keyring")
 
 
 class TestTrousseau(unittest.TestCase):
@@ -321,6 +357,34 @@ class TestTrousseau(unittest.TestCase):
                 securite.enregistrer_mot_de_passe_trousseau("https://noeud", "alice", "secret")
         m.assert_not_called()
 
+    def test_enregistrer_backend_non_reconnu_leve_le_sous_type_precis(self):
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(False, "x")), \
+             mock.patch("keyring.set_password") as m:
+            with self.assertRaises(securite.TrousseauBackendNonReconnuError):
+                securite.enregistrer_mot_de_passe_trousseau("https://noeud", "alice", "secret")
+        m.assert_not_called()
+
+    def test_enregistrer_backend_en_clair_connu_refuse_meme_avec_contournement(self):
+        """Le contournement ne vaut que pour un backend non reconnu — jamais pour un
+        backend explicitement connu pour stocker en clair."""
+        with mock.patch.object(
+            securite, "backend_trousseau_est_sain",
+            return_value=(False, "keyrings.alt.file.PlaintextKeyring"),
+        ), mock.patch("keyring.set_password") as m:
+            with self.assertRaises(securite.TrousseauEnClairError):
+                securite.enregistrer_mot_de_passe_trousseau(
+                    "https://noeud", "alice", "secret", autoriser_backend_non_reconnu=True,
+                )
+        m.assert_not_called()
+
+    def test_enregistrer_backend_non_reconnu_delegue_avec_contournement(self):
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(False, "x")), \
+             mock.patch("keyring.set_password") as m:
+            securite.enregistrer_mot_de_passe_trousseau(
+                "https://noeud", "alice", "secret", autoriser_backend_non_reconnu=True,
+            )
+        m.assert_called_once_with("rudi-commune-starterkit:https://noeud:alice", "alice", "secret")
+
     def test_lire_delegue_si_backend_sain(self):
         with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(True, "x")), \
              mock.patch("keyring.get_password", return_value="secret") as m:
@@ -334,6 +398,33 @@ class TestTrousseau(unittest.TestCase):
             with self.assertRaises(securite.TrousseauEnClairError):
                 securite.lire_mot_de_passe_trousseau("https://noeud", "alice")
         m.assert_not_called()
+
+    def test_lire_backend_non_reconnu_leve_le_sous_type_precis(self):
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(False, "x")), \
+             mock.patch("keyring.get_password") as m:
+            with self.assertRaises(securite.TrousseauBackendNonReconnuError):
+                securite.lire_mot_de_passe_trousseau("https://noeud", "alice")
+        m.assert_not_called()
+
+    def test_lire_backend_en_clair_connu_refuse_meme_avec_contournement(self):
+        with mock.patch.object(
+            securite, "backend_trousseau_est_sain",
+            return_value=(False, "keyrings.alt.file.PlaintextKeyring"),
+        ), mock.patch("keyring.get_password") as m:
+            with self.assertRaises(securite.TrousseauEnClairError):
+                securite.lire_mot_de_passe_trousseau(
+                    "https://noeud", "alice", autoriser_backend_non_reconnu=True,
+                )
+        m.assert_not_called()
+
+    def test_lire_backend_non_reconnu_delegue_avec_contournement(self):
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(False, "x")), \
+             mock.patch("keyring.get_password", return_value="secret") as m:
+            resultat = securite.lire_mot_de_passe_trousseau(
+                "https://noeud", "alice", autoriser_backend_non_reconnu=True,
+            )
+        self.assertEqual(resultat, "secret")
+        m.assert_called_once_with("rudi-commune-starterkit:https://noeud:alice", "alice")
 
     def test_lire_sans_backend_fonctionnel_leve_indisponible_pas_crash(self):
         """Bug réel corrigé le 2026-11-14 : keyring.errors.NoKeyringError (aucun

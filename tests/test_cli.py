@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rudi_commune_starterkit import cli, organisations
+from rudi_commune_starterkit import cli, organisations, securite
 from rudi_commune_starterkit.datasets import population
 from rudi_commune_starterkit.resultat import ResultatConnecteur, StatutConnecteur
 
@@ -439,6 +439,77 @@ class TestTesterConnexionAvecRepliTls(unittest.TestCase):
         self.assertEqual(m_test.call_count, 2)
 
 
+class TestLireMotDePasseTrousseauAvecConfirmation(unittest.TestCase):
+    def test_succes_direct_ne_propose_rien(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau",
+                         return_value="secret") as m_lire, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            resultat = cli._lire_mot_de_passe_trousseau_avec_confirmation("https://x", "u")
+        self.assertEqual(resultat, "secret")
+        m_confirmer.assert_not_called()
+        m_lire.assert_called_once_with("https://x", "u")
+
+    def test_backend_en_clair_connu_ne_propose_rien_et_remonte(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau",
+                         side_effect=securite.TrousseauEnClairError("en clair")) as m_lire, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            with self.assertRaises(securite.TrousseauEnClairError):
+                cli._lire_mot_de_passe_trousseau_avec_confirmation("https://x", "u")
+        m_confirmer.assert_not_called()
+        m_lire.assert_called_once_with("https://x", "u")
+
+    def test_backend_non_reconnu_refuse_remonte_sans_contourner(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau",
+                         side_effect=securite.TrousseauBackendNonReconnuError("?")) as m_lire, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=False):
+            with self.assertRaises(securite.TrousseauBackendNonReconnuError):
+                cli._lire_mot_de_passe_trousseau_avec_confirmation("https://x", "u")
+        m_lire.assert_called_once_with("https://x", "u")
+
+    def test_backend_non_reconnu_accepte_contourne_et_reessaie(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau",
+                         side_effect=[securite.TrousseauBackendNonReconnuError("?"), "secret"]) as m_lire, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=True):
+            resultat = cli._lire_mot_de_passe_trousseau_avec_confirmation("https://x", "u")
+        self.assertEqual(resultat, "secret")
+        self.assertEqual(m_lire.call_count, 2)
+        m_lire.assert_called_with("https://x", "u", autoriser_backend_non_reconnu=True)
+
+
+class TestEnregistrerMotDePasseTrousseauAvecConfirmation(unittest.TestCase):
+    def test_succes_direct_ne_propose_rien(self):
+        with mock.patch("rudi_commune_starterkit.cli.enregistrer_mot_de_passe_trousseau") as m_enr, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            cli._enregistrer_mot_de_passe_trousseau_avec_confirmation("https://x", "u", "secret")
+        m_confirmer.assert_not_called()
+        m_enr.assert_called_once_with("https://x", "u", "secret")
+
+    def test_backend_en_clair_connu_ne_propose_rien_et_remonte(self):
+        with mock.patch("rudi_commune_starterkit.cli.enregistrer_mot_de_passe_trousseau",
+                         side_effect=securite.TrousseauEnClairError("en clair")) as m_enr, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer") as m_confirmer:
+            with self.assertRaises(securite.TrousseauEnClairError):
+                cli._enregistrer_mot_de_passe_trousseau_avec_confirmation("https://x", "u", "secret")
+        m_confirmer.assert_not_called()
+        m_enr.assert_called_once_with("https://x", "u", "secret")
+
+    def test_backend_non_reconnu_refuse_remonte_sans_contourner(self):
+        with mock.patch("rudi_commune_starterkit.cli.enregistrer_mot_de_passe_trousseau",
+                         side_effect=securite.TrousseauBackendNonReconnuError("?")) as m_enr, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=False):
+            with self.assertRaises(securite.TrousseauBackendNonReconnuError):
+                cli._enregistrer_mot_de_passe_trousseau_avec_confirmation("https://x", "u", "secret")
+        m_enr.assert_called_once_with("https://x", "u", "secret")
+
+    def test_backend_non_reconnu_accepte_contourne_et_reessaie(self):
+        with mock.patch("rudi_commune_starterkit.cli.enregistrer_mot_de_passe_trousseau",
+                         side_effect=[securite.TrousseauBackendNonReconnuError("?"), None]) as m_enr, \
+             mock.patch("rudi_commune_starterkit.cli.confirmer", return_value=True):
+            cli._enregistrer_mot_de_passe_trousseau_avec_confirmation("https://x", "u", "secret")
+        self.assertEqual(m_enr.call_count, 2)
+        m_enr.assert_called_with("https://x", "u", "secret", autoriser_backend_non_reconnu=True)
+
+
 class TestResoudreConfScriptable(unittest.TestCase):
     def test_rudi_conf_fichier(self):
         args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
@@ -485,17 +556,28 @@ class TestResoudreConfScriptable(unittest.TestCase):
 
     def test_trousseau_sans_mot_de_passe_enregistre_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
-                                   utiliser_trousseau=True)
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=False)
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None):
             with self.assertRaises(ValueError):
                 cli._resoudre_conf_scriptable(args)
 
     def test_trousseau_ok(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
-                                   utiliser_trousseau=True)
-        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret"):
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=False)
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
             conf = cli._resoudre_conf_scriptable(args)
         self.assertEqual(conf["pwd"], "secret")
+        m.assert_called_once_with("https://x", "u", autoriser_backend_non_reconnu=False)
+
+    def test_trousseau_autorise_backend_non_reconnu_transmis(self):
+        args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
+                                   utiliser_trousseau=True,
+                                   autoriser_backend_trousseau_non_reconnu=True)
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
+            cli._resoudre_conf_scriptable(args)
+        m.assert_called_once_with("https://x", "u", autoriser_backend_non_reconnu=True)
 
 
 class TestExecuterScriptable(unittest.TestCase):
@@ -745,7 +827,9 @@ class TestExecuterScriptableDepuisRegistre(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0) as m_run:
             code = cli.executer_scriptable(args)
         self.assertEqual(code, 0)
-        m_pwd.assert_called_once_with(_PROFIL_GEVEZE["url_noeud"], _PROFIL_GEVEZE["usr"])
+        m_pwd.assert_called_once_with(
+            _PROFIL_GEVEZE["url_noeud"], _PROFIL_GEVEZE["usr"], autoriser_backend_non_reconnu=False,
+        )
         self.assertEqual(
             m_run.call_args.kwargs["modes_par_jdd"][organisations.POPULATION],
             _PROFIL_GEVEZE["mode_producteur"],

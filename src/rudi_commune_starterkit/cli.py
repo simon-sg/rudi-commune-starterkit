@@ -51,6 +51,7 @@ from .resolution_noeud import (
 from .resultat import StatutConnecteur
 from .securite import (
     AbsenceTerminalError,
+    TrousseauBackendNonReconnuError,
     TrousseauEnClairError,
     TrousseauIndisponibleError,
     UrlNoeudNonSecurisee,
@@ -497,6 +498,34 @@ def _tester_connexion_avec_repli_tls(conf: dict) -> bool:
     return False
 
 
+def _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud: str, usr: str) -> str | None:
+    """Comme :func:`lire_mot_de_passe_trousseau`, mais si le seul problème est un
+    backend de trousseau non reconnu (jamais un backend connu pour stocker en
+    clair, qui reste refusé sans recours), propose explicitement de continuer avec —
+    même principe que :func:`_tester_connexion_avec_repli_tls` pour le certificat
+    TLS. Les autres erreurs (``TrousseauEnClairError`` de base,
+    ``TrousseauIndisponibleError``) remontent inchangées, pour le repli habituel de
+    l'appelant."""
+    try:
+        return lire_mot_de_passe_trousseau(url_noeud, usr)
+    except TrousseauBackendNonReconnuError as e:
+        if confirmer(f"\n  {e}", mot_attendu="ACCEPTER"):
+            return lire_mot_de_passe_trousseau(url_noeud, usr, autoriser_backend_non_reconnu=True)
+        raise
+
+
+def _enregistrer_mot_de_passe_trousseau_avec_confirmation(url_noeud: str, usr: str, pwd: str) -> None:
+    """Pendant de :func:`_lire_mot_de_passe_trousseau_avec_confirmation` pour
+    l'enregistrement."""
+    try:
+        enregistrer_mot_de_passe_trousseau(url_noeud, usr, pwd)
+    except TrousseauBackendNonReconnuError as e:
+        if confirmer(f"\n  {e}", mot_attendu="ACCEPTER"):
+            enregistrer_mot_de_passe_trousseau(url_noeud, usr, pwd, autoriser_backend_non_reconnu=True)
+        else:
+            raise
+
+
 def _executer_run_avec_attente_validation(**kwargs) -> int:
     """Wrapper interactif autour de :func:`executer_run` (backlog v5) — jamais utilisé
     en mode scriptable, qui n'a pas d'utilisateur à qui demander d'attendre.
@@ -558,7 +587,7 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
 
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
-        pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
+        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
     except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
@@ -672,7 +701,7 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
 
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
-        pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
+        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
     except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
@@ -873,7 +902,7 @@ def executer_interactif() -> int:
     # Étape 5 : enregistrement des identifiants
     if _demander_oui_non("Enregistrer ces identifiants pour la prochaine fois"):
         try:
-            enregistrer_mot_de_passe_trousseau(url_noeud, usr, pwd)
+            _enregistrer_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr, pwd)
             print("  Mot de passe enregistré dans le trousseau système.")
         except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
             print(f"  {e}")
@@ -951,6 +980,13 @@ def _construire_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rudi-conf", help="Fichier JSON url/url_catalog/usr/pwd.")
     parser.add_argument("--utiliser-trousseau", action="store_true",
                         help="Lit le mot de passe dans le trousseau système (--url-noeud/--usr requis).")
+    parser.add_argument("--autoriser-backend-trousseau-non-reconnu", action="store_true",
+                        help="Accepte un backend de trousseau système non reconnu comme sûr "
+                             "(ni dans la liste blanche des backends natifs connus, ni connu "
+                             "pour stocker en clair) — à utiliser seulement si vous savez que "
+                             "ce backend est légitime (ex. gestionnaire de secrets d'entreprise "
+                             "non encore répertorié). Sans effet sur un backend connu pour "
+                             "stocker en clair, toujours refusé.")
     parser.add_argument("--ignorer-certificat-tls", action="store_true",
                         help="Accepte un certificat TLS non reconnu (ex. certificat auto-signé "
                              "sur un nœud de test) — RISQUÉ (interception possible), à n'utiliser "
@@ -1002,7 +1038,10 @@ def _resoudre_conf_scriptable(args: argparse.Namespace) -> dict:
             "Aucune source de mot de passe en mode scriptable : fournir --rudi-conf "
             "ou --utiliser-trousseau (jamais de mot de passe en argument CLI)."
         )
-    pwd = lire_mot_de_passe_trousseau(url_noeud, args.usr)
+    pwd = lire_mot_de_passe_trousseau(
+        url_noeud, args.usr,
+        autoriser_backend_non_reconnu=args.autoriser_backend_trousseau_non_reconnu,
+    )
     if pwd is None:
         raise ValueError(f"Aucun mot de passe enregistré dans le trousseau pour {args.usr}@{url_noeud}.")
     return {"url": url_noeud, "usr": args.usr, "pwd": pwd}
