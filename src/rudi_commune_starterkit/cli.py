@@ -488,6 +488,7 @@ def _executer_run_avec_attente_validation(**kwargs) -> int:
         if reponse in ("q", "quitter"):
             break
         print()
+        print("Vérification en cours, merci de patienter…")
         code = executer_run(**kwargs)
     return code
 
@@ -614,16 +615,37 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         "ne s'y réfère encore)", defaut=False,
     )
 
-    rapport = vider_commune(conf, profil["code_insee"], supprimer_organisation=supprimer_organisation)
-    print(f"\n[cli] {rapport['message']}" if rapport["message"] else "\n[cli] Vidage terminé.")
-    if rapport["jdd_supprimes"]:
-        print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
-    if rapport["jdd_echecs"]:
-        print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
-    if rapport["jdd_tiers_supprimes"]:
-        print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
-    if rapport["jdd_tiers_echecs"]:
-        print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
+    while True:
+        rapport = vider_commune(
+            conf, profil["code_insee"], nom_commune=profil["nom"],
+            supprimer_organisation=supprimer_organisation,
+        )
+        print(f"\n[cli] {rapport['message']}" if rapport["message"] else "\n[cli] Vidage terminé.")
+        if rapport["jdd_supprimes"]:
+            print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
+        if rapport["jdd_echecs"]:
+            print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
+        if rapport["jdd_tiers_supprimes"]:
+            print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+        if rapport["jdd_tiers_echecs"]:
+            print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
+
+        # Statuts d'attente d'une validation animateur (détachement puis archivage,
+        # voir vidage.vider_commune()) — tous à rejouer de la même façon ; un statut
+        # absent de cette liste est terminal (succès ou échec), on sort de la boucle.
+        if rapport["organisation"] not in (
+            "detachement_demande", "attente_validation_detachement",
+            "archivage_demande", "attente_validation_archivage",
+        ):
+            break
+        reponse = input(
+            "\n  [Entrée] pour vérifier si l'animateur a validé et poursuivre, "
+            "'q' pour revenir au menu : "
+        ).strip().lower()
+        if reponse in ("q", "quitter"):
+            break
+        print()
+        print("Vérification en cours, merci de patienter…")
 
     if rapport["organisation"] == "supprimee" and _demander_oui_non(
         f"Retirer {profil['nom']} du registre de communes", defaut=False,
@@ -667,8 +689,10 @@ def executer_interactif() -> int:
                 profil = profils[int(choix) - 1]
                 action = _demander(
                     "  1) Publier/mettre à jour les données  2) Annuler une publication "
-                    "de test (vider cette commune) — Action", defaut="1",
+                    "de test (vider cette commune)  q) Quitter — Action", defaut="1",
                 )
+                if action.strip().lower() in ("q", "quitter"):
+                    return EXIT_SUCCES
                 if action == "2":
                     return _vider_commune_interactif(profil, chemin_profils)
                 return _executer_depuis_profil(profil, chemin_profils)
@@ -719,7 +743,7 @@ def executer_interactif() -> int:
     while True:
         url_noeud = _demander(
             "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
-            "de votre territoire",
+            "du nœud",
         )
         try:
             url_noeud = valider_url_noeud(url_noeud)
@@ -733,8 +757,10 @@ def executer_interactif() -> int:
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
     url_catalog = _demander(
-        "URL catalogue (laissez vide dans la grande majorité des cas — déduite "
-        "automatiquement)", defaut="",
+        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
+        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
+        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
+        defaut="",
     ) or None
     url_portail = _demander(
         "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
@@ -948,6 +974,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
         rapport = vider_commune(
             conf, args.code_insee,
+            nom_commune=profil["nom"] if profil else None,
             chemin_etat=args.etat,
             supprimer_organisation=args.supprimer_organisation,
             confirmer_fn=_confirmer_fn,

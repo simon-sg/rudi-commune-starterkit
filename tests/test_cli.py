@@ -939,6 +939,27 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
         self.assertEqual(code, cli.EXIT_SUCCES)
         self.assertEqual(m_vider.call_count, 3)
 
+    def test_boucle_aussi_sur_les_statuts_dattente_darchivage(self):
+        """La boucle d'attente (ajoutée pour le détachement) doit continuer aussi sur
+        les 3 statuts d'attente introduits par l'automatisation de l'archivage
+        (``archivage_demande``/``attente_validation_archivage``/
+        ``attente_validation_detachement``) — pas seulement ``detachement_demande``,
+        sans quoi elle sortirait immédiatement dès la 1ère de ces étapes."""
+        for statut in (
+            "archivage_demande", "attente_validation_archivage", "attente_validation_detachement",
+        ):
+            with self.subTest(statut=statut):
+                rapport_en_attente = {**self._RAPPORT_EN_ATTENTE, "organisation": statut}
+                with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+                     mock.patch(
+                         "rudi_commune_starterkit.cli.vider_commune",
+                         side_effect=[rapport_en_attente, self._RAPPORT_SUPPRIMEE],
+                     ) as m_vider, \
+                     mock.patch("builtins.input", side_effect=["o", "", "n"]):
+                    code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+                self.assertEqual(code, cli.EXIT_SUCCES)
+                self.assertEqual(m_vider.call_count, 2)
+
 
 class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):
     """L'URL du portail est désormais demandée dès la 1ère saisie (étape 3) — sans
