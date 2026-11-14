@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+from rudi_harvest_toolkit.rudi_client import EtatPortailIndisponibleError
+
 from rudi_commune_starterkit import vidage
 
 _CONF = {"url": "https://noeud", "usr": "u", "pwd": "p", "url_portail": "https://portail"}
@@ -58,6 +60,7 @@ class TestViderCommuneEtatAbsentMaisOrganisationDemandee(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.vidage.resoudre_commune", return_value=_GEVEZE), \
              mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
+             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail", return_value=None), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
@@ -243,6 +246,22 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         m_det.assert_called_once_with(_CONF, "org-1")
         m_sup_noeud.assert_not_called()
 
+    def test_linked_producer_valide_echec_demande_detachement_rapporte_lechec(self):
+        """Bug réel corrigé le 2026-11-14 : le retour de demander_detachement_producteur()
+        était ignoré — un échec (nœud injoignable, etc.) était rapporté comme un succès
+        ("detachement_demande") alors que rien n'avait été demandé."""
+        org = {"organization_id": "org-1", "linked_producer_status": "VALIDATED"}
+        with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
+             mock.patch("rudi_commune_starterkit.vidage.demander_detachement_producteur",
+                        return_value=False), \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "echec_demande_detachement")
+        m_sup_noeud.assert_not_called()
+
     def test_detachement_en_cours_narrete_avant_larchivage(self):
         """Bug réel rencontré le 2026-11-14 (test E2E automatisé, cf.
         NodeLinkedProducerStatus côté Java) : ``IN_PROGRESS``/``DETACH_IN_PROGRESS``
@@ -286,6 +305,25 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         self.assertEqual(rapport["organisation"], "supprimee")
         m_sup_noeud.assert_called_once_with(_CONF, "org-1")
         m_archivage.assert_not_called()
+
+    def test_etat_portail_indisponible_narrete_avant_de_toucher_au_noeud(self):
+        """Bug réel corrigé le 2026-11-14 côté toolkit (EtatPortailIndisponibleError) :
+        un 401/500 transitoire ou un échec réseau ne doit JAMAIS être traité comme une
+        confirmation d'archivage — l'organisation peut très bien être toujours vivante
+        côté portail, supprimer la copie nœud serait alors une vraie perte de donnée."""
+        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
+        with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
+             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail",
+                        side_effect=EtatPortailIndisponibleError("401 inattendu")), \
+             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation") as m_archivage, \
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
+            rapport = vidage.vider_commune(
+                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "etat_portail_indisponible")
+        m_archivage.assert_not_called()
+        m_sup_noeud.assert_not_called()
 
     def test_detachee_tache_archivage_en_attente_narrete_avant_noeud(self):
         """Une demande d'archivage précédente est toujours en attente de validation

@@ -164,6 +164,23 @@ def _restreindre_acces_windows(chemin: str) -> bool:
     return True
 
 
+def restreindre_acces_fichier(chemin: str) -> bool:
+    """Restreint l'accès à un fichier **déjà écrit** à l'utilisateur courant (``0600``
+    POSIX, ``icacls`` Windows via :func:`_restreindre_acces_windows`) — pour un
+    contenu qui n'est pas un mot de passe mais reste sensible (ex. le registre de
+    communes, qui contient des emails de contact et l'identifiant utilisateur du
+    nœud, voir ``profils_communes.py``), donc ne justifie pas le message
+    « identifiants en clair » d':func:`ecrire_conf_fichier`. Retourne ``True`` si la
+    restriction a réussi, ``False`` sinon (jamais d'exception)."""
+    if sys.platform == "win32":
+        return _restreindre_acces_windows(chemin)
+    try:
+        os.chmod(chemin, 0o600)
+        return True
+    except OSError:
+        return False
+
+
 def ecrire_conf_fichier(chemin: str, conf: dict) -> None:
     """Écrit ``conf`` en JSON dans ``chemin`` avec un accès restreint à l'utilisateur
     courant. Sous POSIX : permissions ``0600`` dès la création (``os.open`` avec
@@ -262,6 +279,18 @@ class TrousseauEnClairError(RuntimeError):
     """Le backend de trousseau résolu est connu pour stocker en clair."""
 
 
+class TrousseauIndisponibleError(RuntimeError):
+    """Aucun backend de trousseau fonctionnel sur ce poste (``keyring.errors.
+    NoKeyringError`` — ``keyring.get_keyring()`` ne lève rien dans ce cas, c'est un
+    backend de repli ``keyring.backends.fail.Keyring`` qui lève à l'utilisation :
+    jamais détecté par :func:`backend_trousseau_est_sain`, qui ne connaît que le cas
+    « backend identifié, mais en clair »). Bug réel corrigé le 2026-11-14 : sans ce
+    traitement, un poste sans backend installé (ex. Linux minimal sans service de
+    secrets) faisait planter le CLI avec une trace Python au lieu de retomber
+    proprement sur la saisie au clavier/``--rudi-conf``, comme pour
+    :class:`TrousseauEnClairError`."""
+
+
 _PREFIXE_SERVICE = "rudi-commune-starterkit"
 
 
@@ -277,7 +306,13 @@ def enregistrer_mot_de_passe_trousseau(url_noeud: str, usr: str, mot_de_passe: s
             f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
             "refus d'y enregistrer un mot de passe."
         )
-    keyring.set_password(_cle_trousseau(url_noeud, usr), usr, mot_de_passe)
+    try:
+        keyring.set_password(_cle_trousseau(url_noeud, usr), usr, mot_de_passe)
+    except keyring.errors.NoKeyringError as e:
+        raise TrousseauIndisponibleError(
+            f"Aucun trousseau système fonctionnel sur ce poste ({e}) — refus d'y "
+            "enregistrer un mot de passe."
+        ) from e
 
 
 def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
@@ -287,12 +322,19 @@ def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
             f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
             "refus d'y lire un mot de passe."
         )
-    return keyring.get_password(_cle_trousseau(url_noeud, usr), usr)
+    try:
+        return keyring.get_password(_cle_trousseau(url_noeud, usr), usr)
+    except keyring.errors.NoKeyringError as e:
+        raise TrousseauIndisponibleError(
+            f"Aucun trousseau système fonctionnel sur ce poste ({e}) — refus d'y "
+            "lire un mot de passe."
+        ) from e
 
 
 __all__ = [
     "AbsenceTerminalError",
     "TrousseauEnClairError",
+    "TrousseauIndisponibleError",
     "UrlNoeudNonSecurisee",
     "backend_trousseau_est_sain",
     "ecrire_conf_fichier",
@@ -301,6 +343,7 @@ __all__ = [
     "enregistrer_mot_de_passe_trousseau",
     "lire_mot_de_passe",
     "lire_mot_de_passe_trousseau",
+    "restreindre_acces_fichier",
     "valider_url_noeud",
     "verifier_permissions_conf",
 ]

@@ -51,6 +51,7 @@ from .resultat import StatutConnecteur
 from .securite import (
     AbsenceTerminalError,
     TrousseauEnClairError,
+    TrousseauIndisponibleError,
     UrlNoeudNonSecurisee,
     ecrire_conf_fichier,
     email_suspect,
@@ -77,6 +78,7 @@ CODE_REGION_BRETAGNE = "53"
 MODES_PRODUCTEUR = ("source", "commune", "par-jdd")
 _PAUSE_ENTRE_PUBLICATIONS_S = 2
 CHEMIN_PROFILS_DEFAUT = os.path.join(".rudi_commune_starterkit", "profils.json")
+CHEMIN_CONF_REPLI_CLAIR = os.path.join("conf", "rudi_node.json")
 
 
 # --------------------------------------------------------------------------------------
@@ -156,6 +158,16 @@ def executer_run(
     ``False`` (mode scriptable) la crée directement, cohérent avec l'absence de prompt.
     """
     code_insee = commune["code_insee"]
+    # Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
+    # sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
+    # sans avoir rien publié, sans le moindre avertissement.
+    cles_connues = {m.CLE for m in registre.MODULES}
+    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
+    if cles_inconnues:
+        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
+              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
+              f"{', '.join(sorted(cles_connues))}.")
+        return EXIT_ECHEC_TOTAL
     modules = [
         m for m in registre.MODULES
         if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
@@ -493,6 +505,23 @@ def _executer_run_avec_attente_validation(**kwargs) -> int:
     return code
 
 
+def _lire_mot_de_passe_repli_clair(url_noeud: str, usr: str) -> str | None:
+    """Relit le mot de passe depuis le fichier de repli en clair (voir
+    :func:`securite.ecrire_conf_fichier`, étape 5 de l'assistant), si son contenu
+    correspond bien à ``(url_noeud, usr)``. Bug réel corrigé le 2026-11-14 : ce
+    fichier était écrit mais jamais relu — un trousseau indisponible/en clair au
+    1er run forçait une resaisie du mot de passe à CHAQUE reprise, alors même que le
+    repli en clair avait justement été choisi pour éviter ça. Un seul fichier global
+    (pas par commune) : ne l'utilise que s'il correspond au nœud/utilisateur demandé,
+    jamais celui d'une autre commune resté sur le poste."""
+    conf = charger_conf_rudi(CHEMIN_CONF_REPLI_CLAIR)
+    if not conf:
+        return None
+    if conf.get("url") != url_noeud or conf.get("usr") != usr:
+        return None
+    return conf.get("pwd")
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -511,9 +540,11 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
         pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
-    except TrousseauEnClairError as e:
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
     if pwd is None:
         print("  Mot de passe introuvable dans le trousseau pour ce profil.")
         try:
@@ -584,6 +615,36 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     )
 
 
+# Statuts "organisation" de vidage.vider_commune() qui attendent une action humaine
+# (validation animateur côté portail, ou simplement un portail momentanément
+# injoignable) — jamais un échec, un rendez-vous à reprendre plus tard.
+_STATUTS_ORGANISATION_EN_ATTENTE = (
+    "detachement_demande", "attente_validation_detachement",
+    "archivage_demande", "attente_validation_archivage",
+    "etat_portail_indisponible",
+)
+# Statuts "organisation" qui sont, eux, de vrais échecs.
+_STATUTS_ORGANISATION_ECHEC = (
+    "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_archivage",
+    "echec_demande_detachement",
+)
+
+
+def _code_sortie_vidage(rapport: dict) -> int:
+    """Code de sortie pour un rapport de :func:`vidage.vider_commune` — **même règle
+    en mode interactif et scriptable**. Bug réel corrigé le 2026-11-14 : le mode
+    scriptable traitait à tort tout statut autre que ``None``/``"supprimee"`` comme
+    un échec partiel, y compris ``"deja_absente"`` (un succès : rien à faire) et les
+    statuts d'attente d'une validation animateur (qui ont leur propre code,
+    ``EXIT_EN_ATTENTE_VALIDATION``, déjà utilisé ailleurs dans ce fichier pour le
+    même concept côté publication)."""
+    if rapport["organisation"] in _STATUTS_ORGANISATION_EN_ATTENTE:
+        return EXIT_EN_ATTENTE_VALIDATION
+    if rapport["jdd_echecs"] or rapport["organisation"] in _STATUTS_ORGANISATION_ECHEC:
+        return EXIT_ECHECS_PARTIELS
+    return EXIT_SUCCES
+
+
 def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     """Vide une commune déjà enregistrée (JDD + organisation en option) — même
     résolution de ``conf`` que :func:`_executer_depuis_profil`, mais route vers
@@ -593,9 +654,11 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
         pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
-    except TrousseauEnClairError as e:
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
     if pwd is None:
         print("  Mot de passe introuvable dans le trousseau pour ce profil.")
         try:
@@ -630,13 +693,10 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         if rapport["jdd_tiers_echecs"]:
             print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
 
-        # Statuts d'attente d'une validation animateur (détachement puis archivage,
-        # voir vidage.vider_commune()) — tous à rejouer de la même façon ; un statut
-        # absent de cette liste est terminal (succès ou échec), on sort de la boucle.
-        if rapport["organisation"] not in (
-            "detachement_demande", "attente_validation_detachement",
-            "archivage_demande", "attente_validation_archivage",
-        ):
+        # Statuts d'attente (validation animateur, ou portail momentanément
+        # injoignable) — tous à rejouer de la même façon ; un statut absent de cette
+        # liste est terminal (succès ou échec), on sort de la boucle.
+        if rapport["organisation"] not in _STATUTS_ORGANISATION_EN_ATTENTE:
             break
         reponse = input(
             "\n  [Entrée] pour vérifier si l'animateur a validé et poursuivre, "
@@ -653,14 +713,7 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         oublier_profil(profil["code_insee"], profil["url_noeud"], chemin_profils)
         print("  Profil retiré du registre.")
 
-    # "detachement_demande"/"archivage_demande"/"attente_validation_archivage" ne sont
-    # pas des échecs : une attente normale d'une action humaine (validation animateur
-    # côté portail), pas un refus ni une erreur.
-    if rapport["jdd_echecs"] or rapport["organisation"] in (
-        "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_archivage",
-    ):
-        return EXIT_ECHECS_PARTIELS
-    return EXIT_SUCCES
+    return _code_sortie_vidage(rapport)
 
 
 def executer_interactif() -> int:
@@ -762,10 +815,27 @@ def executer_interactif() -> int:
         "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
         defaut="",
     ) or None
-    url_portail = _demander(
-        "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
-        "d'annuler une publication de test plus tard)", defaut="",
-    ) or None
+    # Même validation que l'URL du nœud (bug réel corrigé le 2026-11-14 : jamais
+    # validée jusqu'ici — un portail en http:// non local y envoyait les identifiants
+    # portail en clair sans le moindre avertissement, contrairement au nœud).
+    while True:
+        url_portail = _demander(
+            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+            "d'annuler une publication de test plus tard)", defaut="",
+        ) or None
+        if url_portail is None:
+            break
+        try:
+            url_portail = valider_url_noeud(url_portail)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
 
     # Étape 4 : identifiants
     usr = _demander("Nom d'utilisateur (fourni par l'administrateur du nœud)")
@@ -786,10 +856,10 @@ def executer_interactif() -> int:
         try:
             enregistrer_mot_de_passe_trousseau(url_noeud, usr, pwd)
             print("  Mot de passe enregistré dans le trousseau système.")
-        except TrousseauEnClairError as e:
+        except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
             print(f"  {e}")
-            print("  Repli : fichier conf/rudi_node.json en clair (permissions 0600).")
-            ecrire_conf_fichier(os.path.join("conf", "rudi_node.json"), conf)
+            print(f"  Repli : fichier {CHEMIN_CONF_REPLI_CLAIR} en clair (permissions 0600).")
+            ecrire_conf_fichier(CHEMIN_CONF_REPLI_CLAIR, conf)
 
     # Étape 6 : test de connexion
     print("\nTest de connexion au nœud…")
@@ -893,6 +963,12 @@ def _resoudre_conf_scriptable(args: argparse.Namespace) -> dict:
         conf = charger_conf_rudi(args.rudi_conf)
         if not conf:
             raise ValueError(f"Fichier de conf introuvable ou illisible : {args.rudi_conf}")
+        # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — --rudi-conf
+        # contournait entièrement la protection http:// appliquée à --url-noeud.
+        if conf.get("url"):
+            conf["url"] = valider_url_noeud(conf["url"])
+        if conf.get("url_portail"):
+            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
         return conf
 
     if not args.url_noeud or not args.usr:
@@ -958,7 +1034,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
     try:
         conf = _resoudre_conf_scriptable(args)
-    except (ValueError, UrlNoeudNonSecurisee, TrousseauEnClairError) as e:
+    except (ValueError, UrlNoeudNonSecurisee, TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"[cli] {e}", file=sys.stderr)
         return EXIT_ECHEC_TOTAL
     if profil and profil.get("url_catalog"):
@@ -967,6 +1043,15 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         conf["url_portail"] = profil["url_portail"]
     if args.url_portail:
         conf["url_portail"] = args.url_portail
+    # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — même règle que
+    # l'URL du nœud : un portail en http:// non local y envoie les identifiants
+    # portail en clair.
+    if conf.get("url_portail"):
+        try:
+            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
+        except UrlNoeudNonSecurisee as e:
+            print(f"[cli] {e}", file=sys.stderr)
+            return EXIT_ECHEC_TOTAL
 
     if args.vider_commune:
         def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:
@@ -995,9 +1080,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
                   f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
                   f"l'assistant interactif pour le retirer si besoin.")
-        if rapport["jdd_echecs"] or (rapport["organisation"] and rapport["organisation"] != "supprimee"):
-            return EXIT_ECHECS_PARTIELS
-        return EXIT_SUCCES
+        return _code_sortie_vidage(rapport)
 
     try:
         commune = resoudre_commune(args.code_insee)

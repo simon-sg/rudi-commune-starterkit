@@ -102,6 +102,17 @@ class TestExecuterRun(unittest.TestCase):
         kwargs.update(override)
         return cli.executer_run(**kwargs)
 
+    def test_only_cle_inconnue_echoue_au_lieu_de_ne_rien_faire(self):
+        """Bug réel corrigé le 2026-11-14 : une clé inconnue (typo) dans --only ne
+        sélectionnait silencieusement aucun module — le run "réussissait"
+        (EXIT_SUCCES) sans avoir rien publié ni avertir de quoi que ce soit."""
+        code = self._executer(only={"populaton"})
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
+    def test_skip_cle_inconnue_echoue(self):
+        code = self._executer(only=None, skip={"populaton"})
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
     def test_publication_nouvelle(self):
         with mock.patch.object(
             population, "moissonner",
@@ -389,6 +400,28 @@ class TestResoudreConfScriptable(unittest.TestCase):
             conf = cli._resoudre_conf_scriptable(args)
         self.assertEqual(conf["usr"], "u")
 
+    def test_rudi_conf_url_http_non_locale_refusee(self):
+        """Bug réel corrigé le 2026-11-14 : --rudi-conf contournait entièrement la
+        protection http:// appliquée à --url-noeud (identifiants en clair sur le
+        réseau)."""
+        args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
+                                   utiliser_trousseau=False)
+        with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "http://noeud-externe.example", "usr": "u", "pwd": "p"}):
+            with self.assertRaises(cli.UrlNoeudNonSecurisee):
+                cli._resoudre_conf_scriptable(args)
+
+    def test_rudi_conf_url_portail_http_non_locale_refusee(self):
+        args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
+                                   utiliser_trousseau=False)
+        with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://noeud", "usr": "u", "pwd": "p",
+                                       "url_portail": "http://portail-externe.example"}):
+            with self.assertRaises(cli.UrlNoeudNonSecurisee):
+                cli._resoudre_conf_scriptable(args)
+
     def test_sans_rudi_conf_ni_url_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud=None, usr=None,
                                    utiliser_trousseau=False)
@@ -496,6 +529,17 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
         ])
         self.assertEqual(cli.executer_scriptable(args), cli.EXIT_ECHEC_TOTAL)
 
+    def test_url_portail_http_non_locale_refusee(self):
+        """Bug réel corrigé le 2026-11-14 : url_portail (--url-portail ou profil du
+        registre) n'était jamais validée, contrairement à url_noeud."""
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--url-portail", "http://portail-externe.example", "--confirmer", "SUPPRIMER",
+        ])
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
     def test_delegue_a_vider_commune_et_fusionne_url_portail(self):
         args = cli._construire_parser().parse_args([
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
@@ -523,7 +567,12 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             code = cli.executer_scriptable(args)
         self.assertEqual(code, cli.EXIT_ECHECS_PARTIELS)
 
-    def test_organisation_en_attente_de_detachement_rapporte_echecs_partiels(self):
+    def test_organisation_en_attente_de_detachement_rapporte_attente_validation(self):
+        """Bug réel corrigé le 2026-11-14 : le mode scriptable traitait ce statut
+        d'attente (pas un échec, un rendez-vous à reprendre une fois l'animateur
+        passé) comme un échec partiel — incohérent avec le mode interactif, qui ne le
+        traite pas comme un échec (voir TestViderCommuneInteractifAttenteDetachement).
+        Même code que l'attente de validation côté publication (EXIT_EN_ATTENTE_VALIDATION)."""
         args = cli._construire_parser().parse_args([
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
             "--supprimer-organisation", "--url-portail", "https://portail",
@@ -531,6 +580,34 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
         ])
         rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
                    "organisation": "detachement_demande", "message": "en attente"}
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+
+    def test_organisation_deja_absente_est_un_succes_pas_un_echec(self):
+        """Même bug : "deja_absente" (rien à faire, organisation déjà supprimée) était
+        traité comme un échec partiel en mode scriptable faute de check explicite."""
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--supprimer-organisation", "--url-portail", "https://portail",
+            "--confirmer", "SUPPRIMER",
+        ])
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                   "organisation": "deja_absente", "message": "déjà absente"}
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+
+    def test_echec_demande_archivage_rapporte_echecs_partiels(self):
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--supprimer-organisation", "--url-portail", "https://portail",
+            "--confirmer", "SUPPRIMER",
+        ])
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                   "organisation": "echec_demande_archivage", "message": "refusé"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
             code = cli.executer_scriptable(args)
@@ -869,6 +946,36 @@ class TestViderCommuneInteractif(unittest.TestCase):
 
     def test_mot_de_passe_absent_du_trousseau_sans_tty_echoue(self):
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe",
+                         side_effect=cli.AbsenceTerminalError("pas de TTY")):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
+    def test_mot_de_passe_absent_du_trousseau_relu_depuis_le_repli_clair(self):
+        """Bug réel corrigé le 2026-11-14 : le fichier de repli en clair (conf/
+        rudi_node.json, écrit à l'étape 5 de l'assistant si le trousseau est
+        indisponible) n'était jamais relu — resaisie forcée à chaque reprise."""
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://noeud", "usr": "u", "pwd": "pwd-en-clair"}), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe") as m_prompt, \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune",
+                         return_value={"message": "ok", "jdd_supprimes": [], "jdd_echecs": [],
+                                       "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                                       "organisation": None}) as m_vider, \
+             mock.patch("builtins.input", side_effect=["n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_prompt.assert_not_called()
+        self.assertEqual(m_vider.call_args[0][0]["pwd"], "pwd-en-clair")
+
+    def test_repli_clair_dun_autre_noeud_ignore(self):
+        """Fichier global, pas par commune : ne doit jamais être réutilisé pour un
+        (url_noeud, usr) différent de celui du profil demandé."""
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://autre-noeud", "usr": "autre", "pwd": "pas-pour-toi"}), \
              mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe",
                          side_effect=cli.AbsenceTerminalError("pas de TTY")):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
@@ -913,7 +1020,7 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
              ) as m_vider, \
              mock.patch("builtins.input", side_effect=["o", "q"]):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
-        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         m_vider.assert_called_once()
 
     def test_validation_detectee_relance_automatiquement_vers_larchivage(self):
@@ -936,7 +1043,7 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
              ) as m_vider, \
              mock.patch("builtins.input", side_effect=["o", "", "", "q"]):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
-        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         self.assertEqual(m_vider.call_count, 3)
 
     def test_boucle_aussi_sur_les_statuts_dattente_darchivage(self):
@@ -992,6 +1099,27 @@ class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):
         saisies = ["35120", "https://noeud", "", "", "robot", "non", "", ""]
         code, m_profil, m_run = self._executer(saisies)
         self.assertEqual(code, 0)
+
+    def test_url_portail_http_non_locale_refusee_puis_laissee_vide(self):
+        """Bug réel corrigé le 2026-11-14 : url_portail n'était jamais validée (seule
+        url_noeud l'était) — un portail en http:// non local y envoyait les
+        identifiants portail en clair sans le moindre avertissement."""
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch("rudi_commune_starterkit.cli.diagnostic_couverture_structurelle", return_value={}), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe", return_value="secret"), \
+             mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.enregistrer_profil") as m_profil, \
+             mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0) as m_run, \
+             mock.patch("builtins.input", side_effect=[
+                 "35120", "https://noeud", "",
+                 "http://portail-externe.example", "non", "",
+                 "robot", "non", "", "",
+             ]):
+            code = cli.executer_interactif()
+        self.assertEqual(code, 0)
+        conf_recue = m_run.call_args.kwargs["conf"]
+        self.assertIsNone(conf_recue.get("url_portail"))
         conf_recue = m_run.call_args.kwargs["conf"]
         self.assertNotIn("url_portail", conf_recue)
         profil_enregistre = m_profil.call_args[0][0]

@@ -40,6 +40,7 @@ from rudi_harvest_toolkit.commune import (
     resoudre_commune,
 )
 from rudi_harvest_toolkit.rudi_client import (
+    EtatPortailIndisponibleError,
     demander_archivage_organisation,
     demander_detachement_producteur,
     etat_tache_organisation_portail,
@@ -85,11 +86,11 @@ def vider_commune(
     par ce socle mais référençant l'organisation — proposés à la suppression
     séparément, uniquement si ``supprimer_organisation``), ``organisation`` (``None`` si
     non demandé, sinon un statut parmi ``"supprimee"``/``"deja_absente"``/
-    ``"detachement_demande"``/``"attente_validation_detachement"``/
-    ``"refus_jdd_restants"``/``"archivage_demande"``/
+    ``"detachement_demande"``/``"echec_demande_detachement"``/
+    ``"attente_validation_detachement"``/``"refus_jdd_restants"``/``"archivage_demande"``/
     ``"attente_validation_archivage"``/``"echec_demande_archivage"``/
-    ``"echec_suppression_noeud"``) et ``message`` (texte explicatif, toujours
-    renseigné sauf succès silencieux).
+    ``"echec_suppression_noeud"``/``"etat_portail_indisponible"``) et ``message`` (texte
+    explicatif, toujours renseigné sauf succès silencieux).
 
     La suppression d'organisation est désormais **entièrement automatisable**
     (confirmé de bout en bout le 2026-11-14) : détachement du producteur → validation
@@ -234,7 +235,14 @@ def vider_commune(
     organization_id = organisation.get("organization_id")
     statut_producteur = organisation.get("linked_producer_status")
     if statut_producteur == "VALIDATED":
-        demander_detachement_producteur(conf, organization_id)
+        if not demander_detachement_producteur(conf, organization_id):
+            rapport["organisation"] = "echec_demande_detachement"
+            rapport["message"] = (
+                f"Demande de détachement du producteur « {nom_org_commune} » "
+                "refusée par le nœud — voir le journal ci-dessus pour la raison "
+                "exacte."
+            )
+            return rapport
         rapport["organisation"] = "detachement_demande"
         rapport["message"] = (
             f"Détachement du producteur « {nom_org_commune} » demandé — relancer une "
@@ -268,7 +276,19 @@ def vider_commune(
     # Method.DELETE non géré côté nœud, confirmé par le code source) — on doit donc lire
     # l'état réel côté portail pour savoir où on en est, plutôt que linked_producer_status
     # (qui ne change plus à partir d'ici).
-    etat_portail = etat_tache_organisation_portail(conf, organization_id)
+    try:
+        etat_portail = etat_tache_organisation_portail(conf, organization_id)
+    except EtatPortailIndisponibleError as e:
+        # Jamais traiter une erreur (réseau, auth, 401/500 transitoire) comme une
+        # confirmation d'archivage : l'organisation peut très bien être toujours
+        # vivante côté portail — supprimer_organisation_noeud() serait alors une
+        # vraie perte de donnée, pas un nettoyage de copie obsolète.
+        rapport["organisation"] = "etat_portail_indisponible"
+        rapport["message"] = (
+            f"Impossible de vérifier l'état de « {nom_org_commune} » côté portail "
+            f"({e}) — rien n'a été supprimé, relancer plus tard."
+        )
+        return rapport
     if etat_portail is None:
         # Organisation disparue du portail : archivage déjà validé lors d'un appel
         # précédent — ne reste que le nettoyage de la copie locale du nœud.

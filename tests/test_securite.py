@@ -319,6 +319,25 @@ class TestTrousseau(unittest.TestCase):
                 securite.lire_mot_de_passe_trousseau("https://noeud", "alice")
         m.assert_not_called()
 
+    def test_lire_sans_backend_fonctionnel_leve_indisponible_pas_crash(self):
+        """Bug réel corrigé le 2026-11-14 : keyring.errors.NoKeyringError (aucun
+        backend fonctionnel, ex. Linux minimal) n'est levée qu'À L'USAGE
+        (keyring.backends.fail.Keyring.get_password), jamais détectée par
+        backend_trousseau_est_sain() — sans ce traitement, elle remontait non
+        attrapée jusqu'au CLI."""
+        import keyring.errors
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(True, "x")), \
+             mock.patch("keyring.get_password", side_effect=keyring.errors.NoKeyringError("non")):
+            with self.assertRaises(securite.TrousseauIndisponibleError):
+                securite.lire_mot_de_passe_trousseau("https://noeud", "alice")
+
+    def test_enregistrer_sans_backend_fonctionnel_leve_indisponible_pas_crash(self):
+        import keyring.errors
+        with mock.patch.object(securite, "backend_trousseau_est_sain", return_value=(True, "x")), \
+             mock.patch("keyring.set_password", side_effect=keyring.errors.NoKeyringError("non")):
+            with self.assertRaises(securite.TrousseauIndisponibleError):
+                securite.enregistrer_mot_de_passe_trousseau("https://noeud", "alice", "secret")
+
     def test_cle_trousseau_unique_par_noeud_et_utilisateur(self):
         cle_a = securite._cle_trousseau("https://noeud-a", "alice")
         cle_b = securite._cle_trousseau("https://noeud-b", "alice")
