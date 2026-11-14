@@ -13,6 +13,20 @@ from rudi_harvest_toolkit import rudi_client
 from rudi_harvest_toolkit.tabular import normaliser_nom_colonne
 
 
+def charger_conf_rudi(chemin: str) -> dict | None:
+    """Wrapper direct autour de ``rudi_client.charger_conf_rudi()`` — même frontière que
+    :func:`tester_connexion_noeud` (bug réel corrigé le 2026-11-14 : ``cli.py``
+    importait cette fonction directement depuis le toolkit, contournant cet
+    adaptateur que ce module existe précisément pour fournir)."""
+    return rudi_client.charger_conf_rudi(chemin)
+
+
+def demander_creation_organisation(conf: dict, organization: dict) -> str | None:
+    """Wrapper direct autour de ``rudi_client.demander_creation_organisation()`` — même
+    frontière que :func:`tester_connexion_noeud` (voir :func:`charger_conf_rudi`)."""
+    return rudi_client.demander_creation_organisation(conf, organization)
+
+
 def tester_connexion_noeud(conf: dict, erreur_sortie: dict | None = None) -> bool:
     """Wrapper direct autour de ``rudi_client.noeud_pret()`` — ``cli.py`` n'importe pas
     ``rudi_client`` directement, frontière claire support/toolkit.
@@ -98,6 +112,8 @@ def resoudre_organisations_producteurs(
 
 
 __all__ = [
+    "charger_conf_rudi",
+    "demander_creation_organisation",
     "desactiver_verification_tls_noeud",
     "erreur_est_certificat_tls",
     "normaliser_nom_organisation",

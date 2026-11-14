@@ -31,7 +31,6 @@ from rudi_harvest_toolkit.commune import (
     ErreurReseauCommune,
     resoudre_commune,
 )
-from rudi_harvest_toolkit.rudi_client import charger_conf_rudi, demander_creation_organisation
 from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
@@ -41,6 +40,8 @@ from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
 from .profils_communes import charger_profils, enregistrer_profil, oublier_profil
 from .resolution_noeud import (
+    charger_conf_rudi,
+    demander_creation_organisation,
     desactiver_verification_tls_noeud,
     erreur_est_certificat_tls,
     organisation_existante,

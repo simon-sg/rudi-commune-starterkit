@@ -7,6 +7,31 @@ import requests
 from rudi_commune_starterkit import resolution_noeud
 
 
+class TestChargerConfRudi(unittest.TestCase):
+    """Bug réel corrigé le 2026-11-14 : cli.py importait charger_conf_rudi() et
+    demander_creation_organisation() directement depuis le toolkit, contournant cet
+    adaptateur."""
+    def test_delegue_a_rudi_client(self):
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.rudi_client.charger_conf_rudi",
+                         return_value={"url": "https://x"}) as m:
+            self.assertEqual(resolution_noeud.charger_conf_rudi("conf/rudi_node.json"),
+                              {"url": "https://x"})
+        m.assert_called_once_with("conf/rudi_node.json")
+
+
+class TestDemanderCreationOrganisation(unittest.TestCase):
+    def test_delegue_a_rudi_client(self):
+        with mock.patch(
+            "rudi_commune_starterkit.resolution_noeud.rudi_client.demander_creation_organisation",
+            return_value="org-1",
+        ) as m:
+            self.assertEqual(
+                resolution_noeud.demander_creation_organisation({"url": "https://x"}, {"a": 1}),
+                "org-1",
+            )
+        m.assert_called_once_with({"url": "https://x"}, {"a": 1})
+
+
 class TestTesterConnexionNoeud(unittest.TestCase):
     def test_delegue_a_noeud_pret(self):
         with mock.patch("rudi_commune_starterkit.resolution_noeud.rudi_client.noeud_pret",
