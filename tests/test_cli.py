@@ -192,37 +192,6 @@ class TestExecuterRun(unittest.TestCase):
             self._executer()
         self.assertEqual(metadata["producer"]["organization_id"], "oid-1")
 
-    def test_description_commune_resolue_une_fois_et_transmise_au_module(self):
-        desc = {"organization_summary": "Résumé spécifique au test.",
-                "source": "wikipedia", "url": "https://fr.wikipedia.org/wiki/X"}
-        with mock.patch(
-            "rudi_commune_starterkit.cli.construire_description_commune", return_value=desc,
-        ) as m_desc, mock.patch.object(
-            population, "moissonner",
-            return_value=ResultatConnecteur(StatutConnecteur.PUBLIABLE, rudi_metadata=_metadata()),
-        ) as m_moissonner, mock.patch(
-            "rudi_commune_starterkit.cli.publier_si_configue", return_value=True,
-        ):
-            self._executer()
-        m_desc.assert_called_once()
-        self.assertEqual(m_moissonner.call_args.kwargs["description_commune"], desc)
-
-    def test_avertissement_affiche_si_repli_generique(self):
-        desc = {"organization_summary": "Générique.", "source": "repli_generique", "url": None}
-        with mock.patch(
-            "rudi_commune_starterkit.cli.construire_description_commune", return_value=desc,
-        ), mock.patch.object(
-            population, "moissonner",
-            return_value=ResultatConnecteur(StatutConnecteur.PUBLIABLE, rudi_metadata=_metadata()),
-        ), mock.patch(
-            "rudi_commune_starterkit.cli.publier_si_configue", return_value=True,
-        ), mock.patch("builtins.print") as m_print:
-            self._executer()
-        self.assertTrue(
-            any("repli" in str(appel) or "générique" in str(appel) for appel in m_print.call_args_list)
-        )
-
-
 class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
     """Réutilise setUp()/_executer() de TestExecuterRun, mode commune pour POPULATION
     (producteur résolu == organisation_commune(_GEVEZE)) pour déclencher le garde-fou."""
@@ -385,6 +354,55 @@ class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
             self.modes = {organisations.POPULATION: "source"}
             self._executer()
         m_verif.assert_not_called()
+
+    def test_description_commune_resolue_une_fois_et_transmise_au_module(self):
+        # mode "commune" (déjà le défaut de cette classe) : seul cas où
+        # resoudre_producer() utilise vraiment description_commune — voir
+        # test_description_commune_non_calculee_si_aucun_module_ne_lutilise ci-dessous
+        # pour le cas "source" (bug réel corrigé le 2026-11-14 : calculée même quand
+        # inutile à aucun module sélectionné).
+        desc = {"organization_summary": "Résumé spécifique au test.",
+                "source": "wikipedia", "url": "https://fr.wikipedia.org/wiki/X"}
+        with mock.patch(
+            "rudi_commune_starterkit.cli.construire_description_commune", return_value=desc,
+        ) as m_desc, mock.patch.object(
+            population, "moissonner",
+            return_value=ResultatConnecteur(StatutConnecteur.PUBLIABLE, rudi_metadata=_metadata()),
+        ) as m_moissonner, mock.patch(
+            "rudi_commune_starterkit.cli.publier_si_configue", return_value=True,
+        ):
+            self._executer()
+        m_desc.assert_called_once()
+        self.assertEqual(m_moissonner.call_args.kwargs["description_commune"], desc)
+
+    def test_avertissement_affiche_si_repli_generique(self):
+        desc = {"organization_summary": "Générique.", "source": "repli_generique", "url": None}
+        with mock.patch(
+            "rudi_commune_starterkit.cli.construire_description_commune", return_value=desc,
+        ), mock.patch.object(
+            population, "moissonner",
+            return_value=ResultatConnecteur(StatutConnecteur.PUBLIABLE, rudi_metadata=_metadata()),
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.publier_si_configue", return_value=True,
+        ), mock.patch("builtins.print") as m_print:
+            self._executer()
+        self.assertTrue(
+            any("repli" in str(appel) or "générique" in str(appel) for appel in m_print.call_args_list)
+        )
+
+    def test_description_commune_non_calculee_si_aucun_module_ne_lutilise(self):
+        """Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel
+        Wikipédia + téléchargement RNE ~65 Mo) même en mode "source" (où
+        resoudre_producer() ne l'utilise jamais) et même en --dry-run."""
+        with mock.patch(
+            "rudi_commune_starterkit.cli.construire_description_commune",
+        ) as m_desc, mock.patch.object(
+            population, "moissonner",
+            return_value=ResultatConnecteur(StatutConnecteur.PUBLIABLE, rudi_metadata=_metadata()),
+        ), mock.patch("rudi_commune_starterkit.cli.publier_si_configue", return_value=True):
+            self.modes = {organisations.POPULATION: "source"}
+            self._executer()
+        m_desc.assert_not_called()
 
 
 class TestTesterConnexionAvecRepliTls(unittest.TestCase):

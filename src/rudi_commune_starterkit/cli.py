@@ -177,13 +177,25 @@ def executer_run(
     # réutilisé aux deux sites qui construisent l'organisation de la commune — voir le
     # plan, § Axe 1 (sinon l'organisation créée sur le nœud et le producer publié avec
     # chaque JDD pourraient porter des résumés différents).
-    description_commune = construire_description_commune(
-        commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
-        dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+    #
+    # Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
+    # téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
+    # resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
+    # (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
+    # "source" payait ce coût réseau pour rien, --dry-run compris.
+    besoin_description_commune = any(
+        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
+        for module in modules
     )
-    if description_commune["source"] == "repli_generique":
-        print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
-              "— description générique utilisée pour l'organisation de la commune.")
+    description_commune = None
+    if besoin_description_commune:
+        description_commune = construire_description_commune(
+            commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+            dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+        )
+        if description_commune["source"] == "repli_generique":
+            print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
+                  "— description générique utilisée pour l'organisation de la commune.")
 
     producteurs_candidats = {}
     producteur_par_module: dict[str, dict] = {}
