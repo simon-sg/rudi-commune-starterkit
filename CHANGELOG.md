@@ -2,6 +2,66 @@
 
 ## Non publié
 
+### Revue de code — phase 3 (2026-11-14)
+
+**Sécurité**
+
+- `valider_url_noeud()` acceptait sans la moindre vérification une URL `https://`
+  à l'hôte vide (`https://`) ou porteuse d'identifiants embarqués
+  (`https://usr:pwd@hote`) — refusés désormais explicitement.
+- `--depuis-registre` écrasait `--contact-commune`/`--organisation-producteur`
+  même fournis explicitement sur la ligne de commande — un flag explicite gagne
+  désormais toujours sur la valeur implicite du profil.
+
+**Fiabilité**
+
+- `agregation_scrutin.py` : une seule ligne au code commune vide/malformé, d'une
+  commune sans rapport avec la cible, faisait planter l'agrégation entière du
+  fichier national — ignorée désormais (avec un avertissement groupé), jamais une
+  erreur fatale.
+
+**Performance**
+
+- `description_commune` (appel Wikipédia + téléchargement du RNE, ~65 Mo) n'est
+  plus calculée que si un module réellement sélectionné en a besoin (mode
+  `"commune"`, ou délibérations) — plus de coût réseau payé pour rien avec
+  `--only` sur un JDD en mode `"source"`, `--dry-run` compris.
+
+**Architecture**
+
+- `cli.py` importait `charger_conf_rudi()`/`demander_creation_organisation()`
+  directement depuis le toolkit, contournant `resolution_noeud.py` — l'adaptateur
+  que ce module existe précisément pour fournir. Passent désormais par ce seul
+  point.
+
+**Build & CI**
+
+- `pyproject.toml` déclarait le toolkit via un chemin absolu local
+  (`file:///media/simon/...`), rendant `pip install .` impossible pour quiconque
+  d'autre que Simon — remplacé par la même URL git publique que les workflows CI.
+- `build-executable.yml` : défaut de `toolkit_ref` bumpé sur la dernière release
+  du toolkit (v0.5.6).
+- `deploy-docs.yml` était épinglé en dur sur `@main` (toujours la dernière version
+  du toolkit), contrairement à `build-executable.yml` qui épingle un tag choisi au
+  déclenchement — le guide pouvait décrire un comportement différent de celui
+  réellement packagé dans l'exécutable déjà publié. Ajout d'un input
+  `toolkit_ref`, même défaut que `build-executable.yml`.
+- Smoke-test (Windows + Linux) qui ne vérifiait que l'absence du mot
+  "Traceback" — un exe qui ne démarre pas du tout, ou qui reste bloqué, passait
+  quand même. Vérifie désormais aussi l'absence de blocage et la présence du
+  bandeau de démarrage.
+- `--version` ajouté au mode scriptable ; checksum SHA-256 publié à côté de
+  l'exécutable sur chaque release.
+
+**Documentation**
+
+- README.md : section Installation réécrite sans chemin absolu personnel,
+  section Développement séparée ; table des 4 codes de sortie du mode
+  scriptable ; mention à jour de la dépendance au toolkit.
+- Guide utilisateur (page « Annuler une publication de test ») : décrivait encore
+  le vidage d'organisation comme un détachement suivi d'une seule validation,
+  alors que le flux réel ajoute une étape d'archivage avec sa propre validation.
+
 ### Le garde-fou organisation ne force plus « validée » sur une panne de vérification
 
 `executer_run()` mettait `etat_org = "validee"` sur n'importe quelle panne de
