@@ -156,6 +156,16 @@ def executer_run(
     ``False`` (mode scriptable) la crée directement, cohérent avec l'absence de prompt.
     """
     code_insee = commune["code_insee"]
+    # Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
+    # sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
+    # sans avoir rien publié, sans le moindre avertissement.
+    cles_connues = {m.CLE for m in registre.MODULES}
+    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
+    if cles_inconnues:
+        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
+              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
+              f"{', '.join(sorted(cles_connues))}.")
+        return EXIT_ECHEC_TOTAL
     modules = [
         m for m in registre.MODULES
         if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)

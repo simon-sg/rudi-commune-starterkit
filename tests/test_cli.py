@@ -102,6 +102,17 @@ class TestExecuterRun(unittest.TestCase):
         kwargs.update(override)
         return cli.executer_run(**kwargs)
 
+    def test_only_cle_inconnue_echoue_au_lieu_de_ne_rien_faire(self):
+        """Bug réel corrigé le 2026-11-14 : une clé inconnue (typo) dans --only ne
+        sélectionnait silencieusement aucun module — le run "réussissait"
+        (EXIT_SUCCES) sans avoir rien publié ni avertir de quoi que ce soit."""
+        code = self._executer(only={"populaton"})
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
+    def test_skip_cle_inconnue_echoue(self):
+        code = self._executer(only=None, skip={"populaton"})
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
     def test_publication_nouvelle(self):
         with mock.patch.object(
             population, "moissonner",
