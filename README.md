@@ -116,20 +116,30 @@ sans passer par le mode scriptable.
 ## Installation
 
 Layout `src/`, backend `setuptools`. Environnement Debian « externally-managed »,
-d'où `--break-system-packages` :
+d'où `--break-system-packages`. Depuis une copie clonée de ce dépôt :
 
 ```bash
-pip install --user --break-system-packages -e /media/simon/DATA4T/Dev/rudi-commune-starterkit
+pip install --user --break-system-packages -e .
+```
+
+Récupère `rudi-harvest-toolkit` depuis GitHub (voir `pyproject.toml`).
+
+### Développement (modification simultanée du toolkit)
+
+Pour travailler sur `rudi-harvest-toolkit` et `rudi-commune-starterkit` en même temps
+(deux clones locaux), installer les deux en édition locale, le toolkit en second pour
+qu'il remplace la version GitHub :
+
+```bash
+pip install --user --break-system-packages -e .
+pip install --user --break-system-packages --no-cache-dir --force-reinstall \
+  --no-deps -e /chemin/vers/votre/clone/de/rudi-harvest-toolkit
 ```
 
 Si l'import échoue après coup avec un module manquant du toolkit alors qu'il existe
 bien dans le code source, c'est le piège classique du cache wheel pip figeant une
-ancienne version éditable — réinstaller en forçant :
-
-```bash
-pip install --user --break-system-packages --no-cache-dir --force-reinstall \
-  --no-deps -e /media/simon/DATA4T/Dev/rudi-harvest-toolkit
-```
+ancienne version éditable — réinstaller avec la même commande `--force-reinstall`
+ci-dessus.
 
 ## Configuration du nœud RUDI cible
 
