@@ -615,16 +615,31 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         "ne s'y réfère encore)", defaut=False,
     )
 
-    rapport = vider_commune(conf, profil["code_insee"], supprimer_organisation=supprimer_organisation)
-    print(f"\n[cli] {rapport['message']}" if rapport["message"] else "\n[cli] Vidage terminé.")
-    if rapport["jdd_supprimes"]:
-        print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
-    if rapport["jdd_echecs"]:
-        print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
-    if rapport["jdd_tiers_supprimes"]:
-        print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
-    if rapport["jdd_tiers_echecs"]:
-        print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
+    while True:
+        rapport = vider_commune(
+            conf, profil["code_insee"], nom_commune=profil["nom"],
+            supprimer_organisation=supprimer_organisation,
+        )
+        print(f"\n[cli] {rapport['message']}" if rapport["message"] else "\n[cli] Vidage terminé.")
+        if rapport["jdd_supprimes"]:
+            print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
+        if rapport["jdd_echecs"]:
+            print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}")
+        if rapport["jdd_tiers_supprimes"]:
+            print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+        if rapport["jdd_tiers_echecs"]:
+            print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
+
+        if rapport["organisation"] != "detachement_demande":
+            break
+        reponse = input(
+            "\n  [Entrée] pour vérifier si l'animateur a validé le détachement et "
+            "poursuivre (demande de suppression), 'q' pour revenir au menu : "
+        ).strip().lower()
+        if reponse in ("q", "quitter"):
+            break
+        print()
+        print("Vérification en cours, merci de patienter…")
 
     if rapport["organisation"] == "supprimee" and _demander_oui_non(
         f"Retirer {profil['nom']} du registre de communes", defaut=False,
@@ -668,8 +683,10 @@ def executer_interactif() -> int:
                 profil = profils[int(choix) - 1]
                 action = _demander(
                     "  1) Publier/mettre à jour les données  2) Annuler une publication "
-                    "de test (vider cette commune) — Action", defaut="1",
+                    "de test (vider cette commune)  q) Quitter — Action", defaut="1",
                 )
+                if action.strip().lower() in ("q", "quitter"):
+                    return EXIT_SUCCES
                 if action == "2":
                     return _vider_commune_interactif(profil, chemin_profils)
                 return _executer_depuis_profil(profil, chemin_profils)
@@ -951,6 +968,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
         rapport = vider_commune(
             conf, args.code_insee,
+            nom_commune=profil["nom"] if profil else None,
             chemin_etat=args.etat,
             supprimer_organisation=args.supprimer_organisation,
             confirmer_fn=_confirmer_fn,

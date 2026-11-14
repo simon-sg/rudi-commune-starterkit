@@ -278,6 +278,25 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         self.assertEqual(rapport["organisation"], "attente_suppression_portail_manuelle")
         m_sup_noeud.assert_not_called()
 
+    def test_nom_commune_fourni_evite_lappel_reseau_a_resoudre_commune(self):
+        """Bug réel (2026-11-14) : un profil déjà enregistré connaît déjà le nom de la
+        commune — pas besoin de geo.api.gouv.fr pour traiter l'organisation seule (une
+        coupure réseau transitoire ne doit plus bloquer cette opération purement
+        locale au nœud)."""
+        with mock.patch(
+            "rudi_commune_starterkit.vidage.resoudre_commune",
+            side_effect=AssertionError("ne doit pas être appelé"),
+        ) as m_resoudre, \
+             mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=None):
+            rapport = vidage.vider_commune(
+                _CONF, "35120", nom_commune="Gévezé",
+                supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
+            )
+        self.assertEqual(rapport["organisation"], "deja_absente")
+        self.assertIn("Gévezé", rapport["message"])
+        m_resoudre.assert_not_called()
+
     def test_statut_linked_producer_manquant_traite_comme_detache(self):
         # Pas VALIDATED -> on tente la suppression (toute valeur autre que VALIDATED,
         # y compris absente, est traitée comme « pas/plus rattaché »).

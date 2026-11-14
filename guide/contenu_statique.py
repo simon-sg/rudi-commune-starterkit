@@ -420,7 +420,7 @@ Tapez le numéro de votre commune, puis choisissez :
 
 ```text
   1) Publier/mettre à jour les données  2) Annuler une publication de test
-  (vider cette commune) — Action [1] :
+  (vider cette commune)  q) Quitter — Action [1] :
 ```
 
 Le choix **1** republie les données — l'outil retrouve automatiquement l'adresse du
@@ -473,6 +473,14 @@ s'y réfère encore) (o/N) :
 
 4. Un rapport final indique ce qui a été supprimé, et ce qui, le cas échéant, n'a pas
    pu l'être.
+
+!!! info "Détachement en attente de validation"
+    Si l'organisation de la commune a déjà été validée par l'animateur du portail,
+    sa suppression se fait en deux temps : un détachement est demandé, puis
+    l'outil propose d'appuyer sur Entrée pour vérifier si l'animateur l'a validé et
+    poursuivre (même principe que pour la création, voir l'encart du
+    [pas-à-pas](pas-a-pas.md#10-lancement-et-rapport-final), étape 10), ou de taper
+    `q` pour revenir au menu et réessayer plus tard.
 
 Cette opération est pensée pour un usage de test — elle n'est pas nécessaire dans le
 cadre d'un usage normal, où l'on relance simplement l'outil pour mettre à jour (voir

@@ -1,5 +1,31 @@
 # Changelog
 
+## Non publié
+
+### Correctifs trouvés en testant l'exécutable v0.7.1 (nœud réel)
+
+- **Détachement/archivage d'organisation sans possibilité d'attendre la
+  validation** : contrairement à la création d'organisation, demander le
+  détachement d'un producteur déjà validé par l'animateur du portail
+  (`vider_commune`/« Annuler une publication de test ») s'arrêtait net sans
+  proposer de vérifier à nouveau — il fallait tout relancer manuellement. Ajout du
+  même système d'attente que pour la création : `[Entrée]` pour vérifier et
+  poursuivre automatiquement vers la demande d'archivage, `q` pour revenir au menu.
+- **Suppression d'organisation bloquée par une coupure réseau sans rapport avec
+  l'opération** : traiter l'organisation d'une commune déjà enregistrée appelait à
+  chaque fois `geo.api.gouv.fr` pour en retrouver le nom, alors que ce nom est déjà
+  connu du profil local — une simple coupure réseau transitoire (ex.
+  `NameResolutionError` sur `geo.api.gouv.fr`) bloquait alors toute l'opération,
+  purement locale au nœud, sans aucun besoin réel du réseau. `vider_commune()`
+  accepte désormais `nom_commune` (fourni par le profil quand disponible) pour
+  éviter cet appel.
+- **Fin de session abrupte** : l'exécutable se fermait après chaque run (succès ou
+  échec) avec un unique « Appuyez sur Entrée pour fermer » — impossible de traiter
+  une autre commune, ou de corriger un détail, sans redoubler-cliquer l'exécutable.
+  Il revient maintenant automatiquement au menu principal (Entrée) ; `q` permet de
+  fermer directement. Le choix d'action (publier/vider) propose désormais aussi
+  `q) Quitter`.
+
 ## 0.7.1 — 2026-11-14
 
 ### Correctifs trouvés en testant l'exécutable v0.7.0 (Windows + Linux, nœud réel)

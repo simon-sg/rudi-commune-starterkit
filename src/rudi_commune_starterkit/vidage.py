@@ -57,6 +57,7 @@ def vider_commune(
     conf: dict,
     code_insee: str,
     *,
+    nom_commune: str | None = None,
     chemin_etat: str | None = None,
     supprimer_organisation: bool = False,
     confirmer_fn=confirmer,
@@ -64,6 +65,17 @@ def vider_commune(
     """Supprime les JDD de ``code_insee`` connus de l'état local (nœud + portail), puis
     l'organisation de la commune si ``supprimer_organisation`` et que plus aucun JDD du
     nœud ne la référence.
+
+    ``nom_commune`` (optionnel) : évite l'appel réseau à ``geo.api.gouv.fr`` pour
+    déterminer le nom de l'organisation quand l'appelant le connaît déjà (ex. profil du
+    registre local, qui stocke ``nom`` depuis sa résolution initiale) — le nom de
+    l'organisation ne dépend que du nom de la commune, jamais du reste de la fiche
+    ``geo.api.gouv.fr`` (voir :func:`organisations.organisation_commune`). Bug réel
+    (2026-11-14) : sans ce paramètre, une coupure réseau transitoire bloquait tout le
+    traitement de l'organisation d'une commune déjà connue localement, alors qu'aucun
+    appel réseau n'était en réalité nécessaire pour cette partie. Sans lui, retombe sur
+    :func:`resoudre_commune` comme avant (seul cas où il manque vraiment : mode
+    scriptable sans profil enregistré).
 
     Retourne un rapport ``dict`` : ``jdd_supprimes``/``jdd_echecs`` (listes de
     ``local_id``, les JDD connus de l'état local), ``jdd_tiers_supprimes``/
@@ -140,12 +152,15 @@ def vider_commune(
     if not supprimer_organisation:
         return rapport
 
-    try:
-        commune = resoudre_commune(code_insee)
-    except (CodeInseeInvalide, ArrondissementMunicipalError, CommuneIntrouvableError,
-            ErreurReseauCommune) as e:
-        rapport["message"] = f"Organisation non traitée : impossible de résoudre la commune ({e})."
-        return rapport
+    if nom_commune is not None:
+        commune = {"nom": nom_commune, "code_insee": code_insee}
+    else:
+        try:
+            commune = resoudre_commune(code_insee)
+        except (CodeInseeInvalide, ArrondissementMunicipalError, CommuneIntrouvableError,
+                ErreurReseauCommune) as e:
+            rapport["message"] = f"Organisation non traitée : impossible de résoudre la commune ({e})."
+            return rapport
 
     nom_org_commune = organisations.organisation_commune(commune)["organization_name"]
 

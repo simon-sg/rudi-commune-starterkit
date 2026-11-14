@@ -40,42 +40,36 @@ if __name__ == "__main__":
     code = 1
     while True:
         code = _executer_une_fois()
-        if code == 0:
-            break
-        # En échec (total ou partiel) : proposer de relancer l'assistant depuis le
-        # début sans refermer la fenêtre, plutôt que de forcer à redoubler-cliquer
-        # l'exécutable. « Depuis le début » : aucune donnée déjà saisie n'est
-        # réutilisée, main() est simplement rappelée.
-        #
-        # Avertissement ci-dessous : la création d'organisation (côté
-        # rudi_harvest_toolkit) n'est pas garantie idempotente — un échec ambigu
-        # (ex. serveur lent) peut avoir réussi côté nœud sans que la réponse soit
-        # arrivée, et un nouvel essai immédiat (ce « R », ou tout relancement
-        # manuel du même exécutable) peut alors créer une organisation en double
-        # si le nœud n'a pas encore fini d'indexer la précédente. Vrai correctif
-        # (organization_id déterministe/idempotent côté toolkit) hors scope de ce
-        # fichier — voir le backlog.
+        if code != 0:
+            # Avertissement ci-dessous : la création d'organisation (côté
+            # rudi_harvest_toolkit) n'est pas garantie idempotente — un échec
+            # ambigu (ex. serveur lent) peut avoir réussi côté nœud sans que la
+            # réponse soit arrivée, et un nouvel essai immédiat peut alors créer
+            # une organisation en double si le nœud n'a pas encore fini d'indexer
+            # la précédente. Vrai correctif (organization_id déterministe/
+            # idempotent côté toolkit) hors scope de ce fichier — voir le backlog.
+            print(
+                "\nÉchec (ou succès partiel). Si cela s'est produit après la "
+                "création d'une organisation ou la publication d'un JDD, "
+                "vérifiez sur le nœud avant de relancer (un nouvel essai "
+                "immédiat peut créer un doublon)."
+            )
+        # Retour automatique au menu plutôt qu'une fermeture forcée après chaque
+        # run (jusqu'ici, un succès fermait directement la fenêtre sans possibilité
+        # de traiter une autre commune) : Entrée rappelle main() depuis le début
+        # (aucune donnée déjà saisie n'est réutilisée — elle réaffiche notamment le
+        # menu des communes déjà enregistrées, avec son propre choix « Quitter »),
+        # 'q' ferme directement sans repasser par ce menu.
         try:
             reponse = input(
-                "\nÉchec. Si l'échec s'est produit après la création d'une "
-                "organisation ou la publication d'un JDD, vérifiez sur le nœud "
-                "avant de relancer (un nouvel essai immédiat peut créer un "
-                "doublon). Taper R puis Entrée pour réessayer depuis le début, "
-                "ou appuyer sur Entrée pour fermer : "
-            ).strip().upper()
+                "\nAppuyez sur Entrée pour revenir au menu, 'q' pour quitter : "
+            ).strip().lower()
         except EOFError:
             # Stdin fermé/non interactif (ex. smoke-test CI) : pas de prompt
             # possible, on ferme comme avant ce changement.
             break
-        if reponse != "R":
+        if reponse in ("q", "quitter"):
             break
         print()
-
-    # Si stdin est fermé/non interactif, ce input() lèverait lui-même EOFError —
-    # à ignorer, pas à laisser planter juste après avoir affiché le résultat.
-    try:
-        input("Appuyez sur Entrée pour fermer...")
-    except EOFError:
-        pass
 
     sys.exit(code)

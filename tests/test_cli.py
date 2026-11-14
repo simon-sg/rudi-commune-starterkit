@@ -864,7 +864,7 @@ class TestViderCommuneInteractif(unittest.TestCase):
         self.assertEqual(code, cli.EXIT_SUCCES)
         m_vider.assert_called_once_with(
             {"url": "https://noeud", "usr": "u", "pwd": "pwd"}, "35120",
-            supprimer_organisation=False,
+            nom_commune="Gévezé", supprimer_organisation=False,
         )
 
     def test_mot_de_passe_absent_du_trousseau_sans_tty_echoue(self):
@@ -891,6 +891,53 @@ class TestViderCommuneInteractif(unittest.TestCase):
              mock.patch("builtins.input", side_effect=["n"]):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
         self.assertEqual(code, cli.EXIT_ECHECS_PARTIELS)
+
+
+class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
+    """Backlog v5bis : même système d'attente que la création d'organisation
+    (:class:`TestExecuterRunAvecAttenteValidation`), appliqué ici au détachement."""
+
+    _RAPPORT_EN_ATTENTE = {
+        "message": "Détachement demandé.", "jdd_supprimes": [], "jdd_echecs": [],
+        "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": "detachement_demande",
+    }
+    _RAPPORT_SUPPRIMEE = {
+        "message": "Organisation supprimée.", "jdd_supprimes": [], "jdd_echecs": [],
+        "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [], "organisation": "supprimee",
+    }
+
+    def test_q_quitte_sans_relancer_vider_commune(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli.vider_commune", return_value=self._RAPPORT_EN_ATTENTE,
+             ) as m_vider, \
+             mock.patch("builtins.input", side_effect=["o", "q"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_vider.assert_called_once()
+
+    def test_validation_detectee_relance_automatiquement_vers_larchivage(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli.vider_commune",
+                 side_effect=[self._RAPPORT_EN_ATTENTE, self._RAPPORT_SUPPRIMEE],
+             ) as m_vider, \
+             mock.patch("builtins.input", side_effect=["o", "", "n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(m_vider.call_count, 2)
+        for appel in m_vider.call_args_list:
+            self.assertEqual(appel.kwargs, {"nom_commune": "Gévezé", "supprimer_organisation": True})
+
+    def test_toujours_en_attente_redemande_jusquau_q(self):
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli.vider_commune", return_value=self._RAPPORT_EN_ATTENTE,
+             ) as m_vider, \
+             mock.patch("builtins.input", side_effect=["o", "", "", "q"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(m_vider.call_count, 3)
 
 
 class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):
