@@ -51,6 +51,7 @@ from .resultat import StatutConnecteur
 from .securite import (
     AbsenceTerminalError,
     TrousseauEnClairError,
+    TrousseauIndisponibleError,
     UrlNoeudNonSecurisee,
     ecrire_conf_fichier,
     email_suspect,
@@ -521,7 +522,7 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
         pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
-    except TrousseauEnClairError as e:
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
     if pwd is None:
@@ -633,7 +634,7 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     url_noeud, usr = profil["url_noeud"], profil["usr"]
     try:
         pwd = lire_mot_de_passe_trousseau(url_noeud, usr)
-    except TrousseauEnClairError as e:
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
     if pwd is None:
@@ -816,7 +817,7 @@ def executer_interactif() -> int:
         try:
             enregistrer_mot_de_passe_trousseau(url_noeud, usr, pwd)
             print("  Mot de passe enregistré dans le trousseau système.")
-        except TrousseauEnClairError as e:
+        except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
             print(f"  {e}")
             print("  Repli : fichier conf/rudi_node.json en clair (permissions 0600).")
             ecrire_conf_fichier(os.path.join("conf", "rudi_node.json"), conf)
@@ -988,7 +989,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
     try:
         conf = _resoudre_conf_scriptable(args)
-    except (ValueError, UrlNoeudNonSecurisee, TrousseauEnClairError) as e:
+    except (ValueError, UrlNoeudNonSecurisee, TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"[cli] {e}", file=sys.stderr)
         return EXIT_ECHEC_TOTAL
     if profil and profil.get("url_catalog"):

@@ -262,6 +262,18 @@ class TrousseauEnClairError(RuntimeError):
     """Le backend de trousseau résolu est connu pour stocker en clair."""
 
 
+class TrousseauIndisponibleError(RuntimeError):
+    """Aucun backend de trousseau fonctionnel sur ce poste (``keyring.errors.
+    NoKeyringError`` — ``keyring.get_keyring()`` ne lève rien dans ce cas, c'est un
+    backend de repli ``keyring.backends.fail.Keyring`` qui lève à l'utilisation :
+    jamais détecté par :func:`backend_trousseau_est_sain`, qui ne connaît que le cas
+    « backend identifié, mais en clair »). Bug réel corrigé le 2026-11-14 : sans ce
+    traitement, un poste sans backend installé (ex. Linux minimal sans service de
+    secrets) faisait planter le CLI avec une trace Python au lieu de retomber
+    proprement sur la saisie au clavier/``--rudi-conf``, comme pour
+    :class:`TrousseauEnClairError`."""
+
+
 _PREFIXE_SERVICE = "rudi-commune-starterkit"
 
 
@@ -277,7 +289,13 @@ def enregistrer_mot_de_passe_trousseau(url_noeud: str, usr: str, mot_de_passe: s
             f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
             "refus d'y enregistrer un mot de passe."
         )
-    keyring.set_password(_cle_trousseau(url_noeud, usr), usr, mot_de_passe)
+    try:
+        keyring.set_password(_cle_trousseau(url_noeud, usr), usr, mot_de_passe)
+    except keyring.errors.NoKeyringError as e:
+        raise TrousseauIndisponibleError(
+            f"Aucun trousseau système fonctionnel sur ce poste ({e}) — refus d'y "
+            "enregistrer un mot de passe."
+        ) from e
 
 
 def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
@@ -287,12 +305,19 @@ def lire_mot_de_passe_trousseau(url_noeud: str, usr: str) -> str | None:
             f"Backend de trousseau {nom_backend!r} connu pour stocker en clair — "
             "refus d'y lire un mot de passe."
         )
-    return keyring.get_password(_cle_trousseau(url_noeud, usr), usr)
+    try:
+        return keyring.get_password(_cle_trousseau(url_noeud, usr), usr)
+    except keyring.errors.NoKeyringError as e:
+        raise TrousseauIndisponibleError(
+            f"Aucun trousseau système fonctionnel sur ce poste ({e}) — refus d'y "
+            "lire un mot de passe."
+        ) from e
 
 
 __all__ = [
     "AbsenceTerminalError",
     "TrousseauEnClairError",
+    "TrousseauIndisponibleError",
     "UrlNoeudNonSecurisee",
     "backend_trousseau_est_sain",
     "ecrire_conf_fichier",
