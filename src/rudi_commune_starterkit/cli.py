@@ -793,10 +793,27 @@ def executer_interactif() -> int:
         "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
         defaut="",
     ) or None
-    url_portail = _demander(
-        "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
-        "d'annuler une publication de test plus tard)", defaut="",
-    ) or None
+    # Même validation que l'URL du nœud (bug réel corrigé le 2026-11-14 : jamais
+    # validée jusqu'ici — un portail en http:// non local y envoyait les identifiants
+    # portail en clair sans le moindre avertissement, contrairement au nœud).
+    while True:
+        url_portail = _demander(
+            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+            "d'annuler une publication de test plus tard)", defaut="",
+        ) or None
+        if url_portail is None:
+            break
+        try:
+            url_portail = valider_url_noeud(url_portail)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
 
     # Étape 4 : identifiants
     usr = _demander("Nom d'utilisateur (fourni par l'administrateur du nœud)")
@@ -924,6 +941,12 @@ def _resoudre_conf_scriptable(args: argparse.Namespace) -> dict:
         conf = charger_conf_rudi(args.rudi_conf)
         if not conf:
             raise ValueError(f"Fichier de conf introuvable ou illisible : {args.rudi_conf}")
+        # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — --rudi-conf
+        # contournait entièrement la protection http:// appliquée à --url-noeud.
+        if conf.get("url"):
+            conf["url"] = valider_url_noeud(conf["url"])
+        if conf.get("url_portail"):
+            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
         return conf
 
     if not args.url_noeud or not args.usr:
@@ -998,6 +1021,15 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         conf["url_portail"] = profil["url_portail"]
     if args.url_portail:
         conf["url_portail"] = args.url_portail
+    # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — même règle que
+    # l'URL du nœud : un portail en http:// non local y envoie les identifiants
+    # portail en clair.
+    if conf.get("url_portail"):
+        try:
+            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
+        except UrlNoeudNonSecurisee as e:
+            print(f"[cli] {e}", file=sys.stderr)
+            return EXIT_ECHEC_TOTAL
 
     if args.vider_commune:
         def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:

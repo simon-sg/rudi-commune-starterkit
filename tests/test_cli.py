@@ -400,6 +400,28 @@ class TestResoudreConfScriptable(unittest.TestCase):
             conf = cli._resoudre_conf_scriptable(args)
         self.assertEqual(conf["usr"], "u")
 
+    def test_rudi_conf_url_http_non_locale_refusee(self):
+        """Bug réel corrigé le 2026-11-14 : --rudi-conf contournait entièrement la
+        protection http:// appliquée à --url-noeud (identifiants en clair sur le
+        réseau)."""
+        args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
+                                   utiliser_trousseau=False)
+        with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "http://noeud-externe.example", "usr": "u", "pwd": "p"}):
+            with self.assertRaises(cli.UrlNoeudNonSecurisee):
+                cli._resoudre_conf_scriptable(args)
+
+    def test_rudi_conf_url_portail_http_non_locale_refusee(self):
+        args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
+                                   utiliser_trousseau=False)
+        with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://noeud", "usr": "u", "pwd": "p",
+                                       "url_portail": "http://portail-externe.example"}):
+            with self.assertRaises(cli.UrlNoeudNonSecurisee):
+                cli._resoudre_conf_scriptable(args)
+
     def test_sans_rudi_conf_ni_url_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud=None, usr=None,
                                    utiliser_trousseau=False)
@@ -506,6 +528,17 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             "--code-insee", "35120", "--supprimer-organisation",
         ])
         self.assertEqual(cli.executer_scriptable(args), cli.EXIT_ECHEC_TOTAL)
+
+    def test_url_portail_http_non_locale_refusee(self):
+        """Bug réel corrigé le 2026-11-14 : url_portail (--url-portail ou profil du
+        registre) n'était jamais validée, contrairement à url_noeud."""
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--url-portail", "http://portail-externe.example", "--confirmer", "SUPPRIMER",
+        ])
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
 
     def test_delegue_a_vider_commune_et_fusionne_url_portail(self):
         args = cli._construire_parser().parse_args([
@@ -1036,6 +1069,27 @@ class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):
         saisies = ["35120", "https://noeud", "", "", "robot", "non", "", ""]
         code, m_profil, m_run = self._executer(saisies)
         self.assertEqual(code, 0)
+
+    def test_url_portail_http_non_locale_refusee_puis_laissee_vide(self):
+        """Bug réel corrigé le 2026-11-14 : url_portail n'était jamais validée (seule
+        url_noeud l'était) — un portail en http:// non local y envoyait les
+        identifiants portail en clair sans le moindre avertissement."""
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[]), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE_COMPLETE), \
+             mock.patch("rudi_commune_starterkit.cli.diagnostic_couverture_structurelle", return_value={}), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe", return_value="secret"), \
+             mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.enregistrer_profil") as m_profil, \
+             mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0) as m_run, \
+             mock.patch("builtins.input", side_effect=[
+                 "35120", "https://noeud", "",
+                 "http://portail-externe.example", "non", "",
+                 "robot", "non", "", "",
+             ]):
+            code = cli.executer_interactif()
+        self.assertEqual(code, 0)
+        conf_recue = m_run.call_args.kwargs["conf"]
+        self.assertIsNone(conf_recue.get("url_portail"))
         conf_recue = m_run.call_args.kwargs["conf"]
         self.assertNotIn("url_portail", conf_recue)
         profil_enregistre = m_profil.call_args[0][0]
