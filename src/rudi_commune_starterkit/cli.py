@@ -584,6 +584,36 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     )
 
 
+# Statuts "organisation" de vidage.vider_commune() qui attendent une action humaine
+# (validation animateur côté portail, ou simplement un portail momentanément
+# injoignable) — jamais un échec, un rendez-vous à reprendre plus tard.
+_STATUTS_ORGANISATION_EN_ATTENTE = (
+    "detachement_demande", "attente_validation_detachement",
+    "archivage_demande", "attente_validation_archivage",
+    "etat_portail_indisponible",
+)
+# Statuts "organisation" qui sont, eux, de vrais échecs.
+_STATUTS_ORGANISATION_ECHEC = (
+    "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_archivage",
+    "echec_demande_detachement",
+)
+
+
+def _code_sortie_vidage(rapport: dict) -> int:
+    """Code de sortie pour un rapport de :func:`vidage.vider_commune` — **même règle
+    en mode interactif et scriptable**. Bug réel corrigé le 2026-11-14 : le mode
+    scriptable traitait à tort tout statut autre que ``None``/``"supprimee"`` comme
+    un échec partiel, y compris ``"deja_absente"`` (un succès : rien à faire) et les
+    statuts d'attente d'une validation animateur (qui ont leur propre code,
+    ``EXIT_EN_ATTENTE_VALIDATION``, déjà utilisé ailleurs dans ce fichier pour le
+    même concept côté publication)."""
+    if rapport["organisation"] in _STATUTS_ORGANISATION_EN_ATTENTE:
+        return EXIT_EN_ATTENTE_VALIDATION
+    if rapport["jdd_echecs"] or rapport["organisation"] in _STATUTS_ORGANISATION_ECHEC:
+        return EXIT_ECHECS_PARTIELS
+    return EXIT_SUCCES
+
+
 def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     """Vide une commune déjà enregistrée (JDD + organisation en option) — même
     résolution de ``conf`` que :func:`_executer_depuis_profil`, mais route vers
@@ -630,13 +660,10 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         if rapport["jdd_tiers_echecs"]:
             print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}")
 
-        # Statuts d'attente d'une validation animateur (détachement puis archivage,
-        # voir vidage.vider_commune()) — tous à rejouer de la même façon ; un statut
-        # absent de cette liste est terminal (succès ou échec), on sort de la boucle.
-        if rapport["organisation"] not in (
-            "detachement_demande", "attente_validation_detachement",
-            "archivage_demande", "attente_validation_archivage",
-        ):
+        # Statuts d'attente (validation animateur, ou portail momentanément
+        # injoignable) — tous à rejouer de la même façon ; un statut absent de cette
+        # liste est terminal (succès ou échec), on sort de la boucle.
+        if rapport["organisation"] not in _STATUTS_ORGANISATION_EN_ATTENTE:
             break
         reponse = input(
             "\n  [Entrée] pour vérifier si l'animateur a validé et poursuivre, "
@@ -653,14 +680,7 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
         oublier_profil(profil["code_insee"], profil["url_noeud"], chemin_profils)
         print("  Profil retiré du registre.")
 
-    # "detachement_demande"/"archivage_demande"/"attente_validation_archivage" ne sont
-    # pas des échecs : une attente normale d'une action humaine (validation animateur
-    # côté portail), pas un refus ni une erreur.
-    if rapport["jdd_echecs"] or rapport["organisation"] in (
-        "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_archivage",
-    ):
-        return EXIT_ECHECS_PARTIELS
-    return EXIT_SUCCES
+    return _code_sortie_vidage(rapport)
 
 
 def executer_interactif() -> int:
@@ -995,9 +1015,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
                   f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
                   f"l'assistant interactif pour le retirer si besoin.")
-        if rapport["jdd_echecs"] or (rapport["organisation"] and rapport["organisation"] != "supprimee"):
-            return EXIT_ECHECS_PARTIELS
-        return EXIT_SUCCES
+        return _code_sortie_vidage(rapport)
 
     try:
         commune = resoudre_commune(args.code_insee)

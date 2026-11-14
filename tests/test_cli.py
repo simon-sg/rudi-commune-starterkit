@@ -523,7 +523,12 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             code = cli.executer_scriptable(args)
         self.assertEqual(code, cli.EXIT_ECHECS_PARTIELS)
 
-    def test_organisation_en_attente_de_detachement_rapporte_echecs_partiels(self):
+    def test_organisation_en_attente_de_detachement_rapporte_attente_validation(self):
+        """Bug réel corrigé le 2026-11-14 : le mode scriptable traitait ce statut
+        d'attente (pas un échec, un rendez-vous à reprendre une fois l'animateur
+        passé) comme un échec partiel — incohérent avec le mode interactif, qui ne le
+        traite pas comme un échec (voir TestViderCommuneInteractifAttenteDetachement).
+        Même code que l'attente de validation côté publication (EXIT_EN_ATTENTE_VALIDATION)."""
         args = cli._construire_parser().parse_args([
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
             "--supprimer-organisation", "--url-portail", "https://portail",
@@ -531,6 +536,34 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
         ])
         rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
                    "organisation": "detachement_demande", "message": "en attente"}
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+
+    def test_organisation_deja_absente_est_un_succes_pas_un_echec(self):
+        """Même bug : "deja_absente" (rien à faire, organisation déjà supprimée) était
+        traité comme un échec partiel en mode scriptable faute de check explicite."""
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--supprimer-organisation", "--url-portail", "https://portail",
+            "--confirmer", "SUPPRIMER",
+        ])
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                   "organisation": "deja_absente", "message": "déjà absente"}
+        with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+
+    def test_echec_demande_archivage_rapporte_echecs_partiels(self):
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
+            "--supprimer-organisation", "--url-portail", "https://portail",
+            "--confirmer", "SUPPRIMER",
+        ])
+        rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                   "organisation": "echec_demande_archivage", "message": "refusé"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
             code = cli.executer_scriptable(args)
@@ -913,7 +946,7 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
              ) as m_vider, \
              mock.patch("builtins.input", side_effect=["o", "q"]):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
-        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         m_vider.assert_called_once()
 
     def test_validation_detectee_relance_automatiquement_vers_larchivage(self):
@@ -936,7 +969,7 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
              ) as m_vider, \
              mock.patch("builtins.input", side_effect=["o", "", "", "q"]):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
-        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         self.assertEqual(m_vider.call_count, 3)
 
     def test_boucle_aussi_sur_les_statuts_dattente_darchivage(self):
