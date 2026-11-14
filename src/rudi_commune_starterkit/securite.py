@@ -29,20 +29,34 @@ class UrlNoeudNonSecurisee(ValueError):
 def valider_url_noeud(url: str, *, autoriser_http_local: bool = False) -> str:
     """Refuse une URL ``http://`` (identifiants en clair sur le réseau), sauf si
     ``autoriser_http_local=True`` ET que l'hôte est localhost/127.0.0.1/::1.
-    ``https://`` est toujours accepté. Retourne l'URL sans le ``/`` de fin."""
+    ``https://`` est toujours accepté. Retourne l'URL sans le ``/`` de fin.
+
+    Refuse aussi, pour les deux schémas, un hôte vide (bug réel corrigé le
+    2026-11-14 : ``https://`` seul, ou un ``userinfo`` sans hôte, passait la
+    validation et échouait plus tard de façon opaque) et un ``userinfo`` explicite
+    (``https://usr:pwd@hote``) — jamais la bonne façon de transmettre des
+    identifiants, et ceux-ci se retrouveraient conservés puis affichés tels quels
+    dans les messages d'erreur du reste du programme."""
     url = url.strip()
     morceaux = urlsplit(url)
+    if morceaux.scheme not in ("http", "https"):
+        raise UrlNoeudNonSecurisee(f"URL {url!r} : schéma attendu http(s), reçu {morceaux.scheme!r}.")
+    if morceaux.username or morceaux.password:
+        raise UrlNoeudNonSecurisee(
+            f"URL {url!r} : identifiants dans l'URL (userinfo) refusés — transmettre "
+            "usr/pwd séparément, jamais dans l'URL."
+        )
+    if not morceaux.hostname:
+        raise UrlNoeudNonSecurisee(f"URL {url!r} : hôte manquant.")
     if morceaux.scheme == "https":
         return url.rstrip("/")
-    if morceaux.scheme == "http":
-        if autoriser_http_local and morceaux.hostname in _HOTES_LOCAUX:
-            return url.rstrip("/")
-        raise UrlNoeudNonSecurisee(
-            f"URL {url!r} en http:// refusée (identifiants envoyés en clair sur le "
-            "réseau) — utiliser https://, ou autoriser_http_local=True pour un usage "
-            "local type localhost/127.0.0.1."
-        )
-    raise UrlNoeudNonSecurisee(f"URL {url!r} : schéma attendu http(s), reçu {morceaux.scheme!r}.")
+    if autoriser_http_local and morceaux.hostname in _HOTES_LOCAUX:
+        return url.rstrip("/")
+    raise UrlNoeudNonSecurisee(
+        f"URL {url!r} en http:// refusée (identifiants envoyés en clair sur le "
+        "réseau) — utiliser https://, ou autoriser_http_local=True pour un usage "
+        "local type localhost/127.0.0.1."
+    )
 
 
 _RE_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

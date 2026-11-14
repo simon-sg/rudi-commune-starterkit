@@ -31,16 +31,17 @@ from rudi_harvest_toolkit.commune import (
     ErreurReseauCommune,
     resoudre_commune,
 )
-from rudi_harvest_toolkit.rudi_client import charger_conf_rudi, demander_creation_organisation
 from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
-from . import organisations, registre
+from . import __version__, organisations, registre
 from .description_commune import construire_description_commune
 from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
 from .profils_communes import charger_profils, enregistrer_profil, oublier_profil
 from .resolution_noeud import (
+    charger_conf_rudi,
+    demander_creation_organisation,
     desactiver_verification_tls_noeud,
     erreur_est_certificat_tls,
     organisation_existante,
@@ -177,13 +178,25 @@ def executer_run(
     # réutilisé aux deux sites qui construisent l'organisation de la commune — voir le
     # plan, § Axe 1 (sinon l'organisation créée sur le nœud et le producer publié avec
     # chaque JDD pourraient porter des résumés différents).
-    description_commune = construire_description_commune(
-        commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
-        dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+    #
+    # Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
+    # téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
+    # resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
+    # (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
+    # "source" payait ce coût réseau pour rien, --dry-run compris.
+    besoin_description_commune = any(
+        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
+        for module in modules
     )
-    if description_commune["source"] == "repli_generique":
-        print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
-              "— description générique utilisée pour l'organisation de la commune.")
+    description_commune = None
+    if besoin_description_commune:
+        description_commune = construire_description_commune(
+            commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+            dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+        )
+        if description_commune["source"] == "repli_generique":
+            print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
+                  "— description générique utilisée pour l'organisation de la commune.")
 
     producteurs_candidats = {}
     producteur_par_module: dict[str, dict] = {}
@@ -926,6 +939,7 @@ def _construire_parser() -> argparse.ArgumentParser:
         prog="rudi-commune-starterkit",
         description="Peuple un nœud RUDI avec le socle de JDD communaux à partir d'un code INSEE.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--code-insee")
     parser.add_argument("--depuis-registre", action="store_true",
                         help="Résout nœud/identifiants/mode/contact depuis le registre "
@@ -941,7 +955,7 @@ def _construire_parser() -> argparse.ArgumentParser:
                         help="Accepte un certificat TLS non reconnu (ex. certificat auto-signé "
                              "sur un nœud de test) — RISQUÉ (interception possible), à n'utiliser "
                              "que pour un nœud de confiance connu.")
-    parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default="source")
+    parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default=None)
     parser.add_argument("--organisation-par-jdd", help="Fichier JSON JDD -> commune|source.")
     parser.add_argument("--contact-commune", help="Email, obligatoire si au moins un JDD en mode commune.")
     parser.add_argument("--forcer-maj", action="store_true")
@@ -1035,8 +1049,15 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         args.url_noeud = profil["url_noeud"]
         args.usr = profil["usr"]
         args.utiliser_trousseau = True
-        args.organisation_producteur = profil["mode_producteur"]
-        args.contact_commune = profil.get("contact_email_commune")
+        # Bug réel corrigé le 2026-11-14 : écrasait --organisation-producteur et
+        # --contact-commune même quand explicitement fournis sur la ligne de commande
+        # — un flag explicite doit toujours gagner sur la valeur implicite du profil.
+        if args.organisation_producteur is None:
+            args.organisation_producteur = profil["mode_producteur"]
+        if args.contact_commune is None:
+            args.contact_commune = profil.get("contact_email_commune")
+    if args.organisation_producteur is None:
+        args.organisation_producteur = "source"
 
     try:
         conf = _resoudre_conf_scriptable(args)

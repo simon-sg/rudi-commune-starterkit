@@ -43,6 +43,10 @@ pratique le 2026-11-13. Télécharger l'artifact, `chmod +x`, puis lancer direct
    fichier téléchargeable publiquement. Le lien stable à communiquer aux agents
    municipaux est `https://github.com/simon-sg/rudi-commune-starterkit/releases/latest/download/rudi-commune-starterkit.exe`
    (pointe toujours vers la dernière release *publiée*, jamais un brouillon).
+   Le workflow publie aussi un fichier `.sha256` attaché à la release (empreinte
+   calculée pendant le build, voir `build-executable.yml`) — à comparer avec
+   `Get-FileHash` sous PowerShell pour vérifier l'intégrité d'un téléchargement
+   avant de l'exécuter.
 
 ## Itérer en local sous Linux (avant même un build Windows)
 

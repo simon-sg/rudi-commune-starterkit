@@ -116,20 +116,30 @@ sans passer par le mode scriptable.
 ## Installation
 
 Layout `src/`, backend `setuptools`. Environnement Debian « externally-managed »,
-d'où `--break-system-packages` :
+d'où `--break-system-packages`. Depuis une copie clonée de ce dépôt :
 
 ```bash
-pip install --user --break-system-packages -e /media/simon/DATA4T/Dev/rudi-commune-starterkit
+pip install --user --break-system-packages -e .
+```
+
+Récupère `rudi-harvest-toolkit` depuis GitHub (voir `pyproject.toml`).
+
+### Développement (modification simultanée du toolkit)
+
+Pour travailler sur `rudi-harvest-toolkit` et `rudi-commune-starterkit` en même temps
+(deux clones locaux), installer les deux en édition locale, le toolkit en second pour
+qu'il remplace la version GitHub :
+
+```bash
+pip install --user --break-system-packages -e .
+pip install --user --break-system-packages --no-cache-dir --force-reinstall \
+  --no-deps -e /chemin/vers/votre/clone/de/rudi-harvest-toolkit
 ```
 
 Si l'import échoue après coup avec un module manquant du toolkit alors qu'il existe
 bien dans le code source, c'est le piège classique du cache wheel pip figeant une
-ancienne version éditable — réinstaller en forçant :
-
-```bash
-pip install --user --break-system-packages --no-cache-dir --force-reinstall \
-  --no-deps -e /media/simon/DATA4T/Dev/rudi-harvest-toolkit
-```
+ancienne version éditable — réinstaller avec la même commande `--force-reinstall`
+ci-dessus.
 
 ## Configuration du nœud RUDI cible
 
@@ -153,6 +163,7 @@ ensuite le mot de passe (trousseau système en priorité), le mode de publicatio
 
 | Flag | Rôle |
 |---|---|
+| `--version` | Affiche la version installée et quitte (code 0). |
 | `--code-insee` | Requis. Code INSEE de la commune cible. |
 | `--depuis-registre` [`--url-noeud`] | Résout nœud/identifiants/mode/contact depuis le registre local plutôt que depuis les flags suivants ; `--url-noeud` désambiguïse si plusieurs nœuds existent pour le même code INSEE. |
 | `--url-noeud` / `--usr` / `--rudi-conf` / `--utiliser-trousseau` | Identifiants du nœud, en alternative au registre. |
@@ -172,9 +183,22 @@ Exemple, moisson complète d'une commune déjà enregistrée :
 python3 -m rudi_commune_starterkit.cli --depuis-registre --code-insee 35120
 ```
 
+### Codes de sortie (mode scriptable)
+
+Pensés pour qu'un cron/CI puisse distinguer sans parser la sortie texte :
+
+| Code | Constante | Signification |
+|---|---|---|
+| 0 | `EXIT_SUCCES` | Tous les JDD sélectionnés ont réussi (ou ont été sautés sans erreur : hors couverture, déjà à jour). |
+| 1 | `EXIT_ECHECS_PARTIELS` | Au moins un JDD a échoué, au moins un autre a réussi. |
+| 2 | `EXIT_ECHEC_TOTAL` | Tous les JDD sélectionnés ont échoué, ou erreur de configuration/arguments (ex. clé `--only`/`--skip` inconnue, `--code-insee` absent). |
+| 3 | `EXIT_EN_ATTENTE_VALIDATION` | Prioritaire sur les deux précédents (voir « Garde-fou organisation » ci-dessus) : l'organisation de la commune attend une validation par l'animateur du portail — relancer une fois validée, ce n'est pas un échec à corriger. |
+
 ## Dépendance
 
-Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (chemin local), en
+Dépend de [`rudi-harvest-toolkit`](../rudi-harvest-toolkit) (dépôt séparé, installé
+depuis GitHub en production — voir `pyproject.toml` ; en édition locale en
+développement, voir « Développement » ci-dessus), en
 particulier des modules ajoutés pour ce projet : `commune` (résolution code INSEE →
 nom/géographie/SIREN), `fichier_hybride` (média `FILE` dont l'URL reste distante),
 `tabular` (lecteur CSV streaming), `datagouv` (résolution dataset → ressource),

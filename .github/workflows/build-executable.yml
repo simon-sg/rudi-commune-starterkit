@@ -19,7 +19,7 @@ on:
       toolkit_ref:
         description: "Tag/branche de rudi-harvest-toolkit à utiliser pour le build"
         required: true
-        default: "v0.5.4"
+        default: "v0.5.6"
       version:
         description: "Nom de la release GitHub à créer (ex: v0.7.0-exe1)"
         required: true
@@ -43,10 +43,9 @@ jobs:
         run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
 
       - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
-        # --no-deps : évite que pip tente de résoudre la dépendance locale
-        # file:///... du pyproject.toml de dev (absente sur ce runner). Le
-        # toolkit est déjà installé explicitement ci-dessus, keyring/requests
-        # ci-dessous.
+        # --no-deps : le toolkit est déjà installé explicitement ci-dessus (épinglé
+        # sur toolkit_ref, potentiellement différent du tag que pyproject.toml
+        # déclare par défaut), keyring/requests ci-dessous.
         run: pip install --no-deps .
 
       - name: Installer les dépendances restantes + outils de build
@@ -62,8 +61,16 @@ jobs:
         # Stdin vide (PowerShell Start-Process -RedirectStandardInput exige un vrai
         # fichier, "NUL" n'est pas résolu comme le périphérique nul contrairement à
         # cmd.exe) : le wizard lève EOFError dès la première question (code de sortie
-        # 1 attendu et normal — pas un signe de crash). On vérifie l'absence de
-        # traceback Python (import/DLL manquant) plutôt que le code de sortie.
+        # 1 attendu et normal — pas un signe de crash).
+        #
+        # Bug réel corrigé le 2026-11-14 : ce smoke-test ne pouvait quasiment jamais
+        # échouer — il ne vérifiait QUE l'absence du mot "Traceback", donc un exe qui
+        # ne démarre pas du tout (DLL manquante avec un échec natif Windows sans
+        # texte), ou qui reste bloqué (le kill après 5s n'était jamais traité comme un
+        # échec), passait quand même. On vérifie désormais EN PLUS : (a) que le
+        # bandeau de démarrage de l'assistant a bien été imprimé (preuve que
+        # executer_interactif() a réellement démarré), et (b) que le process a bien
+        # terminé seul dans les 5s (sinon il est resté bloqué — fuite ou deadlock).
         shell: pwsh
         run: |
           New-Item -ItemType File -Path "smoke-stdin-vide.txt" -Force | Out-Null
@@ -72,7 +79,8 @@ jobs:
             -RedirectStandardOutput "smoke-stdout.log" -RedirectStandardError "smoke-stderr.log" `
             -PassThru
           Start-Sleep -Seconds 5
-          if (-not $proc.HasExited) {
+          $bloque = -not $proc.HasExited
+          if ($bloque) {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }
           $sortie = (Get-Content smoke-stdout.log -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content smoke-stderr.log -Raw -ErrorAction SilentlyContinue)
@@ -80,6 +88,23 @@ jobs:
             Write-Error "Traceback Python au démarrage (probable import/DLL manquant) :`n$sortie"
             exit 1
           }
+          if ($bloque) {
+            Write-Error "L'exécutable est resté bloqué plus de 5s (stdin vide attendu -> EOFError rapide) :`n$sortie"
+            exit 1
+          }
+          if ($sortie -notmatch "rudi-commune-starterkit") {
+            Write-Error "Le bandeau de démarrage de l'assistant n'a jamais été imprimé — l'exe a échoué silencieusement avant d'atteindre executer_interactif() :`n$sortie"
+            exit 1
+          }
+
+      - name: Calculer le SHA-256 de l'exécutable
+        # Permet à un agent municipal (ou à Simon) de vérifier l'intégrité du
+        # téléchargement avant de lancer un binaire non signé (voir « Premiers
+        # avertissements » du guide) — pas un remplacement de la signature de code.
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/rudi-commune-starterkit.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  rudi-commune-starterkit.exe" | Out-File -Encoding ascii dist/rudi-commune-starterkit.exe.sha256
 
       - name: Publier une Release GitHub en brouillon
         uses: softprops/action-gh-release@v2
@@ -87,7 +112,9 @@ jobs:
           tag_name: ${{ inputs.version }}
           name: ${{ inputs.version }}
           draft: true
-          files: dist/rudi-commune-starterkit.exe
+          files: |
+            dist/rudi-commune-starterkit.exe
+            dist/rudi-commune-starterkit.exe.sha256
 
   build-linux:
     # Confort de test pour Simon (binaire natif à lancer sans Wine) — pas une
@@ -104,10 +131,9 @@ jobs:
         run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
 
       - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
-        # --no-deps : évite que pip tente de résoudre la dépendance locale
-        # file:///... du pyproject.toml de dev (absente sur ce runner). Le
-        # toolkit est déjà installé explicitement ci-dessus, keyring/requests
-        # ci-dessous.
+        # --no-deps : le toolkit est déjà installé explicitement ci-dessus (épinglé
+        # sur toolkit_ref, potentiellement différent du tag que pyproject.toml
+        # déclare par défaut), keyring/requests ci-dessous.
         run: pip install --no-deps .
 
       - name: Installer les dépendances restantes + outils de build
@@ -120,15 +146,30 @@ jobs:
         run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
 
       - name: Smoke-test (démarrage sans crash d'import)
-        # Même logique que le smoke-test Windows : stdin vide -> EOFError dès la
-        # première question (code de sortie 1 attendu, pas un crash). On vérifie
-        # l'absence de traceback plutôt que le code de sortie.
+        # Même logique que le smoke-test Windows (voir son commentaire pour le détail
+        # du bug réel corrigé le 2026-11-14) : on vérifie en plus l'absence de timeout
+        # (process resté bloqué) et la présence du bandeau de démarrage, pas
+        # seulement l'absence de traceback.
         run: |
           : > smoke-stdin-vide.txt
-          timeout 10 ./dist/rudi-commune-starterkit < smoke-stdin-vide.txt \
-            > smoke-stdout.log 2> smoke-stderr.log || true
+          if timeout 10 ./dist/rudi-commune-starterkit < smoke-stdin-vide.txt \
+            > smoke-stdout.log 2> smoke-stderr.log; then
+            code=0
+          else
+            code=$?
+          fi
           if grep -q "Traceback (most recent call last)" smoke-stdout.log smoke-stderr.log; then
             echo "Traceback Python au démarrage (probable import manquant) :"
+            cat smoke-stdout.log smoke-stderr.log
+            exit 1
+          fi
+          if [ "$code" -eq 124 ]; then
+            echo "L'exécutable est resté bloqué plus de 10s (stdin vide attendu -> EOFError rapide) :"
+            cat smoke-stdout.log smoke-stderr.log
+            exit 1
+          fi
+          if ! grep -q "rudi-commune-starterkit" smoke-stdout.log smoke-stderr.log; then
+            echo "Le bandeau de démarrage de l'assistant n'a jamais été imprimé — l'exe a échoué silencieusement avant d'atteindre executer_interactif() :"
             cat smoke-stdout.log smoke-stderr.log
             exit 1
           fi

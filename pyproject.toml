@@ -11,7 +11,13 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
     "requests>=2.28",
-    "rudi-harvest-toolkit @ file:///media/simon/DATA4T/Dev/rudi-harvest-toolkit",
+    # Bug réel corrigé le 2026-11-14 : un chemin absolu local (valide sur une seule
+    # machine) rendait `pip install .` impossible pour quiconque d'autre — remplacé
+    # par l'URL git publique déjà utilisée par les workflows CI
+    # (.github/workflows/build-executable.yml, deploy-docs.yml). En développement
+    # local, utiliser plutôt `pip install --no-deps -e .` puis installer séparément
+    # le toolkit en édition locale (voir README.md, § Développement).
+    "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@v0.5.6",
     "keyring>=24",
 ]
 

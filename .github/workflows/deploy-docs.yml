@@ -5,8 +5,19 @@ name: Déployer le guide utilisateur (GitHub Pages, manuel)
 # automatiquement sur un push, surtout tant que le contenu éditorial évolue.
 # Re-déclencher ce workflow après chaque nouvelle release de l'exécutable (voir
 # packaging/README.md) tient le lien de téléchargement du guide à jour.
+#
+# toolkit_ref : épinglé par défaut sur le MÊME tag que le défaut de
+# build-executable.yml (bug réel corrigé le 2026-11-14 : avant, toujours "@main",
+# donc le guide pouvait décrire un comportement du toolkit différent de celui
+# réellement packagé dans l'exécutable déjà publié) — à ajuster explicitement si le
+# guide doit documenter une autre version du toolkit que l'exécutable courant.
 on:
   workflow_dispatch:
+    inputs:
+      toolkit_ref:
+        description: "Tag/branche de rudi-harvest-toolkit à utiliser pour générer le guide"
+        required: true
+        default: "v0.5.6"
 
 permissions:
   contents: read
@@ -28,7 +39,7 @@ jobs:
           python-version: "3.12"
 
       - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
-        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@main"
+        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
 
       - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
         run: pip install --no-deps -e .
