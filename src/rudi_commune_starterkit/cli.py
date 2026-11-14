@@ -78,6 +78,7 @@ CODE_REGION_BRETAGNE = "53"
 MODES_PRODUCTEUR = ("source", "commune", "par-jdd")
 _PAUSE_ENTRE_PUBLICATIONS_S = 2
 CHEMIN_PROFILS_DEFAUT = os.path.join(".rudi_commune_starterkit", "profils.json")
+CHEMIN_CONF_REPLI_CLAIR = os.path.join("conf", "rudi_node.json")
 
 
 # --------------------------------------------------------------------------------------
@@ -504,6 +505,23 @@ def _executer_run_avec_attente_validation(**kwargs) -> int:
     return code
 
 
+def _lire_mot_de_passe_repli_clair(url_noeud: str, usr: str) -> str | None:
+    """Relit le mot de passe depuis le fichier de repli en clair (voir
+    :func:`securite.ecrire_conf_fichier`, étape 5 de l'assistant), si son contenu
+    correspond bien à ``(url_noeud, usr)``. Bug réel corrigé le 2026-11-14 : ce
+    fichier était écrit mais jamais relu — un trousseau indisponible/en clair au
+    1er run forçait une resaisie du mot de passe à CHAQUE reprise, alors même que le
+    repli en clair avait justement été choisi pour éviter ça. Un seul fichier global
+    (pas par commune) : ne l'utilise que s'il correspond au nœud/utilisateur demandé,
+    jamais celui d'une autre commune resté sur le poste."""
+    conf = charger_conf_rudi(CHEMIN_CONF_REPLI_CLAIR)
+    if not conf:
+        return None
+    if conf.get("url") != url_noeud or conf.get("usr") != usr:
+        return None
+    return conf.get("pwd")
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -525,6 +543,8 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
     if pwd is None:
         print("  Mot de passe introuvable dans le trousseau pour ce profil.")
         try:
@@ -637,6 +657,8 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
         print(f"  {e}")
         pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
     if pwd is None:
         print("  Mot de passe introuvable dans le trousseau pour ce profil.")
         try:
@@ -836,8 +858,8 @@ def executer_interactif() -> int:
             print("  Mot de passe enregistré dans le trousseau système.")
         except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
             print(f"  {e}")
-            print("  Repli : fichier conf/rudi_node.json en clair (permissions 0600).")
-            ecrire_conf_fichier(os.path.join("conf", "rudi_node.json"), conf)
+            print(f"  Repli : fichier {CHEMIN_CONF_REPLI_CLAIR} en clair (permissions 0600).")
+            ecrire_conf_fichier(CHEMIN_CONF_REPLI_CLAIR, conf)
 
     # Étape 6 : test de connexion
     print("\nTest de connexion au nœud…")

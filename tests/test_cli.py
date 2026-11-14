@@ -946,6 +946,36 @@ class TestViderCommuneInteractif(unittest.TestCase):
 
     def test_mot_de_passe_absent_du_trousseau_sans_tty_echoue(self):
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe",
+                         side_effect=cli.AbsenceTerminalError("pas de TTY")):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_ECHEC_TOTAL)
+
+    def test_mot_de_passe_absent_du_trousseau_relu_depuis_le_repli_clair(self):
+        """Bug réel corrigé le 2026-11-14 : le fichier de repli en clair (conf/
+        rudi_node.json, écrit à l'étape 5 de l'assistant si le trousseau est
+        indisponible) n'était jamais relu — resaisie forcée à chaque reprise."""
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://noeud", "usr": "u", "pwd": "pwd-en-clair"}), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe") as m_prompt, \
+             mock.patch("rudi_commune_starterkit.cli.vider_commune",
+                         return_value={"message": "ok", "jdd_supprimes": [], "jdd_echecs": [],
+                                       "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
+                                       "organisation": None}) as m_vider, \
+             mock.patch("builtins.input", side_effect=["n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        m_prompt.assert_not_called()
+        self.assertEqual(m_vider.call_args[0][0]["pwd"], "pwd-en-clair")
+
+    def test_repli_clair_dun_autre_noeud_ignore(self):
+        """Fichier global, pas par commune : ne doit jamais être réutilisé pour un
+        (url_noeud, usr) différent de celui du profil demandé."""
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "https://autre-noeud", "usr": "autre", "pwd": "pas-pour-toi"}), \
              mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe",
                          side_effect=cli.AbsenceTerminalError("pas de TTY")):
             code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
