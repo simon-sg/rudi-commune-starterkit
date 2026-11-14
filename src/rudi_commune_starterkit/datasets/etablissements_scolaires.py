@@ -4,17 +4,34 @@ Confirmé le 2026-11-07 : dataset Opendatasoft ``fr-en-annuaire-education``, fil
 une seule requête par ``code_commune`` (exact, pas de préfixe) — 3 établissements réels
 trouvés pour Gévezé. Export CSV filtré pré-filtré par la source en une seule URL stable :
 **FILE hybride**.
+
+**GeoJSON déposé sur le nœud, jamais hybride (2026-11-14)** : un média hybride dont le
+connecteur pointe directement vers l'API externe ODS est, à l'affichage de la carte,
+proxyé par l'apigateway du nœud (service ``call-service`` du portail) vers cette URL
+externe — un bug connu de double-encodage de la query ``where=`` dans
+``RerouteToRequestUrlFilter`` y casse systématiquement cet appel (confirmé et corrigé
+sur le nœud local de Simon, mais ce correctif n'a pas vocation à être déployé sur tous
+les nœuds tiers — un nœud hébergé par un tiers, le cas normal pour un agent municipal,
+peut très bien tourner un apigateway non corrigé). Construire le GeoJSON localement et
+le déposer comme un fichier normal sur le nœud (comme ``irve.py``) rend la carte
+indépendante de ce proxy, quel que soit le nœud. Le contenu lui-même reste fiable (pas
+le piège de coordonnées inversées rencontré sur l'IRVE, voir ``irve.py``) : seul le
+mode de publication change, pas la donnée.
 """
 
 from __future__ import annotations
 
+import json
+import os
 from urllib.parse import urlencode
 
 from rudi_harvest_toolkit.description import construire_description_structuree
 from rudi_harvest_toolkit.fichier_hybride import construire_media_hybride
+from rudi_harvest_toolkit.geojson import AucuneGeometrieValide, construire_feature_collection
 from rudi_harvest_toolkit.http import session
 from rudi_harvest_toolkit.http_dates import date_dataset_ods
-from rudi_harvest_toolkit.pivot import construire_rudi_metadata
+from rudi_harvest_toolkit.pivot import construire_rudi_metadata, media_filtre
+from rudi_harvest_toolkit.tabular import iter_lignes_csv
 
 from .. import licences, organisations
 from ..resultat import ResultatConnecteur, StatutConnecteur
@@ -96,18 +113,50 @@ def moissonner(
         file_type="text/csv",
         session_http=session_http,
     )
+    medias = [media]
+    fichiers_filtres: list[str] = []
 
-    # Export GeoJSON natif de l'ODS, confirmé correct pour ce dataset (contrairement à
-    # l'IRVE, voir irve.py) — pas de parsing local nécessaire, un second média hybride
-    # suffit.
-    url_geojson = f"{_EXPLORE_BASE}/exports/geojson?{urlencode({'where': where})}"
-    media_geojson = construire_media_hybride(
-        local_id, url_geojson,
-        media_name=f"etablissements_scolaires_{code_insee}.geojson",
-        media_caption=f"Fond de carte (GeoJSON) - Établissements scolaires - {commune['nom']}",
-        file_type="application/geo+json",
-        session_http=session_http,
-    )
+    # GeoJSON construit localement et déposé sur le nœud (jamais hybride, voir le
+    # docstring du module) — second téléchargement du même CSV déjà utilisé par le
+    # média hybride ci-dessus (coût accepté, fichier filtré donc petit, même choix
+    # que irve.py).
+    try:
+        lignes = list(iter_lignes_csv(url, session_http=session_http))
+        fc = construire_feature_collection(
+            lignes, champ_lon="longitude", champ_lat="latitude",
+            proprietes=["nom_etablissement", "type_etablissement", "statut_public_prive"],
+        )
+    except AucuneGeometrieValide:
+        fc = None
+    except Exception as e:  # noqa: BLE001 — carte en bonus, jamais au prix du CSV déjà publiable
+        print(
+            "[etablissements_scolaires] AVERTISSEMENT : construction du GeoJSON "
+            f"impossible ({commune['nom']}) : {e}"
+        )
+        fc = None
+
+    if fc is not None:
+        nb_omises = len(lignes) - len(fc["features"])
+        if nb_omises:
+            print(
+                f"[etablissements_scolaires] AVERTISSEMENT : {nb_omises} "
+                f"établissement(s) sans coordonnées exploitables, absent(s) de la "
+                f"carte ({commune['nom']})."
+            )
+        nom_fichier_geojson = f"etablissements_scolaires_{code_insee}.geojson"
+        chemin_geojson = os.path.join(dossier_sortie, nom_fichier_geojson)
+        os.makedirs(dossier_sortie, exist_ok=True)
+        with open(chemin_geojson, "w", encoding="utf-8") as f:
+            json.dump(fc, f, ensure_ascii=False)
+        # Ordre obligatoire pour valider_alignement_medias() : le média FILE réellement
+        # à uploader (GeoJSON) doit précéder le média FILE hybride déjà complet (CSV) —
+        # jamais l'inverse (corruption silencieuse, voir rudi_client.py).
+        media_geojson = media_filtre(
+            local_id, nom_fichier_geojson, commune["nom"],
+            caption=f"Fond de carte (GeoJSON) - Établissements scolaires - {commune['nom']}",
+        )
+        medias = [media_geojson, media]
+        fichiers_filtres = [chemin_geojson]
 
     try:
         licence = licences.licence_pour_jdd(CLE)
@@ -128,14 +177,14 @@ def moissonner(
         url_source=url,
         url_fiche=f"https://data.education.gouv.fr/explore/dataset/{_DATASET_ID}/",
         date_source=date_dataset_ods(_EXPLORE_BASE, session_http=session_http),
-        medias=[media, media_geojson],
+        medias=medias,
         contacts_source=contacts,
         geography=geography_pour_commune(commune),
         licence=licence,
     )
 
     return ResultatConnecteur(
-        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=[],
+        StatutConnecteur.PUBLIABLE, rudi_metadata=rudi_metadata, fichiers_filtres=fichiers_filtres,
     )
 
 

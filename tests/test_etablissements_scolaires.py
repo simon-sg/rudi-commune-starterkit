@@ -1,4 +1,5 @@
-"""Tests de datasets/etablissements_scolaires.py — FILE hybride, filtre code_commune."""
+"""Tests de datasets/etablissements_scolaires.py — FILE hybride (CSV), GeoJSON déposé
+sur le nœud (jamais hybride, voir le docstring du module), filtre code_commune."""
 import tempfile
 import unittest
 from unittest import mock
@@ -23,6 +24,12 @@ def _reponse_streaming(contenu=b"id;nom\n0350266Z;Ecole\n"):
     r.iter_content = mock.Mock(return_value=iter([contenu]))
     r.close = mock.Mock()
     return r
+
+
+_CSV_AVEC_COORDONNEES = (
+    b"nom_etablissement;type_etablissement;statut_public_prive;longitude;latitude\n"
+    b"Ecole Leonard de Vinci;Ecole;Public;-1.791200372;48.219343653\n"
+)
 
 
 def _reponse_dataset_meta(modified="2026-11-10T06:01:21.851000+00:00"):
@@ -71,10 +78,11 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
         premier_appel = session.get.call_args_list[0]
         self.assertEqual(premier_appel.kwargs["params"]["where"], "code_commune='35120'")
 
-    def test_second_media_geojson_hybride_present(self):
+    def test_geojson_construit_depuis_longitude_latitude_et_depose_sur_le_noeud(self):
         session = mock.Mock()
         session.get.side_effect = [
-            _reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta(),
+            _reponse_records(3), _reponse_streaming(),
+            _reponse_streaming(_CSV_AVEC_COORDONNEES), _reponse_dataset_meta(),
         ]
         resultat = etablissements_scolaires.moissonner(
             "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
@@ -84,6 +92,42 @@ class TestMoissonnerEtablissementsScolaires(unittest.TestCase):
         self.assertEqual(len(medias_geojson), 1)
         self.assertEqual(medias_geojson[0]["media_type"], "FILE")
         self.assertIn("GeoJSON", medias_geojson[0]["media_caption"])
+        # Jamais hybride : contrairement au CSV, pas d'URL externe dans le connecteur —
+        # le fichier est réellement déposé sur le nœud (voir le docstring du module,
+        # correctif du bug d'apigateway constaté sur un nœud tiers le 2026-11-14).
+        self.assertNotIn("data.education.gouv.fr", medias_geojson[0]["connector"]["url"])
+        self.assertEqual(len(resultat.fichiers_filtres), 1)
+        self.assertTrue(resultat.fichiers_filtres[0].endswith(".geojson"))
+
+    def test_media_geojson_precede_le_media_csv_hybride_dans_available_formats(self):
+        # Garde-fou valider_alignement_medias() : le média réellement à uploader
+        # (GeoJSON) doit précéder le média hybride déjà complet (CSV), jamais l'inverse.
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_records(3), _reponse_streaming(),
+            _reponse_streaming(_CSV_AVEC_COORDONNEES), _reponse_dataset_meta(),
+        ]
+        resultat = etablissements_scolaires.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias_file = [
+            m for m in resultat.rudi_metadata["available_formats"] if m["media_type"] == "FILE"
+        ]
+        self.assertTrue(medias_file[0]["media_name"].endswith(".geojson"))
+        self.assertTrue(medias_file[1]["media_name"].endswith(".csv"))
+
+    def test_sans_coordonnees_exploitables_pas_de_media_geojson(self):
+        # Contenu CSV par défaut (sans longitude/latitude) : la carte est un bonus,
+        # jamais au prix du CSV déjà publiable — aucun crash, juste pas de carte.
+        session = mock.Mock()
+        session.get.side_effect = [
+            _reponse_records(3), _reponse_streaming(), _reponse_streaming(), _reponse_dataset_meta(),
+        ]
+        resultat = etablissements_scolaires.moissonner(
+            "35120", _GEVEZE, dossier_sortie=self.dossier, session_http=session,
+        )
+        medias = resultat.rudi_metadata["available_formats"]
+        self.assertFalse(any(m["media_name"].endswith(".geojson") for m in medias))
         self.assertEqual(resultat.fichiers_filtres, [])
 
     def test_date_source_derivee_de_metas_default_modified(self):

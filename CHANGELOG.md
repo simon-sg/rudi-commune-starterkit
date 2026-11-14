@@ -4,6 +4,15 @@
 
 ### Correctifs trouvés en testant l'exécutable v0.7.1 (nœud réel)
 
+- **Carte « Établissements scolaires » ne s'affichait pas sur un nœud tiers** (fonctionne
+  en local) : son média GeoJSON était « hybride » (connecteur pointant directement vers
+  l'API externe OpenDataSoft) — l'affichage de la carte le fait proxyer par l'apigateway
+  du nœud, où un bug connu de double-encodage de la query `where=` (déjà corrigé, mais
+  uniquement sur le nœud local de Simon, jamais poussé en amont) casse systématiquement
+  cet appel. Le GeoJSON est désormais construit localement (comme `irve.py`) et déposé
+  comme un fichier normal sur le nœud — la carte ne dépend plus de ce proxy, quel que
+  soit le nœud qui héberge la commune.
+
 - **Détachement/archivage d'organisation sans possibilité d'attendre la
   validation** : contrairement à la création d'organisation, demander le
   détachement d'un producteur déjà validé par l'animateur du portail
