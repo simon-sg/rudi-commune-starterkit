@@ -732,6 +732,26 @@ class TestExecuterScriptableDepuisRegistre(unittest.TestCase):
             _PROFIL_GEVEZE["mode_producteur"],
         )
 
+    def test_contact_commune_explicite_gagne_sur_le_profil(self):
+        """Bug réel corrigé le 2026-11-14 : --contact-commune et
+        --organisation-producteur explicites étaient écrasés par le profil."""
+        args = cli._construire_parser().parse_args([
+            "--code-insee", "35120", "--depuis-registre", "--only", "population",
+            "--contact-commune", "explicite@mairie.fr", "--organisation-producteur", "source",
+        ])
+        self.assertEqual(_PROFIL_GEVEZE["mode_producteur"], "commune")
+        with mock.patch("rudi_commune_starterkit.cli.charger_profils", return_value=[_PROFIL_GEVEZE]), \
+             mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret"), \
+             mock.patch("rudi_commune_starterkit.cli.resoudre_commune", return_value=_GEVEZE), \
+             mock.patch("rudi_commune_starterkit.cli.tester_connexion_noeud", return_value=True), \
+             mock.patch("rudi_commune_starterkit.cli.executer_run", return_value=0) as m_run:
+            code = cli.executer_scriptable(args)
+        self.assertEqual(code, 0)
+        self.assertEqual(m_run.call_args.kwargs["contact_email_commune"], "explicite@mairie.fr")
+        self.assertEqual(
+            m_run.call_args.kwargs["modes_par_jdd"][organisations.POPULATION], "source",
+        )
+
 
 class TestExecuterDepuisProfil(unittest.TestCase):
     def test_confirmation_simple_lance_executer_run(self):

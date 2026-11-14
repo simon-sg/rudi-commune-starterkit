@@ -941,7 +941,7 @@ def _construire_parser() -> argparse.ArgumentParser:
                         help="Accepte un certificat TLS non reconnu (ex. certificat auto-signé "
                              "sur un nœud de test) — RISQUÉ (interception possible), à n'utiliser "
                              "que pour un nœud de confiance connu.")
-    parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default="source")
+    parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default=None)
     parser.add_argument("--organisation-par-jdd", help="Fichier JSON JDD -> commune|source.")
     parser.add_argument("--contact-commune", help="Email, obligatoire si au moins un JDD en mode commune.")
     parser.add_argument("--forcer-maj", action="store_true")
@@ -1035,8 +1035,15 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         args.url_noeud = profil["url_noeud"]
         args.usr = profil["usr"]
         args.utiliser_trousseau = True
-        args.organisation_producteur = profil["mode_producteur"]
-        args.contact_commune = profil.get("contact_email_commune")
+        # Bug réel corrigé le 2026-11-14 : écrasait --organisation-producteur et
+        # --contact-commune même quand explicitement fournis sur la ligne de commande
+        # — un flag explicite doit toujours gagner sur la valeur implicite du profil.
+        if args.organisation_producteur is None:
+            args.organisation_producteur = profil["mode_producteur"]
+        if args.contact_commune is None:
+            args.contact_commune = profil.get("contact_email_commune")
+    if args.organisation_producteur is None:
+        args.organisation_producteur = "source"
 
     try:
         conf = _resoudre_conf_scriptable(args)

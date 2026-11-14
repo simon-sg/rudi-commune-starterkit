@@ -36,6 +36,22 @@ class TestValiderUrlNoeud(unittest.TestCase):
         with self.assertRaises(securite.UrlNoeudNonSecurisee):
             securite.valider_url_noeud("http://192.168.1.5", autoriser_http_local=True)
 
+    def test_hote_vide_refuse(self):
+        """Bug réel corrigé le 2026-11-14 : https:// seul passait la validation et
+        échouait plus tard de façon opaque."""
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("https://")
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("http://", autoriser_http_local=True)
+
+    def test_userinfo_dans_url_refuse(self):
+        """Des identifiants dans l'URL (userinfo) se retrouveraient conservés puis
+        affichés tels quels dans les messages d'erreur du reste du programme."""
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("https://usr:pwd@exemple.fr")
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("http://usr:pwd@localhost", autoriser_http_local=True)
+
 
 class TestEmailValide(unittest.TestCase):
     def test_cas_positifs(self):
