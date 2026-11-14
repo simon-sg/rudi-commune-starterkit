@@ -2,6 +2,14 @@
 
 ## Non publié
 
+### Le garde-fou organisation ne force plus « validée » sur une panne de vérification
+
+`executer_run()` mettait `etat_org = "validee"` sur n'importe quelle panne de
+vérification (réseau, auth...), à l'opposé du garde-fou fail-closed documenté par
+`_etat_organisation_commune()` — une panne transitoire du nœud publiait alors les JDD
+concernés sous une organisation jamais réellement vérifiée. Bloque désormais ces JDD
+comme pour une organisation « en attente de validation ».
+
 ### Correctifs trouvés en testant l'exécutable v0.7.1 (nœud réel)
 
 - **Carte « Établissements scolaires » ne s'affichait pas sur un nœud tiers** (fonctionne

@@ -230,6 +230,20 @@ class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
     def setUp(self):
         super().setUp()
         self.modes = {organisations.POPULATION: "commune"}
+        # Repli par défaut "organisation déjà validée" pour les tests hérités de
+        # TestExecuterRun, qui ne testent pas le garde-fou lui-même : sans ce patch,
+        # ils déclenchaient un vrai appel réseau vers l'hôte factice "noeud" (échec
+        # DNS), et ne passaient que par accident grâce à l'ancien comportement
+        # fail-open corrigé le 2026-11-14 (voir
+        # test_echec_de_verification_bloque_au_lieu_de_forcer_validee). Chaque test
+        # qui teste vraiment le garde-fou écrase ce patch localement.
+        patcher_organisation = mock.patch(
+            "rudi_commune_starterkit.cli.organisation_existante",
+            return_value={"organization_id": "o1", "organization_status": "VALIDATED",
+                          "linked_producer_status": "VALIDATED"},
+        )
+        patcher_organisation.start()
+        self.addCleanup(patcher_organisation.stop)
 
     def test_organisation_absente_scriptable_cree_sans_prompt(self):
         with mock.patch(
@@ -307,6 +321,22 @@ class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
                "linked_producer_status": None}
         with mock.patch(
             "rudi_commune_starterkit.cli.organisation_existante", return_value=org,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.demander_creation_organisation",
+        ) as m_creer, mock.patch.object(population, "moissonner") as m_moissonner:
+            code = self._executer(contact_email_commune="mairie@geveze.fr")
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+        m_creer.assert_not_called()
+        m_moissonner.assert_not_called()
+
+    def test_echec_de_verification_bloque_au_lieu_de_forcer_validee(self):
+        """Bug réel corrigé le 2026-11-14 : une panne de vérification (réseau, auth...)
+        forçait `etat_org = "validee"` — l'opposé du garde-fou fail-closed documenté
+        par _etat_organisation_commune() — et publiait sous une organisation jamais
+        vérifiée. Doit désormais bloquer comme "en_attente"."""
+        with mock.patch(
+            "rudi_commune_starterkit.cli.organisation_existante",
+            side_effect=RuntimeError("panne réseau"),
         ), mock.patch(
             "rudi_commune_starterkit.cli.demander_creation_organisation",
         ) as m_creer, mock.patch.object(population, "moissonner") as m_moissonner:

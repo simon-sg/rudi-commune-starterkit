@@ -214,9 +214,15 @@ def executer_run(
         try:
             etat_org, _organisation = _etat_organisation_commune(conf, nom_org_commune)
         except Exception as e:  # noqa: BLE001
+            # Bug réel corrigé le 2026-11-14 : mettait `etat_org = "validee"` sur
+            # N'IMPORTE QUELLE panne de vérification (réseau, auth...), à l'opposé du
+            # garde-fou fail-closed documenté par _etat_organisation_commune() — une
+            # panne transitoire aurait publié sous une organisation non validée. On
+            # retombe sur "en_attente", qui bloque proprement les JDD concernés (déjà
+            # géré juste en dessous) au lieu de forcer "validee".
             print(f"[cli] [organisation] Impossible de vérifier « {nom_org_commune} » "
-                  f"({e}) — poursuite sans garde-fou, le nœud restera seul juge.")
-            etat_org = "validee"  # ne bloque pas sur une panne de vérification annexe
+                  f"({e}) — JDD concernés bloqués par précaution (garde-fou fail-closed).")
+            etat_org = "en_attente"
 
         if etat_org == "absente":
             if dry_run:
