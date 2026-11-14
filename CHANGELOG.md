@@ -12,6 +12,18 @@
 - `--depuis-registre` écrasait `--contact-commune`/`--organisation-producteur`
   même fournis explicitement sur la ligne de commande — un flag explicite gagne
   désormais toujours sur la valeur implicite du profil.
+- `backend_trousseau_est_sain()` était une liste **noire** (seul un backend
+  explicitement connu pour stocker en clair était refusé ; tout backend jamais vu
+  passait par défaut) — inversée en liste **blanche** (seul un backend système
+  reconnu comme sûr passe par défaut). Contournement explicite possible pour un
+  backend non reconnu légitime (`autoriser_backend_non_reconnu=True`,
+  `--autoriser-backend-trousseau-non-reconnu` en scriptable, confirmation
+  "ACCEPTER" en interactif) — jamais pour un backend connu en clair, toujours
+  refusé.
+- `verifier_permissions_conf()` : un `OSError` entre la vérification d'existence
+  et la lecture des permissions (course, montage réseau capricieux) plantait
+  l'appelant avec une trace Python brute — avertit désormais explicitement et
+  continue (fail-open assumé, jamais silencieux).
 
 **Fiabilité**
 
