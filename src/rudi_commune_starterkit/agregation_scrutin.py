@@ -78,6 +78,30 @@ def normaliser_code_commune(code: object) -> str:
     return code.zfill(_LARGEUR_CODE_INSEE)
 
 
+def _filtrer_lignes_commune(
+    lignes: list[dict], champ_code_commune: str, cible: str,
+) -> list[dict]:
+    """Isole les lignes dont le code commune (normalisé) vaut ``cible`` — une ligne dont
+    le code est manquant/malformé est **ignorée**, jamais une erreur qui ferait échouer
+    tout le fichier national (bug réel corrigé le 2026-11-14 : une seule ligne vide/non
+    numérique, d'une commune sans rapport avec ``cible``, faisait planter l'agrégation
+    entière via :func:`normaliser_code_commune` appelé sur CHAQUE ligne avant le filtre)."""
+    resultat = []
+    ignorees = 0
+    for ligne in lignes:
+        try:
+            code = normaliser_code_commune(ligne.get(champ_code_commune))
+        except CodeCommuneInvalide:
+            ignorees += 1
+            continue
+        if code == cible:
+            resultat.append(ligne)
+    if ignorees:
+        print(f"  [elections] {ignorees} ligne(s) au code commune manquant/malformé "
+              "ignorée(s) (pas forcément la commune cible).")
+    return resultat
+
+
 def _vers_int(valeur: object) -> int:
     if valeur is None:
         return 0
@@ -125,10 +149,7 @@ def agreger_bureau_vers_commune(
     résultat normal avec des valeurs à 0.
     """
     cible = normaliser_code_commune(code_insee)
-    lignes = [
-        ligne for ligne in lignes_bureau
-        if normaliser_code_commune(ligne.get(champ_code_commune)) == cible
-    ]
+    lignes = _filtrer_lignes_commune(lignes_bureau, champ_code_commune, cible)
     if not lignes:
         raise CodeCommuneInvalide(
             f"aucun bureau trouvé pour le code commune {code_insee!r} (normalisé {cible!r})"
@@ -215,10 +236,7 @@ def agreger_long_vers_commune(
         )
 
     cible = normaliser_code_commune(code_insee)
-    lignes_commune = [
-        ligne for ligne in lignes
-        if normaliser_code_commune(ligne.get(champ_code_commune)) == cible
-    ]
+    lignes_commune = _filtrer_lignes_commune(lignes, champ_code_commune, cible)
     if not lignes_commune:
         raise CodeCommuneInvalide(
             f"aucune ligne trouvée pour le code commune {code_insee!r} (normalisé {cible!r})"

@@ -128,6 +128,20 @@ class TestAgregerBureauVersCommune(unittest.TestCase):
         )
         self.assertNotIn("inscrits", resultat)
 
+    def test_ligne_au_code_commune_malforme_ignoree_pas_fatale(self):
+        """Bug réel corrigé le 2026-11-14 : une seule ligne vide/non numérique, d'une
+        commune sans rapport avec la cible, faisait planter l'agrégation entière."""
+        lignes_malformees = [
+            {"Code commune": "", "Voix CandidatA": "1"},
+            {"Code commune": None, "Voix CandidatA": "1"},
+            {"Code commune": "ABCDE", "Voix CandidatA": "1"},
+        ]
+        resultat = agreger_bureau_vers_commune(
+            _BUREAUX_GEVEZE + lignes_malformees, "35120", champ_code_commune="Code commune",
+            colonnes_candidats={"Candidat A": "Voix CandidatA"},
+        )
+        self.assertEqual(resultat["nb_bureaux"], len(_BUREAUX_GEVEZE))
+
 
 class TestDecomposerIdElection(unittest.TestCase):
     def test_decompose_un_id_election_valide(self):
@@ -254,6 +268,15 @@ class TestAgregerLongVersCommune(unittest.TestCase):
                 _LIGNES_GENERAL, "35120",
                 champs_totaux=("inscrits",), champs_identite_candidat=("no_panneau",),
             )
+
+    def test_ligne_au_code_commune_malforme_ignoree_pas_fatale(self):
+        lignes = _LIGNES_GENERAL + [
+            {"id_election": "2022_pres_t1", "code_commune": "", "inscrits": "1"},
+        ]
+        resultat = agreger_long_vers_commune(
+            lignes, "35120", champs_totaux=("inscrits",),
+        )
+        self.assertEqual(sum(r["inscrits"] for r in resultat), 600 + 400 + 1000)
 
     def test_tri_par_id_election_puis_code_insee(self):
         lignes = [
