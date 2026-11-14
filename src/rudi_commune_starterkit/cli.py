@@ -734,8 +734,10 @@ def executer_interactif() -> int:
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
     url_catalog = _demander(
-        "URL catalogue (laissez vide dans la grande majorité des cas — déduite "
-        "automatiquement)", defaut="",
+        "URL catalogue (si l'administrateur de votre territoire vous en a transmis "
+        "une, indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
+        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
+        defaut="",
     ) or None
     url_portail = _demander(
         "URL du portail (optionnelle, mais recommandée — sans elle, impossible "

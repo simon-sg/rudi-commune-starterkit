@@ -271,16 +271,19 @@ avant même de commencer.
 ```text
 URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur de
 votre territoire :
-URL catalogue (laissez vide dans la grande majorité des cas — déduite
-automatiquement) [] :
+URL catalogue (si l'administrateur de votre territoire vous en a transmis une,
+indiquez-la ici ; sinon laissez vide — la déduction automatique ne fonctionne
+pas sur tous les nœuds, notamment ceux hébergés par un tiers) [] :
 URL du portail (optionnelle, mais recommandée — sans elle, impossible d'annuler
 une publication de test plus tard) [] :
 ```
 
 - La première adresse est **obligatoire** — celle réunie à l'étape
   [Prérequis](prerequis.md).
-- La deuxième se laisse vide dans la quasi-totalité des cas : appuyez simplement sur
-  Entrée.
+- La deuxième : si l'administrateur vous en a transmis une, indiquez-la. Sinon,
+  laissez vide — mais si le programme vous signale ensuite qu'il n'arrive pas à
+  joindre le catalogue, c'est le signe qu'il faut la demander à l'administrateur
+  plutôt que de laisser vide.
 - La troisième est facultative mais **fortement recommandée** — voir l'encart de la
   page [Prérequis](prerequis.md).
 
@@ -510,7 +513,7 @@ PAGES_GUIDE: dict[str, str] = {
 CITATIONS_WIZARD_A_VERIFIER = [
     "Avant de commencer, un aperçu rapide de ce qui pourra être publié pour votre",
     "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur",
-    "URL catalogue (laissez vide dans la grande majorité des cas — déduite",
+    "URL catalogue (si l'administrateur de votre territoire vous en a transmis",
     "URL du portail (optionnelle, mais recommandée — sans elle, impossible",
     "Nom d'utilisateur (fourni par l'administrateur du nœud)",
     "Mot de passe (fourni par l'administrateur du nœud)",
