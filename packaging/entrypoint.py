@@ -20,7 +20,7 @@ import sys
 print("Chargement des ressources, merci de patienter...")
 sys.stdout.flush()
 
-from rudi_commune_starterkit.cli import main
+from rudi_commune_starterkit.cli import EXIT_EN_ATTENTE_VALIDATION, main
 
 
 def _executer_une_fois() -> int:
@@ -40,7 +40,17 @@ if __name__ == "__main__":
     code = 1
     while True:
         code = _executer_une_fois()
-        if code != 0:
+        if code == EXIT_EN_ATTENTE_VALIDATION:
+            # Pas un échec : l'opération attend une validation par l'animateur du
+            # portail (détachement ou archivage d'une organisation) — déjà expliqué
+            # en détail juste au-dessus par cli.py, rien à ajouter ici qui ne soit
+            # pas trompeur ("échec" ne s'applique pas à ce statut).
+            print(
+                "\nEn attente d'une validation côté portail — relancez cette même "
+                "opération plus tard (menu puis même choix) pour vérifier si elle a "
+                "eu lieu et poursuivre."
+            )
+        elif code != 0:
             # Avertissement ci-dessous : la création d'organisation est
             # désormais protégée contre le doublon grâce à l'id déterministe du
             # toolkit (`_organization_id_deterministe()` dans

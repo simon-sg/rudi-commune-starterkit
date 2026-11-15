@@ -767,7 +767,7 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
             break
         reponse = input(
             "\n  [Entrée] pour vérifier si l'animateur a validé et poursuivre, "
-            "'q' pour revenir au menu : "
+            "'q' pour quitter et relancer plus tard : "
         ).strip().lower()
         if reponse in ("q", "quitter"):
             break
