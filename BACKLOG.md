@@ -220,8 +220,9 @@ d'arrêt humain.
 **Décidé** : toujours `--vider-commune` en fin de run (nœud reste propre entre deux
 recettages).
 
-**« Mettre à jour une organisation »** : `demander_mise_a_jour_organisation()` est du
-code mort (aucun chemin ne l'appelle) — la lecture la plus probable de la demande
+**« Mettre à jour une organisation »** : `demander_mise_a_jour_organisation()` a été
+supprimée du toolkit (code mort confirmé, voir CHANGELOG toolkit 0.5.8) — la lecture la
+plus probable de la demande
 initiale de Simon est l'**idempotence** (relancer sans rien changer côté source → rien
 republié) et `--forcer-maj` (republie même sans changement détecté), à tester comme 2
 cas distincts. Une vraie "mise à jour du nom/description d'une organisation" n'a pas de

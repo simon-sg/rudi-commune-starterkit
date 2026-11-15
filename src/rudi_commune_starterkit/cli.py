@@ -138,6 +138,78 @@ def _etat_organisation_commune(conf: dict, nom_org_commune: str) -> tuple[str, d
     return "en_attente", organisation
 
 
+def _valider_et_filtrer_modules(only: set[str] | None, skip: set[str] | None) -> list | None:
+    """Valide ``--only``/``--skip`` contre les clés de JDD connues et retourne les
+    modules sélectionnés, ou ``None`` si une clé inconnue a été trouvée (message déjà
+    affiché — l'appelant doit alors renvoyer ``EXIT_ECHEC_TOTAL``).
+
+    Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
+    sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
+    sans avoir rien publié, sans le moindre avertissement."""
+    cles_connues = {m.CLE for m in registre.MODULES}
+    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
+    if cles_inconnues:
+        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
+              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
+              f"{', '.join(sorted(cles_connues))}.")
+        return None
+    return [
+        m for m in registre.MODULES
+        if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
+    ]
+
+
+def _resoudre_description_commune_si_besoin(
+    commune: dict, modules: list, modes_par_jdd: dict[str, str], dossier_sortie: str,
+) -> dict | None:
+    """Résout UNE SEULE FOIS par run (pas par module) la description de la commune —
+    réutilisée par tous les modules qui en ont besoin (voir le plan, § Axe 1), sinon
+    l'organisation créée sur le nœud et le producer publié avec chaque JDD pourraient
+    porter des résumés différents.
+
+    Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
+    téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
+    resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
+    (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
+    "source" payait ce coût réseau pour rien, --dry-run compris."""
+    besoin = any(
+        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
+        for module in modules
+    )
+    if not besoin:
+        return None
+    description_commune = construire_description_commune(
+        commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+        dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+    )
+    if description_commune["source"] == "repli_generique":
+        print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
+              "— description générique utilisée pour l'organisation de la commune.")
+    return description_commune
+
+
+def _code_sortie_run(rapport: dict[str, list[str]], organisation_en_attente: bool, dry_run: bool) -> int:
+    """Détermine le code de sortie d'un run à partir du rapport. « En attente de
+    validation » prend toujours le dessus sur un échec partiel — règle fixe, pas une
+    matrice à justifier cas par cas (voir le plan, § 2) : ce n'est pas un échec, c'est
+    un rendez-vous à reprendre une fois l'organisation validée par l'animateur du
+    portail. En dry-run, le run « réussit » toujours (EXIT_SUCCES) mais annonce le
+    code réel attendu si différent."""
+    if organisation_en_attente:
+        code = EXIT_EN_ATTENTE_VALIDATION
+    elif rapport["échec"] and (rapport["publié"] or rapport["mis à jour"]):
+        code = EXIT_ECHECS_PARTIELS
+    elif rapport["échec"] and not (rapport["publié"] or rapport["mis à jour"]):
+        code = EXIT_ECHEC_TOTAL
+    else:
+        code = EXIT_SUCCES
+    if dry_run:
+        if code != EXIT_SUCCES:
+            print(f"[cli] [dry-run] code de sortie réel attendu : {code}.")
+        return EXIT_SUCCES
+    return code
+
+
 def executer_run(
     *,
     commune: dict,
@@ -160,44 +232,13 @@ def executer_run(
     ``False`` (mode scriptable) la crée directement, cohérent avec l'absence de prompt.
     """
     code_insee = commune["code_insee"]
-    # Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
-    # sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
-    # sans avoir rien publié, sans le moindre avertissement.
-    cles_connues = {m.CLE for m in registre.MODULES}
-    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
-    if cles_inconnues:
-        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
-              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
-              f"{', '.join(sorted(cles_connues))}.")
+    modules = _valider_et_filtrer_modules(only, skip)
+    if modules is None:
         return EXIT_ECHEC_TOTAL
-    modules = [
-        m for m in registre.MODULES
-        if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
-    ]
 
-    # Résolu UNE SEULE FOIS par run (pas par module), avant producteurs_candidats, et
-    # réutilisé aux deux sites qui construisent l'organisation de la commune — voir le
-    # plan, § Axe 1 (sinon l'organisation créée sur le nœud et le producer publié avec
-    # chaque JDD pourraient porter des résumés différents).
-    #
-    # Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
-    # téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
-    # resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
-    # (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
-    # "source" payait ce coût réseau pour rien, --dry-run compris.
-    besoin_description_commune = any(
-        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
-        for module in modules
+    description_commune = _resoudre_description_commune_si_besoin(
+        commune, modules, modes_par_jdd, dossier_sortie,
     )
-    description_commune = None
-    if besoin_description_commune:
-        description_commune = construire_description_commune(
-            commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
-            dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
-        )
-        if description_commune["source"] == "repli_generique":
-            print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
-                  "— description générique utilisée pour l'organisation de la commune.")
 
     producteurs_candidats = {}
     producteur_par_module: dict[str, dict] = {}
@@ -349,25 +390,7 @@ def executer_run(
         sauvegarder_etat(chemin_etat, etat)
 
     _afficher_rapport(rapport)
-
-    # « En attente de validation » prend toujours le dessus sur un échec partiel —
-    # règle fixe, pas une matrice à justifier cas par cas (voir le plan, § 2) : ce
-    # n'est pas un échec, c'est un rendez-vous à reprendre une fois l'organisation
-    # validée par l'animateur du portail.
-    if organisation_en_attente:
-        code = EXIT_EN_ATTENTE_VALIDATION
-    elif rapport["échec"] and (rapport["publié"] or rapport["mis à jour"]):
-        code = EXIT_ECHECS_PARTIELS
-    elif rapport["échec"] and not (rapport["publié"] or rapport["mis à jour"]):
-        code = EXIT_ECHEC_TOTAL
-    else:
-        code = EXIT_SUCCES
-
-    if dry_run:
-        if code != EXIT_SUCCES:
-            print(f"[cli] [dry-run] code de sortie réel attendu : {code}.")
-        return EXIT_SUCCES
-    return code
+    return _code_sortie_run(rapport, organisation_en_attente, dry_run)
 
 
 def _libelle_jdd(cle: str) -> str:
@@ -570,6 +593,37 @@ def _lire_mot_de_passe_repli_clair(url_noeud: str, usr: str) -> str | None:
     return conf.get("pwd")
 
 
+def _resoudre_conf_mot_de_passe_profil(profil: dict) -> dict | None:
+    """Résout le mot de passe d'un profil déjà enregistré (trousseau, avec
+    confirmation pour un backend non reconnu -> repli fichier en clair -> saisie
+    manuelle) et construit ``conf`` — commun à :func:`_executer_depuis_profil` et
+    :func:`_vider_commune_interactif`. Retourne ``None`` si le mot de passe n'a pas
+    pu être obtenu (message déjà affiché à l'appelant) : celui-ci doit alors
+    renvoyer ``EXIT_ECHEC_TOTAL`` sans rien tenter d'autre."""
+    url_noeud, usr = profil["url_noeud"], profil["usr"]
+    try:
+        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
+        print(f"  {e}")
+        pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
+    if pwd is None:
+        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
+        try:
+            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
+        except AbsenceTerminalError as e:
+            print(f"  {e}")
+            return None
+
+    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
+    if profil.get("url_catalog"):
+        conf["url_catalog"] = profil["url_catalog"]
+    if profil.get("url_portail"):
+        conf["url_portail"] = profil["url_portail"]
+    return conf
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -585,27 +639,9 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
         print(f"  Erreur réseau : {e}")
         return EXIT_ECHEC_TOTAL
 
-    url_noeud, usr = profil["url_noeud"], profil["usr"]
-    try:
-        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
-    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
-        print(f"  {e}")
-        pwd = None
-    if pwd is None:
-        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
-    if pwd is None:
-        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
-        try:
-            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
-        except AbsenceTerminalError as e:
-            print(f"  {e}")
-            return EXIT_ECHEC_TOTAL
-
-    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
-    if profil.get("url_catalog"):
-        conf["url_catalog"] = profil["url_catalog"]
-    if profil.get("url_portail"):
-        conf["url_portail"] = profil["url_portail"]
+    conf = _resoudre_conf_mot_de_passe_profil(profil)
+    if conf is None:
+        return EXIT_ECHEC_TOTAL
 
     organisation_producteur = profil["mode_producteur"]
     organisation_par_jdd = profil.get("organisation_par_jdd")
@@ -699,27 +735,9 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     :func:`vider_commune` au lieu de relancer la moisson."""
     print(f"\n→ Vidage de {profil['nom']} ({profil['code_insee']}) sur {profil['url_noeud']}\n")
 
-    url_noeud, usr = profil["url_noeud"], profil["usr"]
-    try:
-        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
-    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
-        print(f"  {e}")
-        pwd = None
-    if pwd is None:
-        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
-    if pwd is None:
-        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
-        try:
-            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
-        except AbsenceTerminalError as e:
-            print(f"  {e}")
-            return EXIT_ECHEC_TOTAL
-
-    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
-    if profil.get("url_catalog"):
-        conf["url_catalog"] = profil["url_catalog"]
-    if profil.get("url_portail"):
-        conf["url_portail"] = profil["url_portail"]
+    conf = _resoudre_conf_mot_de_passe_profil(profil)
+    if conf is None:
+        return EXIT_ECHEC_TOTAL
 
     supprimer_organisation = _demander_oui_non(
         "Supprimer aussi l'organisation de la commune (si aucune autre donnée du nœud "
@@ -764,6 +782,89 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     return _code_sortie_vidage(rapport)
 
 
+def _proposer_reprise_profil(profils: list[dict], chemin_profils: str) -> int | None:
+    """Étape 0 du wizard interactif : propose de reprendre une commune déjà
+    enregistrée. Retourne un code de sortie si le flux doit s'arrêter ici (quitter,
+    ou reprise/vidage d'un profil existant), ou ``None`` pour poursuivre avec
+    « Nouvelle commune » (y compris si ``profils`` est vide)."""
+    if not profils:
+        return None
+    print("Communes déjà enregistrées :")
+    for i, p in enumerate(profils, start=1):
+        print(f"  {i}) {p['nom']} ({p['code_insee']}) — {p['url_noeud']}")
+    print("  0) Nouvelle commune")
+    print("  q) Quitter")
+    while True:
+        choix = _demander("Reprendre quelle commune", defaut="0")
+        if choix.strip().lower() in ("q", "quitter"):
+            return EXIT_SUCCES
+        if choix in ("0", ""):
+            break
+        if choix.isdigit() and 1 <= int(choix) <= len(profils):
+            profil = profils[int(choix) - 1]
+            action = _demander(
+                "  1) Publier/mettre à jour les données  2) Annuler une publication "
+                "de test (vider cette commune)  q) Quitter — Action", defaut="1",
+            )
+            if action.strip().lower() in ("q", "quitter"):
+                return EXIT_SUCCES
+            if action == "2":
+                return _vider_commune_interactif(profil, chemin_profils)
+            return _executer_depuis_profil(profil, chemin_profils)
+        print("  Choix invalide.")
+    print()
+    return None
+
+
+def _demander_urls_noeud_wizard() -> tuple[str, str | None, str | None]:
+    """Étape 3 du wizard interactif : URL du nœud (obligatoire, validée), URL
+    catalogue (optionnelle, pas de validation — simple chaîne transmise à
+    l'administrateur du nœud) et URL du portail (optionnelle, même validation que
+    le nœud — bug réel corrigé le 2026-11-14 : jamais validée jusqu'ici, un portail
+    en http:// non local y envoyait les identifiants portail en clair)."""
+    while True:
+        url_noeud = _demander(
+            "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
+            "du nœud",
+        )
+        try:
+            url_noeud = valider_url_noeud(url_noeud)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_noeud = valider_url_noeud(url_noeud, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
+    url_catalog = _demander(
+        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
+        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
+        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
+        defaut="",
+    ) or None
+    while True:
+        url_portail = _demander(
+            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+            "d'annuler une publication de test plus tard)", defaut="",
+        ) or None
+        if url_portail is None:
+            break
+        try:
+            url_portail = valider_url_noeud(url_portail)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
+    return url_noeud, url_catalog, url_portail
+
+
 def executer_interactif() -> int:
     print("=== rudi-commune-starterkit — assistant ===\n")
 
@@ -774,31 +875,9 @@ def executer_interactif() -> int:
         print(f"  {e}")
         return EXIT_ECHEC_TOTAL
 
-    if profils:
-        print("Communes déjà enregistrées :")
-        for i, p in enumerate(profils, start=1):
-            print(f"  {i}) {p['nom']} ({p['code_insee']}) — {p['url_noeud']}")
-        print("  0) Nouvelle commune")
-        print("  q) Quitter")
-        while True:
-            choix = _demander("Reprendre quelle commune", defaut="0")
-            if choix.strip().lower() in ("q", "quitter"):
-                return EXIT_SUCCES
-            if choix in ("0", ""):
-                break
-            if choix.isdigit() and 1 <= int(choix) <= len(profils):
-                profil = profils[int(choix) - 1]
-                action = _demander(
-                    "  1) Publier/mettre à jour les données  2) Annuler une publication "
-                    "de test (vider cette commune)  q) Quitter — Action", defaut="1",
-                )
-                if action.strip().lower() in ("q", "quitter"):
-                    return EXIT_SUCCES
-                if action == "2":
-                    return _vider_commune_interactif(profil, chemin_profils)
-                return _executer_depuis_profil(profil, chemin_profils)
-            print("  Choix invalide.")
-        print()
+    resultat = _proposer_reprise_profil(profils, chemin_profils)
+    if resultat is not None:
+        return resultat
 
     # Étape 1 : code INSEE
     while True:
@@ -840,50 +919,8 @@ def executer_interactif() -> int:
         print(f"  - {_libelle_jdd(cle)} : {statut}")
     print()
 
-    # Étape 3 : URL du nœud
-    while True:
-        url_noeud = _demander(
-            "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
-            "du nœud",
-        )
-        try:
-            url_noeud = valider_url_noeud(url_noeud)
-            break
-        except UrlNoeudNonSecurisee as e:
-            print(f"  {e}")
-            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
-                try:
-                    url_noeud = valider_url_noeud(url_noeud, autoriser_http_local=True)
-                    break
-                except UrlNoeudNonSecurisee as e2:
-                    print(f"  {e2}")
-    url_catalog = _demander(
-        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
-        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
-        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
-        defaut="",
-    ) or None
-    # Même validation que l'URL du nœud (bug réel corrigé le 2026-11-14 : jamais
-    # validée jusqu'ici — un portail en http:// non local y envoyait les identifiants
-    # portail en clair sans le moindre avertissement, contrairement au nœud).
-    while True:
-        url_portail = _demander(
-            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
-            "d'annuler une publication de test plus tard)", defaut="",
-        ) or None
-        if url_portail is None:
-            break
-        try:
-            url_portail = valider_url_noeud(url_portail)
-            break
-        except UrlNoeudNonSecurisee as e:
-            print(f"  {e}")
-            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
-                try:
-                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
-                    break
-                except UrlNoeudNonSecurisee as e2:
-                    print(f"  {e2}")
+    # Étape 3 : URLs (nœud, catalogue, portail)
+    url_noeud, url_catalog, url_portail = _demander_urls_noeud_wizard()
 
     # Étape 4 : identifiants
     usr = _demander("Nom d'utilisateur (fourni par l'administrateur du nœud)")
@@ -1070,6 +1107,58 @@ def _resoudre_profil_registre(args: argparse.Namespace) -> dict:
     return profils[0]
 
 
+def _tester_connexion_scriptable_avec_repli_tls(conf: dict, args: argparse.Namespace) -> bool:
+    """Teste la connexion au nœud en mode scriptable ; le contournement TLS passe
+    par un flag explicite (``--ignorer-certificat-tls``), jamais une confirmation
+    interactive (pendant de :func:`_tester_connexion_avec_repli_tls`, qui elle
+    utilise :func:`confirmer`). Affiche elle-même le message d'échec final."""
+    erreur_connexion: dict = {}
+    pret = tester_connexion_noeud(conf, erreur_sortie=erreur_connexion)
+    if not pret and erreur_est_certificat_tls(erreur_connexion) and args.ignorer_certificat_tls:
+        desactiver_verification_tls_noeud()
+        pret = tester_connexion_noeud(conf)
+    if not pret:
+        if erreur_est_certificat_tls(erreur_connexion) and not args.ignorer_certificat_tls:
+            print("[cli] Certificat TLS non reconnu — relancer avec "
+                  "--ignorer-certificat-tls si vous faites confiance à ce nœud "
+                  "(risque : interception possible).", file=sys.stderr)
+        else:
+            print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
+    return pret
+
+
+def _executer_scriptable_vider_commune(conf: dict, args: argparse.Namespace, profil: dict | None) -> int:
+    """Branche ``--vider-commune`` du mode scriptable, extraite d'``executer_scriptable()``
+    pour en réduire la taille — retourne directement le code de sortie."""
+    def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:
+        return confirmer(message, mot_attendu=mot_attendu, confirmation_scriptable=args.confirmer)
+
+    rapport = vider_commune(
+        conf, args.code_insee,
+        nom_commune=profil["nom"] if profil else None,
+        chemin_etat=args.etat,
+        supprimer_organisation=args.supprimer_organisation,
+        confirmer_fn=_confirmer_fn,
+    )
+    print(f"[cli] {rapport['message']}" if rapport["message"] else "[cli] Vidage terminé.")
+    if rapport["jdd_supprimes"]:
+        print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
+    if rapport["jdd_echecs"]:
+        print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}", file=sys.stderr)
+    if rapport["jdd_tiers_supprimes"]:
+        print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+    if rapport["jdd_tiers_echecs"]:
+        print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}",
+              file=sys.stderr)
+    if rapport["organisation"] == "supprimee" and profil:
+        # Jamais automatique (voir le plan, § 6) : en scriptable, pas de prompt
+        # possible, donc on se contente de signaler que le profil est périmé.
+        print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
+              f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
+              f"l'assistant interactif pour le retirer si besoin.")
+    return _code_sortie_vidage(rapport)
+
+
 def executer_scriptable(args: argparse.Namespace) -> int:
     if not args.code_insee:
         print("[cli] --code-insee est requis en mode scriptable.", file=sys.stderr)
@@ -1120,33 +1209,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             return EXIT_ECHEC_TOTAL
 
     if args.vider_commune:
-        def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:
-            return confirmer(message, mot_attendu=mot_attendu, confirmation_scriptable=args.confirmer)
-
-        rapport = vider_commune(
-            conf, args.code_insee,
-            nom_commune=profil["nom"] if profil else None,
-            chemin_etat=args.etat,
-            supprimer_organisation=args.supprimer_organisation,
-            confirmer_fn=_confirmer_fn,
-        )
-        print(f"[cli] {rapport['message']}" if rapport["message"] else "[cli] Vidage terminé.")
-        if rapport["jdd_supprimes"]:
-            print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
-        if rapport["jdd_echecs"]:
-            print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}", file=sys.stderr)
-        if rapport["jdd_tiers_supprimes"]:
-            print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
-        if rapport["jdd_tiers_echecs"]:
-            print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}",
-                  file=sys.stderr)
-        if rapport["organisation"] == "supprimee" and profil:
-            # Jamais automatique (voir le plan, § 6) : en scriptable, pas de prompt
-            # possible, donc on se contente de signaler que le profil est périmé.
-            print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
-                  f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
-                  f"l'assistant interactif pour le retirer si besoin.")
-        return _code_sortie_vidage(rapport)
+        return _executer_scriptable_vider_commune(conf, args, profil)
 
     try:
         commune = resoudre_commune(args.code_insee)
@@ -1179,18 +1242,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         if avertissement:
             print(f"[cli] [sécurité] Attention : {avertissement}", file=sys.stderr)
 
-    erreur_connexion: dict = {}
-    pret = tester_connexion_noeud(conf, erreur_sortie=erreur_connexion)
-    if not pret and erreur_est_certificat_tls(erreur_connexion) and args.ignorer_certificat_tls:
-        desactiver_verification_tls_noeud()
-        pret = tester_connexion_noeud(conf)
-    if not pret:
-        if erreur_est_certificat_tls(erreur_connexion) and not args.ignorer_certificat_tls:
-            print("[cli] Certificat TLS non reconnu — relancer avec "
-                  "--ignorer-certificat-tls si vous faites confiance à ce nœud "
-                  "(risque : interception possible).", file=sys.stderr)
-        else:
-            print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
+    if not _tester_connexion_scriptable_avec_repli_tls(conf, args):
         return EXIT_ECHEC_TOTAL
 
     only = set(args.only.split(",")) if args.only else None
