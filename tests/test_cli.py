@@ -6,6 +6,8 @@ connecteurs réels référencés par registre.MODULES.
 """
 import argparse
 import io
+import logging
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -1296,6 +1298,48 @@ class TestMain(unittest.TestCase):
                 cli.main(["--version"])
         self.assertEqual(ctx.exception.code, 0)
         self.assertIn(cli.__version__, m_stdout.getvalue())
+
+
+class TestConfigurerLoggingToolkit(unittest.TestCase):
+    """rudi_harvest_toolkit a migré print() -> logging (2026-11-15) : sans ce
+    handler, ses messages (avertissements, erreurs de publication...)
+    disparaîtraient silencieusement puisque `logging` n'affiche rien par défaut."""
+
+    def setUp(self):
+        self.logger_toolkit = logging.getLogger("rudi_harvest_toolkit")
+        self._handlers_origine = list(self.logger_toolkit.handlers)
+        self._niveau_origine = self.logger_toolkit.level
+        self._propagate_origine = self.logger_toolkit.propagate
+        self.logger_toolkit.handlers = []
+
+    def tearDown(self):
+        self.logger_toolkit.handlers = self._handlers_origine
+        self.logger_toolkit.setLevel(self._niveau_origine)
+        self.logger_toolkit.propagate = self._propagate_origine
+
+    def test_ajoute_un_handler_stdout_texte_brut(self):
+        cli._configurer_logging_toolkit()
+        self.assertEqual(len(self.logger_toolkit.handlers), 1)
+        handler = self.logger_toolkit.handlers[0]
+        self.assertEqual(handler.stream, sys.stdout)
+        self.assertEqual(handler.formatter._fmt, "%(message)s")
+        self.assertEqual(self.logger_toolkit.level, logging.INFO)
+
+    def test_idempotent_pas_de_doublon_de_handler(self):
+        cli._configurer_logging_toolkit()
+        cli._configurer_logging_toolkit()
+        self.assertEqual(len(self.logger_toolkit.handlers), 1)
+
+    def test_message_toolkit_visible_sur_stdout_sans_prefixe_de_logging(self):
+        # Vérifie le comportement de bout en bout, pas seulement la configuration
+        # du handler : un message émis par le toolkit après _configurer_logging_
+        # toolkit() doit apparaître sur stdout EXACTEMENT comme avant la migration
+        # print() -> logging (aucun timestamp/niveau ajouté par logging).
+        cli._configurer_logging_toolkit()
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as m_stdout:
+            self.logger_toolkit.handlers[0].stream = m_stdout
+            logging.getLogger("rudi_harvest_toolkit.rudi_client").warning("  [RUDI] message de test")
+        self.assertEqual(m_stdout.getvalue(), "  [RUDI] message de test\n")
 
 
 if __name__ == "__main__":

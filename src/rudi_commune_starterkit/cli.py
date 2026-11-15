@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -1263,7 +1264,26 @@ def executer_scriptable(args: argparse.Namespace) -> int:
     )
 
 
+def _configurer_logging_toolkit() -> None:
+    """Configure la bibliothèque rudi_harvest_toolkit pour qu'elle affiche ses
+    messages sur stdout exactement comme avant sa migration print() -> logging
+    (2026-11-15, voir son CHANGELOG) : un handler texte brut (pas de date/niveau en
+    préfixe, déjà présents dans le message lui-même, ex. « [RUDI] »), sans quoi ses
+    avertissements/erreurs (échec de publication, organisation déjà créée…)
+    disparaîtraient silencieusement puisque `logging` n'affiche rien par défaut.
+    Idempotent (pas de doublon de handler si appelée plusieurs fois, ex. en test)."""
+    logger_toolkit = logging.getLogger("rudi_harvest_toolkit")
+    if logger_toolkit.handlers:
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger_toolkit.addHandler(handler)
+    logger_toolkit.setLevel(logging.INFO)
+    logger_toolkit.propagate = False
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configurer_logging_toolkit()
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
         return executer_interactif()
