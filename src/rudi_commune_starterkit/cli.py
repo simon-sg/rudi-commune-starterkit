@@ -138,6 +138,78 @@ def _etat_organisation_commune(conf: dict, nom_org_commune: str) -> tuple[str, d
     return "en_attente", organisation
 
 
+def _valider_et_filtrer_modules(only: set[str] | None, skip: set[str] | None) -> list | None:
+    """Valide ``--only``/``--skip`` contre les clés de JDD connues et retourne les
+    modules sélectionnés, ou ``None`` si une clé inconnue a été trouvée (message déjà
+    affiché — l'appelant doit alors renvoyer ``EXIT_ECHEC_TOTAL``).
+
+    Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
+    sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
+    sans avoir rien publié, sans le moindre avertissement."""
+    cles_connues = {m.CLE for m in registre.MODULES}
+    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
+    if cles_inconnues:
+        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
+              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
+              f"{', '.join(sorted(cles_connues))}.")
+        return None
+    return [
+        m for m in registre.MODULES
+        if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
+    ]
+
+
+def _resoudre_description_commune_si_besoin(
+    commune: dict, modules: list, modes_par_jdd: dict[str, str], dossier_sortie: str,
+) -> dict | None:
+    """Résout UNE SEULE FOIS par run (pas par module) la description de la commune —
+    réutilisée par tous les modules qui en ont besoin (voir le plan, § Axe 1), sinon
+    l'organisation créée sur le nœud et le producer publié avec chaque JDD pourraient
+    porter des résumés différents.
+
+    Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
+    téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
+    resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
+    (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
+    "source" payait ce coût réseau pour rien, --dry-run compris."""
+    besoin = any(
+        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
+        for module in modules
+    )
+    if not besoin:
+        return None
+    description_commune = construire_description_commune(
+        commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
+        dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
+    )
+    if description_commune["source"] == "repli_generique":
+        print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
+              "— description générique utilisée pour l'organisation de la commune.")
+    return description_commune
+
+
+def _code_sortie_run(rapport: dict[str, list[str]], organisation_en_attente: bool, dry_run: bool) -> int:
+    """Détermine le code de sortie d'un run à partir du rapport. « En attente de
+    validation » prend toujours le dessus sur un échec partiel — règle fixe, pas une
+    matrice à justifier cas par cas (voir le plan, § 2) : ce n'est pas un échec, c'est
+    un rendez-vous à reprendre une fois l'organisation validée par l'animateur du
+    portail. En dry-run, le run « réussit » toujours (EXIT_SUCCES) mais annonce le
+    code réel attendu si différent."""
+    if organisation_en_attente:
+        code = EXIT_EN_ATTENTE_VALIDATION
+    elif rapport["échec"] and (rapport["publié"] or rapport["mis à jour"]):
+        code = EXIT_ECHECS_PARTIELS
+    elif rapport["échec"] and not (rapport["publié"] or rapport["mis à jour"]):
+        code = EXIT_ECHEC_TOTAL
+    else:
+        code = EXIT_SUCCES
+    if dry_run:
+        if code != EXIT_SUCCES:
+            print(f"[cli] [dry-run] code de sortie réel attendu : {code}.")
+        return EXIT_SUCCES
+    return code
+
+
 def executer_run(
     *,
     commune: dict,
@@ -160,44 +232,13 @@ def executer_run(
     ``False`` (mode scriptable) la crée directement, cohérent avec l'absence de prompt.
     """
     code_insee = commune["code_insee"]
-    # Bug réel corrigé le 2026-11-14 : une clé inconnue dans --only/--skip (typo) ne
-    # sélectionnait silencieusement aucun module — le run "réussissait" (EXIT_SUCCES)
-    # sans avoir rien publié, sans le moindre avertissement.
-    cles_connues = {m.CLE for m in registre.MODULES}
-    cles_inconnues = {c for c in (only or set()) | (skip or set()) if c not in cles_connues}
-    if cles_inconnues:
-        print(f"[cli] clé(s) de JDD inconnue(s) dans --only/--skip : "
-              f"{', '.join(sorted(cles_inconnues))} — clés valides : "
-              f"{', '.join(sorted(cles_connues))}.")
+    modules = _valider_et_filtrer_modules(only, skip)
+    if modules is None:
         return EXIT_ECHEC_TOTAL
-    modules = [
-        m for m in registre.MODULES
-        if (only is None or m.CLE in only) and (skip is None or m.CLE not in skip)
-    ]
 
-    # Résolu UNE SEULE FOIS par run (pas par module), avant producteurs_candidats, et
-    # réutilisé aux deux sites qui construisent l'organisation de la commune — voir le
-    # plan, § Axe 1 (sinon l'organisation créée sur le nœud et le producer publié avec
-    # chaque JDD pourraient porter des résumés différents).
-    #
-    # Bug réel corrigé le 2026-11-14 : calculée inconditionnellement (appel Wikipédia +
-    # téléchargement du RNE, ~65 Mo) même quand AUCUN module sélectionné n'en a besoin —
-    # resoudre_producer() ne l'utilise que pour les délibérations ou le mode "commune"
-    # (voir organisations.resoudre_producer()). Un --only sur un petit JDD en mode
-    # "source" payait ce coût réseau pour rien, --dry-run compris.
-    besoin_description_commune = any(
-        module.CLE == organisations.DELIBERATIONS or modes_par_jdd[module.CLE] == "commune"
-        for module in modules
+    description_commune = _resoudre_description_commune_si_besoin(
+        commune, modules, modes_par_jdd, dossier_sortie,
     )
-    description_commune = None
-    if besoin_description_commune:
-        description_commune = construire_description_commune(
-            commune, dossier_cache=DOSSIER_CACHE_WIKIPEDIA,
-            dossier_cache_rne=os.path.join(dossier_sortie, ".cache_rne"),
-        )
-        if description_commune["source"] == "repli_generique":
-            print(f"[cli] [description] Wikipédia indisponible pour « {commune['nom']} » "
-                  "— description générique utilisée pour l'organisation de la commune.")
 
     producteurs_candidats = {}
     producteur_par_module: dict[str, dict] = {}
@@ -349,25 +390,7 @@ def executer_run(
         sauvegarder_etat(chemin_etat, etat)
 
     _afficher_rapport(rapport)
-
-    # « En attente de validation » prend toujours le dessus sur un échec partiel —
-    # règle fixe, pas une matrice à justifier cas par cas (voir le plan, § 2) : ce
-    # n'est pas un échec, c'est un rendez-vous à reprendre une fois l'organisation
-    # validée par l'animateur du portail.
-    if organisation_en_attente:
-        code = EXIT_EN_ATTENTE_VALIDATION
-    elif rapport["échec"] and (rapport["publié"] or rapport["mis à jour"]):
-        code = EXIT_ECHECS_PARTIELS
-    elif rapport["échec"] and not (rapport["publié"] or rapport["mis à jour"]):
-        code = EXIT_ECHEC_TOTAL
-    else:
-        code = EXIT_SUCCES
-
-    if dry_run:
-        if code != EXIT_SUCCES:
-            print(f"[cli] [dry-run] code de sortie réel attendu : {code}.")
-        return EXIT_SUCCES
-    return code
+    return _code_sortie_run(rapport, organisation_en_attente, dry_run)
 
 
 def _libelle_jdd(cle: str) -> str:
