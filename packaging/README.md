@@ -91,6 +91,14 @@ stdin nourri via pty, indépendamment de l'application — jamais observé sur
 wizard interactif lui-même, seul un test sur une vraie machine/VM Windows compte** —
 Wine ne sert qu'au mode scriptable et aux vérifications de démarrage.
 
+**Confirmé en pratique (2026-11-15, build v0.7.4)** : reproduit une nouvelle fois sous
+Wine (blocage >150s après le code INSEE, sans sortie ni fenêtre, alors même qu'un
+appel réseau identique depuis le même hôte Linux répond normalement — piste réseau/
+timeout écartée après coup) — puis testé par Simon sur une vraie machine Windows
+avec le même `.exe` : la résolution du code INSEE fonctionne normalement. Confirme
+la cause déjà documentée ci-dessus (couche console Wine, pas le réseau) ; aucun
+correctif de code nécessaire.
+
 ## Lancer un `.exe` déjà construit sous Wine (sans rebuild)
 
 Pour rejouer rapidement un échec signalé sur un vrai poste Windows (ex. diagnostiquer
