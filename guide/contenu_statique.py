@@ -251,6 +251,22 @@ affiche alors le nom de la commune qu'il a trouvé :
 **Vérifiez que c'est bien votre commune avant de continuer** — un code INSEE mal
 recopié pointerait silencieusement vers une autre commune.
 
+!!! note "Cas particulier : cette commune a déjà un profil enregistré"
+    Si vous aviez choisi **« 0) Nouvelle commune »** alors qu'un profil existe déjà
+    pour ce code INSEE (par exemple publié sur un autre nœud), l'outil le signale et
+    propose de le reprendre plutôt que d'en créer un second pour la même commune :
+
+    ```text
+    Cette commune a déjà un profil enregistré :
+      - https://noeud.exemple.fr
+    Reprendre ce profil existant au lieu d'en créer un nouveau (O/n) :
+    ```
+
+    Répondre **oui** (la réponse par défaut) revient directement à [relancer ce
+    profil](relancer.md). Répondre **non** poursuit la création d'un second profil pour
+    la même commune — à réserver au cas, rare, où vous publiez volontairement la même
+    commune sur deux nœuds différents.
+
 ## 2. Aperçu de ce qui pourra être publié
 
 ```text
@@ -574,6 +590,8 @@ CITATIONS_WIZARD_A_VERIFIER = [
     "en attente de validation par l'animateur du portail (la personne qui",
     "pour vérifier si l'animateur a validé et reprendre",
     "JDD non suivis par ce socle référencent encore",
+    "Cette commune a déjà un profil enregistré",
+    "Reprendre ce profil existant au lieu d'en créer un nouveau",
 ]
 
 
