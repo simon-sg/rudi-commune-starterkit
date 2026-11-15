@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rudi-commune-starterkit"
-version = "0.7.2"
+version = "0.7.3"
 description = "Moissonneur générique : à partir d'un code INSEE, peuple un nœud RUDI avec un socle de 13 JDD communaux de base."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,7 @@ dependencies = [
     # (.github/workflows/build-executable.yml, deploy-docs.yml). En développement
     # local, utiliser plutôt `pip install --no-deps -e .` puis installer séparément
     # le toolkit en édition locale (voir README.md, § Développement).
-    "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@v0.5.7",
+    "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@v0.5.9",
     "keyring>=24",
 ]
 
