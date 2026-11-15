@@ -1065,6 +1065,58 @@ def _resoudre_profil_registre(args: argparse.Namespace) -> dict:
     return profils[0]
 
 
+def _tester_connexion_scriptable_avec_repli_tls(conf: dict, args: argparse.Namespace) -> bool:
+    """Teste la connexion au nœud en mode scriptable ; le contournement TLS passe
+    par un flag explicite (``--ignorer-certificat-tls``), jamais une confirmation
+    interactive (pendant de :func:`_tester_connexion_avec_repli_tls`, qui elle
+    utilise :func:`confirmer`). Affiche elle-même le message d'échec final."""
+    erreur_connexion: dict = {}
+    pret = tester_connexion_noeud(conf, erreur_sortie=erreur_connexion)
+    if not pret and erreur_est_certificat_tls(erreur_connexion) and args.ignorer_certificat_tls:
+        desactiver_verification_tls_noeud()
+        pret = tester_connexion_noeud(conf)
+    if not pret:
+        if erreur_est_certificat_tls(erreur_connexion) and not args.ignorer_certificat_tls:
+            print("[cli] Certificat TLS non reconnu — relancer avec "
+                  "--ignorer-certificat-tls si vous faites confiance à ce nœud "
+                  "(risque : interception possible).", file=sys.stderr)
+        else:
+            print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
+    return pret
+
+
+def _executer_scriptable_vider_commune(conf: dict, args: argparse.Namespace, profil: dict | None) -> int:
+    """Branche ``--vider-commune`` du mode scriptable, extraite d'``executer_scriptable()``
+    pour en réduire la taille — retourne directement le code de sortie."""
+    def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:
+        return confirmer(message, mot_attendu=mot_attendu, confirmation_scriptable=args.confirmer)
+
+    rapport = vider_commune(
+        conf, args.code_insee,
+        nom_commune=profil["nom"] if profil else None,
+        chemin_etat=args.etat,
+        supprimer_organisation=args.supprimer_organisation,
+        confirmer_fn=_confirmer_fn,
+    )
+    print(f"[cli] {rapport['message']}" if rapport["message"] else "[cli] Vidage terminé.")
+    if rapport["jdd_supprimes"]:
+        print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
+    if rapport["jdd_echecs"]:
+        print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}", file=sys.stderr)
+    if rapport["jdd_tiers_supprimes"]:
+        print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
+    if rapport["jdd_tiers_echecs"]:
+        print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}",
+              file=sys.stderr)
+    if rapport["organisation"] == "supprimee" and profil:
+        # Jamais automatique (voir le plan, § 6) : en scriptable, pas de prompt
+        # possible, donc on se contente de signaler que le profil est périmé.
+        print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
+              f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
+              f"l'assistant interactif pour le retirer si besoin.")
+    return _code_sortie_vidage(rapport)
+
+
 def executer_scriptable(args: argparse.Namespace) -> int:
     if not args.code_insee:
         print("[cli] --code-insee est requis en mode scriptable.", file=sys.stderr)
@@ -1115,33 +1167,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
             return EXIT_ECHEC_TOTAL
 
     if args.vider_commune:
-        def _confirmer_fn(message: str, *, mot_attendu: str) -> bool:
-            return confirmer(message, mot_attendu=mot_attendu, confirmation_scriptable=args.confirmer)
-
-        rapport = vider_commune(
-            conf, args.code_insee,
-            nom_commune=profil["nom"] if profil else None,
-            chemin_etat=args.etat,
-            supprimer_organisation=args.supprimer_organisation,
-            confirmer_fn=_confirmer_fn,
-        )
-        print(f"[cli] {rapport['message']}" if rapport["message"] else "[cli] Vidage terminé.")
-        if rapport["jdd_supprimes"]:
-            print(f"[cli]   JDD supprimés : {', '.join(rapport['jdd_supprimes'])}")
-        if rapport["jdd_echecs"]:
-            print(f"[cli]   JDD en échec : {', '.join(rapport['jdd_echecs'])}", file=sys.stderr)
-        if rapport["jdd_tiers_supprimes"]:
-            print(f"[cli]   JDD non suivis supprimés : {', '.join(rapport['jdd_tiers_supprimes'])}")
-        if rapport["jdd_tiers_echecs"]:
-            print(f"[cli]   JDD non suivis en échec : {', '.join(rapport['jdd_tiers_echecs'])}",
-                  file=sys.stderr)
-        if rapport["organisation"] == "supprimee" and profil:
-            # Jamais automatique (voir le plan, § 6) : en scriptable, pas de prompt
-            # possible, donc on se contente de signaler que le profil est périmé.
-            print(f"[cli]   Organisation supprimée : le profil {profil['code_insee']}/"
-                  f"{profil['url_noeud']} dans le registre est désormais périmé. Lancer "
-                  f"l'assistant interactif pour le retirer si besoin.")
-        return _code_sortie_vidage(rapport)
+        return _executer_scriptable_vider_commune(conf, args, profil)
 
     try:
         commune = resoudre_commune(args.code_insee)
@@ -1174,18 +1200,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         if avertissement:
             print(f"[cli] [sécurité] Attention : {avertissement}", file=sys.stderr)
 
-    erreur_connexion: dict = {}
-    pret = tester_connexion_noeud(conf, erreur_sortie=erreur_connexion)
-    if not pret and erreur_est_certificat_tls(erreur_connexion) and args.ignorer_certificat_tls:
-        desactiver_verification_tls_noeud()
-        pret = tester_connexion_noeud(conf)
-    if not pret:
-        if erreur_est_certificat_tls(erreur_connexion) and not args.ignorer_certificat_tls:
-            print("[cli] Certificat TLS non reconnu — relancer avec "
-                  "--ignorer-certificat-tls si vous faites confiance à ce nœud "
-                  "(risque : interception possible).", file=sys.stderr)
-        else:
-            print("[cli] Nœud injoignable (détail ci-dessus).", file=sys.stderr)
+    if not _tester_connexion_scriptable_avec_repli_tls(conf, args):
         return EXIT_ECHEC_TOTAL
 
     only = set(args.only.split(",")) if args.only else None
