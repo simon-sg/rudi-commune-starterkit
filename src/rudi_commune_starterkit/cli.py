@@ -759,6 +759,89 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     return _code_sortie_vidage(rapport)
 
 
+def _proposer_reprise_profil(profils: list[dict], chemin_profils: str) -> int | None:
+    """Étape 0 du wizard interactif : propose de reprendre une commune déjà
+    enregistrée. Retourne un code de sortie si le flux doit s'arrêter ici (quitter,
+    ou reprise/vidage d'un profil existant), ou ``None`` pour poursuivre avec
+    « Nouvelle commune » (y compris si ``profils`` est vide)."""
+    if not profils:
+        return None
+    print("Communes déjà enregistrées :")
+    for i, p in enumerate(profils, start=1):
+        print(f"  {i}) {p['nom']} ({p['code_insee']}) — {p['url_noeud']}")
+    print("  0) Nouvelle commune")
+    print("  q) Quitter")
+    while True:
+        choix = _demander("Reprendre quelle commune", defaut="0")
+        if choix.strip().lower() in ("q", "quitter"):
+            return EXIT_SUCCES
+        if choix in ("0", ""):
+            break
+        if choix.isdigit() and 1 <= int(choix) <= len(profils):
+            profil = profils[int(choix) - 1]
+            action = _demander(
+                "  1) Publier/mettre à jour les données  2) Annuler une publication "
+                "de test (vider cette commune)  q) Quitter — Action", defaut="1",
+            )
+            if action.strip().lower() in ("q", "quitter"):
+                return EXIT_SUCCES
+            if action == "2":
+                return _vider_commune_interactif(profil, chemin_profils)
+            return _executer_depuis_profil(profil, chemin_profils)
+        print("  Choix invalide.")
+    print()
+    return None
+
+
+def _demander_urls_noeud_wizard() -> tuple[str, str | None, str | None]:
+    """Étape 3 du wizard interactif : URL du nœud (obligatoire, validée), URL
+    catalogue (optionnelle, pas de validation — simple chaîne transmise à
+    l'administrateur du nœud) et URL du portail (optionnelle, même validation que
+    le nœud — bug réel corrigé le 2026-11-14 : jamais validée jusqu'ici, un portail
+    en http:// non local y envoyait les identifiants portail en clair)."""
+    while True:
+        url_noeud = _demander(
+            "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
+            "du nœud",
+        )
+        try:
+            url_noeud = valider_url_noeud(url_noeud)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_noeud = valider_url_noeud(url_noeud, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
+    url_catalog = _demander(
+        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
+        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
+        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
+        defaut="",
+    ) or None
+    while True:
+        url_portail = _demander(
+            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+            "d'annuler une publication de test plus tard)", defaut="",
+        ) or None
+        if url_portail is None:
+            break
+        try:
+            url_portail = valider_url_noeud(url_portail)
+            break
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
+                    break
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
+    return url_noeud, url_catalog, url_portail
+
+
 def executer_interactif() -> int:
     print("=== rudi-commune-starterkit — assistant ===\n")
 
@@ -769,31 +852,9 @@ def executer_interactif() -> int:
         print(f"  {e}")
         return EXIT_ECHEC_TOTAL
 
-    if profils:
-        print("Communes déjà enregistrées :")
-        for i, p in enumerate(profils, start=1):
-            print(f"  {i}) {p['nom']} ({p['code_insee']}) — {p['url_noeud']}")
-        print("  0) Nouvelle commune")
-        print("  q) Quitter")
-        while True:
-            choix = _demander("Reprendre quelle commune", defaut="0")
-            if choix.strip().lower() in ("q", "quitter"):
-                return EXIT_SUCCES
-            if choix in ("0", ""):
-                break
-            if choix.isdigit() and 1 <= int(choix) <= len(profils):
-                profil = profils[int(choix) - 1]
-                action = _demander(
-                    "  1) Publier/mettre à jour les données  2) Annuler une publication "
-                    "de test (vider cette commune)  q) Quitter — Action", defaut="1",
-                )
-                if action.strip().lower() in ("q", "quitter"):
-                    return EXIT_SUCCES
-                if action == "2":
-                    return _vider_commune_interactif(profil, chemin_profils)
-                return _executer_depuis_profil(profil, chemin_profils)
-            print("  Choix invalide.")
-        print()
+    resultat = _proposer_reprise_profil(profils, chemin_profils)
+    if resultat is not None:
+        return resultat
 
     # Étape 1 : code INSEE
     while True:
@@ -835,50 +896,8 @@ def executer_interactif() -> int:
         print(f"  - {_libelle_jdd(cle)} : {statut}")
     print()
 
-    # Étape 3 : URL du nœud
-    while True:
-        url_noeud = _demander(
-            "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
-            "du nœud",
-        )
-        try:
-            url_noeud = valider_url_noeud(url_noeud)
-            break
-        except UrlNoeudNonSecurisee as e:
-            print(f"  {e}")
-            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
-                try:
-                    url_noeud = valider_url_noeud(url_noeud, autoriser_http_local=True)
-                    break
-                except UrlNoeudNonSecurisee as e2:
-                    print(f"  {e2}")
-    url_catalog = _demander(
-        "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
-        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
-        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
-        defaut="",
-    ) or None
-    # Même validation que l'URL du nœud (bug réel corrigé le 2026-11-14 : jamais
-    # validée jusqu'ici — un portail en http:// non local y envoyait les identifiants
-    # portail en clair sans le moindre avertissement, contrairement au nœud).
-    while True:
-        url_portail = _demander(
-            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
-            "d'annuler une publication de test plus tard)", defaut="",
-        ) or None
-        if url_portail is None:
-            break
-        try:
-            url_portail = valider_url_noeud(url_portail)
-            break
-        except UrlNoeudNonSecurisee as e:
-            print(f"  {e}")
-            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
-                try:
-                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
-                    break
-                except UrlNoeudNonSecurisee as e2:
-                    print(f"  {e2}")
+    # Étape 3 : URLs (nœud, catalogue, portail)
+    url_noeud, url_catalog, url_portail = _demander_urls_noeud_wizard()
 
     # Étape 4 : identifiants
     usr = _demander("Nom d'utilisateur (fourni par l'administrateur du nœud)")
