@@ -35,3 +35,4 @@ conf/organisation_par_jdd*.json
 .rudi_commune_starterkit/
 
 .pytest_cache/
+.coverage
