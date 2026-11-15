@@ -1,0 +1,54 @@
+name: Build starterkit executable (étapes communes)
+description: >
+  Installe le toolkit + le starterkit, lance les tests, construit l'exécutable
+  PyInstaller — identique pour build-windows et build-linux
+  (.github/workflows/build-executable.yml), seul le smoke-test et la
+  publication diffèrent par OS et restent dans le workflow appelant.
+
+  Ne fait PAS le checkout du dépôt : une action composite référencée en local
+  (``uses: ./...``) exige que le dépôt soit déjà sur disque pour que le
+  runner puisse seulement lire ce fichier — le checkout doit donc rester une
+  étape du job appelant, avant l'appel à cette action.
+
+inputs:
+  toolkit_ref:
+    description: "Tag/branche de rudi-harvest-toolkit à utiliser pour le build"
+    required: true
+  # Pas de détection automatique via `runner.os` : un input explicite évite de
+  # dépendre du contexte disponible à l'intérieur d'une action composite,
+  # et documente que c'est le job appelant qui décide (pwsh pour
+  # build-windows, bash pour build-linux — même shell par défaut
+  # qu'auparavant quand ces étapes étaient dupliquées dans chaque job).
+  shell:
+    description: "Shell à utiliser pour les étapes run (pwsh ou bash)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
+      shell: ${{ inputs.shell }}
+      run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
+
+    - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
+      # --no-deps : le toolkit est déjà installé explicitement ci-dessus (épinglé
+      # sur toolkit_ref, potentiellement différent du tag que pyproject.toml
+      # déclare par défaut), keyring/requests ci-dessous.
+      shell: ${{ inputs.shell }}
+      run: pip install --no-deps .
+
+    - name: Installer les dépendances restantes + outils de build
+      shell: ${{ inputs.shell }}
+      run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
+
+    - name: Tests (filet de régression avant tout packaging)
+      shell: ${{ inputs.shell }}
+      run: pytest
+
+    - name: Build PyInstaller
+      shell: ${{ inputs.shell }}
+      run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py

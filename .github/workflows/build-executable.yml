@@ -35,27 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/build-starterkit
         with:
-          python-version: "3.12"
-
-      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
-        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
-
-      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
-        # --no-deps : le toolkit est déjà installé explicitement ci-dessus (épinglé
-        # sur toolkit_ref, potentiellement différent du tag que pyproject.toml
-        # déclare par défaut), keyring/requests ci-dessous.
-        run: pip install --no-deps .
-
-      - name: Installer les dépendances restantes + outils de build
-        run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
-
-      - name: Tests (filet de régression avant tout packaging)
-        run: pytest
-
-      - name: Build PyInstaller
-        run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
+          toolkit_ref: ${{ inputs.toolkit_ref }}
+          shell: pwsh
 
       - name: Smoke-test (démarrage sans crash d'import/DLL)
         # Stdin vide (PowerShell Start-Process -RedirectStandardInput exige un vrai
@@ -123,27 +106,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/build-starterkit
         with:
-          python-version: "3.12"
-
-      - name: Installer rudi-harvest-toolkit depuis GitHub (dépendance publique)
-        run: pip install "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@${{ inputs.toolkit_ref }}"
-
-      - name: Installer rudi-commune-starterkit (sans ses dépendances déclarées)
-        # --no-deps : le toolkit est déjà installé explicitement ci-dessus (épinglé
-        # sur toolkit_ref, potentiellement différent du tag que pyproject.toml
-        # déclare par défaut), keyring/requests ci-dessous.
-        run: pip install --no-deps .
-
-      - name: Installer les dépendances restantes + outils de build
-        run: pip install requests keyring pytest pyinstaller pyinstaller-hooks-contrib
-
-      - name: Tests (filet de régression avant tout packaging)
-        run: pytest
-
-      - name: Build PyInstaller
-        run: pyinstaller --onefile --console --name rudi-commune-starterkit packaging/entrypoint.py
+          toolkit_ref: ${{ inputs.toolkit_ref }}
+          shell: bash
 
       - name: Smoke-test (démarrage sans crash d'import)
         # Même logique que le smoke-test Windows (voir son commentaire pour le détail
