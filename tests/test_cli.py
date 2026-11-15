@@ -1297,6 +1297,16 @@ class TestMain(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
         self.assertIn(cli.__version__, m_stdout.getvalue())
 
+    def test_configure_la_sortie_console_du_toolkit(self):
+        # rudi_harvest_toolkit a migré print() -> logging (2026-11-15, v0.5.9) : sans
+        # cet appel, ses messages (avertissements, erreurs de publication...)
+        # disparaîtraient silencieusement — voir rudi_harvest_toolkit.console pour
+        # le comportement du helper lui-même (déjà testé côté toolkit).
+        with mock.patch("rudi_commune_starterkit.cli.configurer_sortie_console") as m, \
+             mock.patch("rudi_commune_starterkit.cli.executer_interactif", return_value=0):
+            cli.main([])
+        m.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

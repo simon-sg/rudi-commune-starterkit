@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.3 — 2026-11-15 (revue de code, migration print() -> logging du toolkit)
+
+### Dépendance
+
+- `rudi-harvest-toolkit` -> v0.5.9 : ses `print()` sont migrés vers `logging`
+  (une bibliothèque partagée ne devrait pas décider unilatéralement d'écrire
+  sur stdout). `cli.main()` appelle désormais
+  `rudi_harvest_toolkit.console.configurer_sortie_console()` dès son entrée
+  pour que les messages du toolkit (avertissements, erreurs de publication,
+  organisation créée...) restent visibles exactement comme avant — sans ça,
+  ils disparaîtraient silencieusement (les `INFO`) ou migreraient vers
+  stderr sans prévenir (les `WARNING`/`ERROR`).
+- Les `print()` propres à ce dépôt (`cli.py`, `vidage.py`, `datasets/*.py`)
+  ne sont volontairement **pas** concernés : ils sont l'interface utilisateur
+  du wizard lui-même (lue en direct par l'agent municipal), pas des logs de
+  diagnostic.
+
 ## 0.7.2 — 2026-11-14 (revue de code, phase 3 + points d'arbitrage)
 
 ### Revue de code — phase 3 (2026-11-14)

@@ -31,6 +31,7 @@ from rudi_harvest_toolkit.commune import (
     ErreurReseauCommune,
     resoudre_commune,
 )
+from rudi_harvest_toolkit.console import configurer_sortie_console
 from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
@@ -1264,6 +1265,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configurer_sortie_console()
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
         return executer_interactif()
