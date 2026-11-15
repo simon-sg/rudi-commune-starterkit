@@ -1,6 +1,6 @@
 # Changelog
 
-## Non publié
+## 0.7.4 — 2026-11-15 (fiabilisation du cycle de vie des organisations + build exécutable)
 
 ### Correction de comportement — suppression d'organisation
 
