@@ -17,7 +17,7 @@ dependencies = [
     # (.github/workflows/build-executable.yml, deploy-docs.yml). En développement
     # local, utiliser plutôt `pip install --no-deps -e .` puis installer séparément
     # le toolkit en édition locale (voir README.md, § Développement).
-    "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@v0.5.9",
+    "rudi-harvest-toolkit @ git+https://github.com/simon-sg/rudi-harvest-toolkit.git@v0.6.0",
     "keyring>=24",
 ]
 
