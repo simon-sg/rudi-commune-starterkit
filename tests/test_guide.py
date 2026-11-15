@@ -13,7 +13,7 @@ import os
 import re
 import unittest
 
-from rudi_commune_starterkit import cli, registre
+from rudi_commune_starterkit import cli, registre, vidage
 
 from guide import contenu_statique as c
 from guide import generer
@@ -105,12 +105,14 @@ class TestAntiDeriveWizard(unittest.TestCase):
     municipal qui s'y fie écran par écran."""
 
     def test_citations_presentes_dans_cli(self):
-        source_cli = inspect.getsource(cli)
+        # cli.py pour le wizard interactif lui-même, vidage.py pour les messages de
+        # "vider une commune" (JDD tiers non suivis...) qu'il affiche en les relayant.
+        source = inspect.getsource(cli) + inspect.getsource(vidage)
         for citation in c.CITATIONS_WIZARD_A_VERIFIER:
             self.assertIn(
-                citation, source_cli,
-                f"citation absente de cli.py (reformulée sans mettre à jour le "
-                f"tutoriel, ou inversement) : {citation!r}",
+                citation, source,
+                f"citation absente de cli.py/vidage.py (reformulée sans mettre à jour "
+                f"le tutoriel, ou inversement) : {citation!r}",
             )
 
     def test_citations_presentes_dans_le_tutoriel(self):

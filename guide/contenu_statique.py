@@ -474,8 +474,33 @@ s'y réfère encore) (o/N) :
    commune sur le nœud) ; **non** si vous préférez ne retirer que les données et
    garder l'organisation en place pour une prochaine publication.
 
-4. Un rapport final indique ce qui a été supprimé, et ce qui, le cas échéant, n'a pas
-   pu l'être.
+4. Avant toute suppression réelle, l'outil demande une dernière confirmation —
+   volontairement plus stricte qu'un simple oui/non, car l'opération ne peut pas être
+   annulée après coup :
+
+```text
+Taper 'SUPPRIMER' pour confirmer :
+```
+
+   Retapez exactement `SUPPRIMER`, en majuscules. Toute autre réponse (y compris
+   `oui`) annule l'opération sans rien supprimer.
+
+5. Un rapport final indique ce qui a été supprimé, et ce qui, le cas échéant, n'a pas
+   pu l'être. Si la suppression de l'organisation a réussi, l'outil propose aussi de
+   retirer la commune de la liste des communes enregistrées (celle affichée au
+   lancement suivant, voir [Relancer et mettre à jour](relancer.md)) — pratique si vous
+   ne comptez pas republier pour cette commune, sans incidence sur le nœud lui-même.
+
+!!! warning "Si d'autres données partagent la même organisation"
+    Si vous avez demandé la suppression de l'organisation et que des données **non
+    publiées par cet outil** (un autre outil utilisé sur le même nœud, par exemple)
+    référencent encore cette organisation, l'assistant les liste explicitement —
+    « JDD non suivis par ce socle référencent encore » cette organisation — et demande
+    une confirmation séparée (toujours en tapant `SUPPRIMER`) avant de les supprimer
+    elles aussi. **Si vous n'êtes pas certain de ce que sont ces données, répondez
+    autre chose que `SUPPRIMER`** : l'opération s'arrête alors sans rien supprimer de
+    plus, l'organisation reste en place, et vous pouvez contacter l'administrateur du
+    nœud avant de retenter.
 
 !!! info "Détachement en attente de validation"
     Si l'organisation de la commune a déjà été validée par l'animateur du portail,
@@ -548,6 +573,7 @@ CITATIONS_WIZARD_A_VERIFIER = [
     "Supprimer aussi l'organisation de la commune (si aucune autre donnée du nœud",
     "en attente de validation par l'animateur du portail (la personne qui",
     "pour vérifier si l'animateur a validé et reprendre",
+    "JDD non suivis par ce socle référencent encore",
 ]
 
 
@@ -615,11 +641,15 @@ de ces organismes eux-mêmes pour toute correction à la source.
 
 ## L'outil peut-il casser quelque chose en cas d'erreur de ma part ?
 
-L'outil ne modifie jamais une donnée tierce sur le nœud — il ne publie et ne supprime
-que les données qu'il a lui-même publiées pour la commune concernée. Une mauvaise
-réponse à une question se corrige en relançant l'outil (voir [Relancer et mettre à
-jour](guide/relancer.md)) ; une publication de test peut être entièrement annulée
-(voir [Annuler une publication de test](guide/vider.md)).
+En usage normal, l'outil ne publie et ne supprime que les données qu'il a lui-même
+publiées pour la commune concernée. Une mauvaise réponse à une question se corrige en
+relançant l'outil (voir [Relancer et mettre à jour](guide/relancer.md)).
+
+La seule exception volontaire concerne la suppression d'organisation (voir [Annuler
+une publication de test](guide/vider.md)) : si vous demandez explicitement ce nettoyage
+complet **et** confirmez explicitement en tapant `SUPPRIMER`, l'outil peut aussi
+supprimer d'autres données, non publiées par lui, qui référenceraient encore cette même
+organisation — jamais sans cette double confirmation explicite.
 
 ## Je suis à l'aise avec la ligne de commande, puis-je faire autrement ?
 
