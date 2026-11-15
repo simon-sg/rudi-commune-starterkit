@@ -47,6 +47,7 @@ from .resolution_noeud import (
     erreur_est_certificat_tls,
     organisation_existante,
     resoudre_organisations_producteurs,
+    resoudre_urls_automatiquement,
     tester_connexion_noeud,
 )
 from .resultat import StatutConnecteur
@@ -814,12 +815,38 @@ def _proposer_reprise_profil(profils: list[dict], chemin_profils: str) -> int | 
     return None
 
 
+def _demander_url_portail_wizard(valeur_initiale: str = "") -> str | None:
+    """Boucle de saisie/validation de l'URL portail — factorisée pour être réutilisée
+    aussi bien en saisie manuelle qu'après une proposition de valeur détectée
+    automatiquement (même garde-fou de sécurité dans les deux cas : bug corrigé le
+    2026-11-14, un portail en http:// non local y envoyait les identifiants portail
+    en clair)."""
+    while True:
+        url_portail = _demander(
+            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
+            "d'annuler une publication de test plus tard)", defaut=valeur_initiale,
+        ) or None
+        if url_portail is None:
+            return None
+        try:
+            return valider_url_noeud(url_portail)
+        except UrlNoeudNonSecurisee as e:
+            print(f"  {e}")
+            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
+                try:
+                    return valider_url_noeud(url_portail, autoriser_http_local=True)
+                except UrlNoeudNonSecurisee as e2:
+                    print(f"  {e2}")
+            valeur_initiale = ""
+
+
 def _demander_urls_noeud_wizard() -> tuple[str, str | None, str | None]:
-    """Étape 3 du wizard interactif : URL du nœud (obligatoire, validée), URL
-    catalogue (optionnelle, pas de validation — simple chaîne transmise à
-    l'administrateur du nœud) et URL du portail (optionnelle, même validation que
-    le nœud — bug réel corrigé le 2026-11-14 : jamais validée jusqu'ici, un portail
-    en http:// non local y envoyait les identifiants portail en clair)."""
+    """Étape 3 du wizard interactif : URL du nœud (obligatoire, validée), puis URL
+    catalogue et URL du portail. Ces deux dernières sont d'abord déduites
+    automatiquement auprès du Manager (voir :func:`resoudre_urls_automatiquement`) ;
+    si l'agent municipal les confirme, aucune question supplémentaire n'est posée.
+    Sinon, repli sur la saisie manuelle d'origine (nœuds non standard, hébergés par
+    un tiers, où la détection automatique ne fonctionne pas)."""
     while True:
         url_noeud = _demander(
             "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur "
@@ -836,30 +863,26 @@ def _demander_urls_noeud_wizard() -> tuple[str, str | None, str | None]:
                     break
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
+
+    url_catalog_auto, url_portail_auto = resoudre_urls_automatiquement(url_noeud)
+    if url_catalog_auto or url_portail_auto:
+        print("  Détection automatique auprès du nœud :")
+        if url_catalog_auto:
+            print(f"    - catalogue : {url_catalog_auto}")
+        if url_portail_auto:
+            print(f"    - portail   : {url_portail_auto}")
+        if _demander_oui_non("  Utiliser ces valeurs", defaut=True):
+            url_portail = _demander_url_portail_wizard(url_portail_auto or "")
+            return url_noeud, url_catalog_auto, url_portail
+        print("  D'accord, saisie manuelle.")
+
     url_catalog = _demander(
         "URL catalogue (si l'administrateur du nœud vous en a transmis une, "
-        "indiquez-la ici ; sinon laissez vide — la déduction automatique ne "
-        "fonctionne pas sur tous les nœuds, notamment ceux hébergés par un tiers)",
+        "indiquez-la ici ; sinon laissez vide — la déduction automatique n'a pas "
+        "fonctionné sur ce nœud, par exemple s'il est hébergé par un tiers)",
         defaut="",
     ) or None
-    while True:
-        url_portail = _demander(
-            "URL du portail (optionnelle, mais recommandée — sans elle, impossible "
-            "d'annuler une publication de test plus tard)", defaut="",
-        ) or None
-        if url_portail is None:
-            break
-        try:
-            url_portail = valider_url_noeud(url_portail)
-            break
-        except UrlNoeudNonSecurisee as e:
-            print(f"  {e}")
-            if _demander_oui_non("  Forcer quand même en http:// local (déconseillé)"):
-                try:
-                    url_portail = valider_url_noeud(url_portail, autoriser_http_local=True)
-                    break
-                except UrlNoeudNonSecurisee as e2:
-                    print(f"  {e2}")
+    url_portail = _demander_url_portail_wizard()
     return url_noeud, url_catalog, url_portail
 
 

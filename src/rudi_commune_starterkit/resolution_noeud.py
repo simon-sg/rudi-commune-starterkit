@@ -62,6 +62,32 @@ def organisation_existante(conf: dict, organization_name: str) -> dict | None:
     return rudi_client.organisation_par_nom(conf, organization_name)
 
 
+TIMEOUT_RESOLUTION_AUTO_URLS_S = 5
+
+
+def resoudre_urls_automatiquement(url_noeud: str) -> tuple[str | None, str | None]:
+    """Tente de déduire l'URL catalogue et l'URL portail du nœud à partir de la seule
+    URL du Manager, via sa route publique ``/manager/conf`` (aucune authentification
+    requise — vérifié en conditions réelles le 2026-11-15 sur une instance preprod et
+    une instance locale, qui renvoient toutes deux ``catalogPubUrl``/``portalUrl``
+    dans leur réponse).
+
+    Confort seulement, jamais un pré-requis : retourne ``(None, None)`` sur le
+    moindre échec (nœud injoignable, version trop ancienne sans cette route, réponse
+    inattendue) — l'appelant doit toujours prévoir le repli existant (saisie
+    manuelle), notamment pour les nœuds hébergés par un tiers avec une disposition
+    non standard."""
+    try:
+        reponse = requests.get(
+            f"{url_noeud.rstrip('/')}/manager/conf", timeout=TIMEOUT_RESOLUTION_AUTO_URLS_S,
+        )
+        reponse.raise_for_status()
+        conf = reponse.json()
+    except Exception:  # noqa: BLE001 - confort seulement, jamais bloquant pour le wizard
+        return None, None
+    return conf.get("catalogPubUrl") or None, conf.get("portalUrl") or None
+
+
 def normaliser_nom_organisation(nom: str) -> str:
     """Clé de comparaison tolérante (casse/accents/espaces) — même logique que
     ``rudi_harvest_toolkit.tabular.normaliser_nom_colonne``, réutilisée telle quelle."""
@@ -120,5 +146,6 @@ __all__ = [
     "organisation_existante",
     "rapprocher_organisation",
     "resoudre_organisations_producteurs",
+    "resoudre_urls_automatiquement",
     "tester_connexion_noeud",
 ]

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.5 — 2026-11-15 (détection automatique des URLs catalogue/portail)
+
+### Simplification — wizard interactif
+
+- L'assistant déduit désormais automatiquement les adresses du catalogue et du
+  portail à partir de la seule adresse du nœud, via la route publique (sans
+  authentification) `GET {url_noeud}/manager/conf` — vérifiée en conditions
+  réelles le 2026-11-15 sur une instance preprod et une instance locale.
+  `_demander_urls_noeud_wizard()` (`cli.py`) propose ces valeurs détectées pour
+  confirmation (une seule touche Entrée) au lieu de les demander : l'agent
+  municipal n'a plus besoin de les obtenir auprès de l'administrateur du nœud
+  dans le cas standard. Repli inchangé sur la saisie manuelle si la détection
+  échoue (nœud ancien, ou hébergé de façon non standard par un tiers) — voir
+  `resolution_noeud.resoudre_urls_automatiquement()`.
+- Guide HTML (`guide/contenu_statique.py`) mis à jour en conséquence (page
+  Prérequis et étape 3 du pas-à-pas) pour ne plus dire à l'agent municipal de
+  réclamer ces deux adresses par avance.
+
 ## 0.7.4 — 2026-11-15 (fiabilisation du cycle de vie des organisations + build exécutable)
 
 ### Correction de comportement — suppression d'organisation

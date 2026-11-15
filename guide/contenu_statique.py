@@ -147,12 +147,15 @@ ou toute autre structure porteuse du dispositif). **Sans ces identifiants, l'out
 s'arrêtera proprement à l'étape « test de connexion » — il ne peut rien publier sans
 eux.** Si vous ne les avez pas, c'est le moment de les demander, avant de poursuivre.
 
-!!! tip "Fortement recommandé : demandez aussi l'adresse du portail public"
-    En plus de l'adresse technique du nœud, demandez l'adresse du **portail** public
-    associé (l'adresse du site web sur lequel les données apparaissent). Elle est
-    facultative pour publier, mais sans elle vous ne pourrez pas annuler une
-    publication de test plus tard (voir [Annuler une publication de
-    test](vider.md)) — mieux vaut l'avoir sous la main dès le départ.
+!!! tip "L'adresse du portail et celle du catalogue sont détectées automatiquement"
+    Pas besoin de les demander à l'administrateur du nœud : l'outil les retrouve
+    lui-même à partir de la seule adresse du nœud, et vous les montre pour
+    confirmation à l'étape « Adresses du nœud » du [pas-à-pas](pas-a-pas.md).
+    Ce n'est que si cette détection échoue (nœud ancien, ou hébergé de façon non
+    standard par un tiers) que l'outil vous les demandera — dans ce cas seulement,
+    pensez à redemander l'adresse du **portail** à l'administrateur avant de
+    poursuivre : sans elle, vous ne pourrez pas annuler une publication de test plus
+    tard (voir [Annuler une publication de test](vider.md)).
 
 ## Pense-bête
 
@@ -284,24 +287,38 @@ avant même de commencer.
 
 ## 3. Adresses du nœud
 
+Une seule adresse à saisir — celle réunie à l'étape [Prérequis](prerequis.md).
+L'outil retrouve ensuite lui-même les adresses du catalogue et du portail :
+
 ```text
 URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur du
 nœud :
+  Détection automatique auprès du nœud :
+    - catalogue : https://...
+    - portail   : https://...
+  Utiliser ces valeurs (O/n) :
+URL du portail (optionnelle, mais recommandée — sans elle, impossible d'annuler
+une publication de test plus tard) [https://...] :
+```
+
+Il suffit d'appuyer sur Entrée pour confirmer les deux valeurs détectées et pour
+accepter le portail déjà pré-rempli. **Cas plus rare** : si cette détection ne
+trouve rien (nœud ancien, ou hébergé de façon non standard par un tiers), l'outil
+demande alors ces deux adresses à la main :
+
+```text
 URL catalogue (si l'administrateur du nœud vous en a transmis une, indiquez-la
-ici ; sinon laissez vide — la déduction automatique ne fonctionne pas sur tous
-les nœuds, notamment ceux hébergés par un tiers) [] :
+ici ; sinon laissez vide — la déduction automatique n'a pas fonctionné sur ce
+nœud, par exemple s'il est hébergé par un tiers) [] :
 URL du portail (optionnelle, mais recommandée — sans elle, impossible d'annuler
 une publication de test plus tard) [] :
 ```
 
-- La première adresse est **obligatoire** — celle réunie à l'étape
-  [Prérequis](prerequis.md).
-- La deuxième : si l'administrateur du nœud vous en a transmis une, indiquez-la. Sinon,
-  laissez vide — mais si le programme vous signale ensuite qu'il n'arrive pas à
-  joindre le catalogue, c'est le signe qu'il faut la demander à l'administrateur
-  plutôt que de laisser vide.
-- La troisième est facultative mais **fortement recommandée** — voir l'encart de la
-  page [Prérequis](prerequis.md).
+Dans ce cas : la première peut être laissée vide (sinon la renseigner si
+l'administrateur du nœud vous l'a transmise), mais si le programme signale ensuite
+qu'il n'arrive pas à joindre le catalogue, c'est le signe qu'il faut la demander à
+l'administrateur plutôt que de laisser vide. La seconde est facultative mais
+**fortement recommandée** — voir l'encart de la page [Prérequis](prerequis.md).
 
 ## 4. Identifiants
 

@@ -1318,5 +1318,70 @@ class TestMain(unittest.TestCase):
         m.assert_called_once()
 
 
+class TestDemanderUrlsNoeudWizard(unittest.TestCase):
+    """Étape 3 du wizard : catalogue/portail déduits automatiquement du nœud (voir
+    resolution_noeud.resoudre_urls_automatiquement) avant de les demander à l'agent
+    municipal — ne redemander que si la détection échoue ou si l'agent la refuse."""
+
+    def test_detection_confirmee_ne_pose_pas_les_questions_catalogue_portail(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement",
+            return_value=("https://x/catalog", "https://portail.fr"),
+        ), mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "o", ""],  # url_noeud, confirmer détection, portail (défaut)
+        ) as m_input:
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual((url_noeud, url_catalog, url_portail),
+                          ("https://x", "https://x/catalog", "https://portail.fr"))
+        self.assertEqual(m_input.call_count, 3)
+
+    def test_detection_refusee_repasse_en_saisie_manuelle(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement",
+            return_value=("https://x/catalog", "https://portail.fr"),
+        ), mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "n", "https://manuel/catalog", "https://portail-manuel.fr"],
+        ):
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual(
+            (url_noeud, url_catalog, url_portail),
+            ("https://x", "https://manuel/catalog", "https://portail-manuel.fr"),
+        )
+
+    def test_detection_infructueuse_demande_tout_manuellement(self):
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement",
+            return_value=(None, None),
+        ), mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "https://manuel/catalog", "https://portail-manuel.fr"],
+        ) as m_input:
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual(
+            (url_noeud, url_catalog, url_portail),
+            ("https://x", "https://manuel/catalog", "https://portail-manuel.fr"),
+        )
+        self.assertEqual(m_input.call_count, 3)
+
+    def test_detection_catalogue_seul_ne_bloque_pas_question_portail(self):
+        # Node sans portalConnected : catalogue détecté, portail non — l'agent doit
+        # pouvoir quand même saisir un portail à la main si l'administrateur lui en
+        # a transmis un.
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement",
+            return_value=("https://x/catalog", None),
+        ), mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "o", "https://portail-manuel.fr"],
+        ):
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual(
+            (url_noeud, url_catalog, url_portail),
+            ("https://x", "https://x/catalog", "https://portail-manuel.fr"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -133,5 +133,67 @@ class TestResoudreOrganisationsProducteurs(unittest.TestCase):
         self.assertNotIn("organization_id", mapping["DGFiP"])
 
 
+class TestResoudreUrlsAutomatiquement(unittest.TestCase):
+    """GET {url_noeud}/manager/conf — route publique du Manager, sans authentification
+    (vérifié en conditions réelles le 2026-11-15 sur une instance preprod et une
+    instance locale)."""
+
+    def test_nominal_catalogue_et_portail_trouves(self):
+        reponse = mock.Mock()
+        reponse.json.return_value = {
+            "catalogPubUrl": "https://x/catalog", "portalUrl": "https://portail.fr",
+        }
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse) as m:
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x/")
+        self.assertEqual(url_catalog, "https://x/catalog")
+        self.assertEqual(url_portail, "https://portail.fr")
+        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY)
+
+    def test_url_noeud_trailing_slash_retiree(self):
+        reponse = mock.Mock()
+        reponse.json.return_value = {"catalogPubUrl": "https://x/catalog"}
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse) as m:
+            resolution_noeud.resoudre_urls_automatiquement("https://x///")
+        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY)
+
+    def test_champs_absents_de_la_reponse(self):
+        reponse = mock.Mock()
+        reponse.json.return_value = {"appTag": "dev0"}
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse):
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x")
+        self.assertIsNone(url_catalog)
+        self.assertIsNone(url_portail)
+
+    def test_noeud_injoignable_renvoie_none_none_sans_lever(self):
+        with mock.patch(
+            "rudi_commune_starterkit.resolution_noeud.requests.get",
+            side_effect=requests.exceptions.ConnectionError("DNS cassé"),
+        ):
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x")
+        self.assertIsNone(url_catalog)
+        self.assertIsNone(url_portail)
+
+    def test_code_http_erreur_renvoie_none_none_sans_lever(self):
+        reponse = mock.Mock()
+        reponse.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse):
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x")
+        self.assertIsNone(url_catalog)
+        self.assertIsNone(url_portail)
+
+    def test_reponse_json_invalide_renvoie_none_none_sans_lever(self):
+        reponse = mock.Mock()
+        reponse.json.side_effect = ValueError("not json")
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse):
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x")
+        self.assertIsNone(url_catalog)
+        self.assertIsNone(url_portail)
+
+
 if __name__ == "__main__":
     unittest.main()
