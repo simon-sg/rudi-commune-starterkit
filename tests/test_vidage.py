@@ -283,7 +283,7 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         du raccordement nœud↔portail qu'un agent municipal n'a jamais, voir la
         docstring de vider_commune()) — il nettoie directement la copie locale du
         nœud, sans étape intermédiaire ni appel portail."""
-        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
+        org = {"organization_id": "org-1", "linked_producer_status": "DISENGAGED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True) as m_sup_noeud:
@@ -294,7 +294,7 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         m_sup_noeud.assert_called_once_with(_CONF, "org-1")
 
     def test_detachee_echec_suppression_noeud_rapporte_lechec(self):
-        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
+        org = {"organization_id": "org-1", "linked_producer_status": "DISENGAGED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=False):

@@ -1176,7 +1176,7 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
         self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         m_vider.assert_called_once()
 
-    def test_validation_detectee_relance_automatiquement_vers_larchivage(self):
+    def test_validation_detectee_relance_automatiquement_vers_suppression_noeud(self):
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
              mock.patch(
                  "rudi_commune_starterkit.cli.vider_commune",

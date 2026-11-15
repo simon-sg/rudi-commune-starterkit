@@ -294,16 +294,15 @@ def vider_commune(
     # Bug réel rencontré le 2026-11-14 (test E2E automatisé) : un détachement déjà
     # demandé mais pas encore validé par l'animateur (``IN_PROGRESS``/
     # ``DETACH_IN_PROGRESS``, cf. NodeLinkedProducerStatus côté Java) n'est **pas** la
-    # même chose qu'un détachement validé (``DISENGAGED``) — y foncer directement vers
-    # une demande d'archivage fait échouer le portail en ``409 invalidStateException``
-    # (« votre organisation est en cours de rattachement ou de détachement »). Ne
-    # tenter l'archivage qu'une fois cette tâche ``linked-producer-process`` validée.
+    # même chose qu'un détachement validé (``DISENGAGED``) — nettoyer la copie locale
+    # du nœud à ce stade orphelinerait le ``linked_producer`` encore en cours côté
+    # portail. Attendre que cette tâche ``linked-producer-process`` soit validée.
     if statut_producteur in ("IN_PROGRESS", "DETACH_IN_PROGRESS"):
         rapport["organisation"] = "attente_validation_detachement"
         rapport["message"] = (
             f"Détachement du producteur « {nom_org_commune} » déjà demandé, en "
             "attente de validation par l'animateur du portail — relancer une fois "
-            "validé avant de pouvoir demander l'archivage."
+            "validé pour pouvoir nettoyer la copie locale du nœud."
         )
         return rapport
 
