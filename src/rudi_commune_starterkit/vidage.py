@@ -58,9 +58,11 @@ from .resolution_noeud import organisation_existante
 
 def _supprimer_jdd_locaux(conf: dict, local_ids: list[str], etat: dict, rapport: dict, chemin_etat: str) -> dict:
     """Supprime chaque JDD suivi par l'état local (nœud + relais portail automatique
-    — voir le commentaire plus bas sur supprimer_dataset()), met à jour
+    — voir le commentaire ci-dessous sur supprimer_dataset()), met à jour
     ``rapport['jdd_supprimes']``/``rapport['jdd_echecs']`` en place, et retourne
-    l'état mis à jour (sauvegardé sur disque si au moins un JDD a été traité)."""
+    l'état mis à jour (sauvegardé sur disque dès que ``local_ids`` est non vide,
+    même si toutes les suppressions ont échoué — la purge des entrées traitées
+    avec succès doit survivre, pas seulement un run entièrement réussi)."""
     for local_id in local_ids:
         global_id = global_id_pour_local_id(conf, local_id)
         if global_id is None:
