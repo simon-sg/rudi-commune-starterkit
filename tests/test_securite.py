@@ -36,6 +36,25 @@ class TestValiderUrlNoeud(unittest.TestCase):
         with self.assertRaises(securite.UrlNoeudNonSecurisee):
             securite.valider_url_noeud("http://192.168.1.5", autoriser_http_local=True)
 
+    def test_http_sous_domaine_localhost_accepte_si_autorise(self):
+        """RFC 6761 : tout nom sous .localhost doit résoudre en loopback (ex. routage
+        par sous-domaine d'un portail de dev, ``rudi.localhost``) — pas seulement le
+        nom nu ``localhost``."""
+        self.assertEqual(
+            securite.valider_url_noeud("http://rudi.localhost", autoriser_http_local=True),
+            "http://rudi.localhost",
+        )
+
+    def test_http_sous_domaine_localhost_refuse_sans_autorisation(self):
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("http://rudi.localhost")
+
+    def test_http_faux_sous_domaine_localhost_refuse(self):
+        """``notlocalhost`` ne doit pas matcher par un simple ``endswith`` naïf sur
+        ``localhost`` sans le point séparateur."""
+        with self.assertRaises(securite.UrlNoeudNonSecurisee):
+            securite.valider_url_noeud("http://evil-notlocalhost", autoriser_http_local=True)
+
     def test_hote_vide_refuse(self):
         """Bug réel corrigé le 2026-11-14 : https:// seul passait la validation et
         échouait plus tard de façon opaque."""

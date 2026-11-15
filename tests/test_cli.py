@@ -513,7 +513,7 @@ class TestEnregistrerMotDePasseTrousseauAvecConfirmation(unittest.TestCase):
 class TestResoudreConfScriptable(unittest.TestCase):
     def test_rudi_conf_fichier(self):
         args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
-                                   utiliser_trousseau=False)
+                                   utiliser_trousseau=False, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
              mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
                          return_value={"url": "https://x", "usr": "u", "pwd": "p"}):
@@ -525,7 +525,7 @@ class TestResoudreConfScriptable(unittest.TestCase):
         protection http:// appliquée à --url-noeud (identifiants en clair sur le
         réseau)."""
         args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
-                                   utiliser_trousseau=False)
+                                   utiliser_trousseau=False, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
              mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
                          return_value={"url": "http://noeud-externe.example", "usr": "u", "pwd": "p"}):
@@ -534,7 +534,7 @@ class TestResoudreConfScriptable(unittest.TestCase):
 
     def test_rudi_conf_url_portail_http_non_locale_refusee(self):
         args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
-                                   utiliser_trousseau=False)
+                                   utiliser_trousseau=False, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
              mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
                          return_value={"url": "https://noeud", "usr": "u", "pwd": "p",
@@ -542,22 +542,37 @@ class TestResoudreConfScriptable(unittest.TestCase):
             with self.assertRaises(cli.UrlNoeudNonSecurisee):
                 cli._resoudre_conf_scriptable(args)
 
+    def test_rudi_conf_url_http_locale_acceptee_avec_flag(self):
+        """Bug réel trouvé le 2026-11-15 : --rudi-conf (donc tout usage scriptable,
+        y compris starterkit-tester) refusait http://localhost même avec le nœud/
+        portail de dev visés, faute d'un flag équivalent à autoriser_http_local du
+        mode interactif — --autoriser-http-local corrige ça."""
+        args = argparse.Namespace(rudi_conf="conf.json", url_noeud=None, usr=None,
+                                   utiliser_trousseau=False, autoriser_http_local=True)
+        with mock.patch("rudi_commune_starterkit.cli.verifier_permissions_conf"), \
+             mock.patch("rudi_commune_starterkit.cli.charger_conf_rudi",
+                         return_value={"url": "http://localhost:4032", "usr": "u", "pwd": "p",
+                                       "url_portail": "http://rudi.localhost"}):
+            conf = cli._resoudre_conf_scriptable(args)
+        self.assertEqual(conf["url"], "http://localhost:4032")
+        self.assertEqual(conf["url_portail"], "http://rudi.localhost")
+
     def test_sans_rudi_conf_ni_url_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud=None, usr=None,
-                                   utiliser_trousseau=False)
+                                   utiliser_trousseau=False, autoriser_http_local=False)
         with self.assertRaises(ValueError):
             cli._resoudre_conf_scriptable(args)
 
     def test_sans_trousseau_ni_conf_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
-                                   utiliser_trousseau=False)
+                                   utiliser_trousseau=False, autoriser_http_local=False)
         with self.assertRaises(ValueError):
             cli._resoudre_conf_scriptable(args)
 
     def test_trousseau_sans_mot_de_passe_enregistre_leve(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
                                    utiliser_trousseau=True,
-                                   autoriser_backend_trousseau_non_reconnu=False)
+                                   autoriser_backend_trousseau_non_reconnu=False, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value=None):
             with self.assertRaises(ValueError):
                 cli._resoudre_conf_scriptable(args)
@@ -565,7 +580,7 @@ class TestResoudreConfScriptable(unittest.TestCase):
     def test_trousseau_ok(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
                                    utiliser_trousseau=True,
-                                   autoriser_backend_trousseau_non_reconnu=False)
+                                   autoriser_backend_trousseau_non_reconnu=False, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
             conf = cli._resoudre_conf_scriptable(args)
         self.assertEqual(conf["pwd"], "secret")
@@ -574,7 +589,7 @@ class TestResoudreConfScriptable(unittest.TestCase):
     def test_trousseau_autorise_backend_non_reconnu_transmis(self):
         args = argparse.Namespace(rudi_conf=None, url_noeud="https://x", usr="u",
                                    utiliser_trousseau=True,
-                                   autoriser_backend_trousseau_non_reconnu=True)
+                                   autoriser_backend_trousseau_non_reconnu=True, autoriser_http_local=False)
         with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="secret") as m:
             cli._resoudre_conf_scriptable(args)
         m.assert_called_once_with("https://x", "u", autoriser_backend_non_reconnu=True)

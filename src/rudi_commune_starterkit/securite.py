@@ -50,7 +50,13 @@ def valider_url_noeud(url: str, *, autoriser_http_local: bool = False) -> str:
         raise UrlNoeudNonSecurisee(f"URL {url!r} : hôte manquant.")
     if morceaux.scheme == "https":
         return url.rstrip("/")
-    if autoriser_http_local and morceaux.hostname in _HOTES_LOCAUX:
+    if autoriser_http_local and (
+        morceaux.hostname in _HOTES_LOCAUX or morceaux.hostname.endswith(".localhost")
+    ):
+        # RFC 6761 : tout nom sous .localhost doit résoudre en loopback (ex.
+        # rudi.localhost pour un routage par sous-domaine local) — pas seulement le
+        # nom nu "localhost". Vérifié : rudi.localhost résout bien en 127.0.0.1/::1
+        # ici, pas une supposition.
         return url.rstrip("/")
     raise UrlNoeudNonSecurisee(
         f"URL {url!r} en http:// refusée (identifiants envoyés en clair sur le "

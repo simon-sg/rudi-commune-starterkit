@@ -1026,6 +1026,11 @@ def _construire_parser() -> argparse.ArgumentParser:
                         help="Accepte un certificat TLS non reconnu (ex. certificat auto-signé "
                              "sur un nœud de test) — RISQUÉ (interception possible), à n'utiliser "
                              "que pour un nœud de confiance connu.")
+    parser.add_argument("--autoriser-http-local", action="store_true",
+                        help="Accepte une URL (nœud ou portail) en http:// si et seulement si "
+                             "son hôte est localhost/127.0.0.1/::1 — même règle que le mode "
+                             "interactif, exposée ici pour l'usage scriptable (ex. --rudi-conf "
+                             "pointant vers un nœud/portail de développement local).")
     parser.add_argument("--organisation-producteur", choices=MODES_PRODUCTEUR, default=None)
     parser.add_argument("--organisation-par-jdd", help="Fichier JSON JDD -> commune|source.")
     parser.add_argument("--contact-commune", help="Email, obligatoire si au moins un JDD en mode commune.")
@@ -1056,10 +1061,14 @@ def _resoudre_conf_scriptable(args: argparse.Namespace) -> dict:
             raise ValueError(f"Fichier de conf introuvable ou illisible : {args.rudi_conf}")
         # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — --rudi-conf
         # contournait entièrement la protection http:// appliquée à --url-noeud.
+        # --autoriser-http-local (2026-11-16) : même bascule que le mode interactif,
+        # absente jusqu'ici du scriptable (bloquait tout usage contre un nœud/portail
+        # de dev en http://localhost, y compris via --rudi-conf).
         if conf.get("url"):
-            conf["url"] = valider_url_noeud(conf["url"])
+            conf["url"] = valider_url_noeud(conf["url"], autoriser_http_local=args.autoriser_http_local)
         if conf.get("url_portail"):
-            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
+            conf["url_portail"] = valider_url_noeud(
+                conf["url_portail"], autoriser_http_local=args.autoriser_http_local)
         return conf
 
     if not args.url_noeud or not args.usr:
@@ -1067,7 +1076,7 @@ def _resoudre_conf_scriptable(args: argparse.Namespace) -> dict:
             "--url-noeud et --usr sont requis sans --rudi-conf (mode scriptable, "
             "aucune saisie interactive)."
         )
-    url_noeud = valider_url_noeud(args.url_noeud)
+    url_noeud = valider_url_noeud(args.url_noeud, autoriser_http_local=args.autoriser_http_local)
     if not args.utiliser_trousseau:
         raise ValueError(
             "Aucune source de mot de passe en mode scriptable : fournir --rudi-conf "
@@ -1198,10 +1207,11 @@ def executer_scriptable(args: argparse.Namespace) -> int:
         conf["url_portail"] = args.url_portail
     # Jamais validée jusqu'ici (bug réel corrigé le 2026-11-14) — même règle que
     # l'URL du nœud : un portail en http:// non local y envoie les identifiants
-    # portail en clair.
+    # portail en clair. --autoriser-http-local (2026-11-16) : cf. _resoudre_conf_scriptable().
     if conf.get("url_portail"):
         try:
-            conf["url_portail"] = valider_url_noeud(conf["url_portail"])
+            conf["url_portail"] = valider_url_noeud(
+                conf["url_portail"], autoriser_http_local=args.autoriser_http_local)
         except UrlNoeudNonSecurisee as e:
             print(f"[cli] {e}", file=sys.stderr)
             return EXIT_ECHEC_TOTAL

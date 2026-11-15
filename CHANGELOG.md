@@ -29,6 +29,22 @@
   code de sortie signifiait seulement « en attente d'une validation animateur »
   (`EXIT_EN_ATTENTE_VALIDATION`) — message désormais distinct et correct pour ce cas.
 
+### Correction de bug — mode scriptable bloquait tout usage local
+
+- Le mode scriptable (`--rudi-conf`, `--url-noeud`) refusait systématiquement
+  `http://localhost` (ou tout autre hôte local) alors que le mode interactif
+  l'acceptait déjà via `autoriser_http_local=True` — aucun flag équivalent
+  n'existait côté scriptable. Conséquence réelle : `starterkit-tester` ne
+  pouvait plus exécuter aucun scénario contre le nœud/portail de dev de Simon,
+  pas seulement le vidage — trouvé le 2026-11-14, toujours présent après la
+  revue de code du 2026-11-15. Nouveau flag `--autoriser-http-local`, câblé
+  aux mêmes sites de validation (`--rudi-conf`, `--url-noeud`, `--url-portail`).
+- `valider_url_noeud()` ne reconnaissait que l'hôte nu `localhost` (et
+  `127.0.0.1`/`::1`), pas un sous-domaine `*.localhost` (convention RFC 6761,
+  utilisée par le portail de dev de Simon, `rudi.localhost` — résolution en
+  loopback vérifiée). Désormais accepté par le même mécanisme
+  `autoriser_http_local`.
+
 ## 0.7.3 — 2026-11-15 (revue de code, migration print() -> logging du toolkit)
 
 ### Dépendance

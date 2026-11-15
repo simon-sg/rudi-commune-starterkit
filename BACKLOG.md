@@ -304,6 +304,22 @@ Rudi », « la moisson », nom d'un flag CLI cité dans un prompt interactif) re
 du langage métier — voir Journal pour le détail. Comportement et codes de sortie
 inchangés.
 
+## Bug corrigé — mode scriptable bloquait tout usage local (`http://localhost`)
+
+Statut : **fait** (2026-11-16). Trouvé par `starterkit-tester` le 2026-11-14,
+reconfirmé le 2026-11-15 contre le tip `318a7e8` (toujours présent après le merge/tag
+qui a clos la v0.7.2, et après la revue organisations du 2026-11-15, qui ne l'a pas
+couvert). Bloquait **tout** appel scriptable (`--rudi-conf`), pas seulement le
+vidage/K2.
+
+**Correctif** : nouveau flag `--autoriser-http-local`, câblé sur
+`autoriser_http_local=True` aux 3 sites de validation scriptable
+(`_resoudre_conf_scriptable()` ×2 + le re-check `--url-portail` dans
+`executer_scriptable()`). Au passage, `valider_url_noeud()` ne reconnaissait que
+l'hôte nu `localhost`, pas un sous-domaine `*.localhost` (convention RFC 6761,
+utilisée par le portail de dev réel, `rudi.localhost`) — corrigé aussi (vérifié :
+résout bien en loopback). 4 nouveaux tests de régression (530 tests verts au total).
+
 ## Décisions actées v4
 
 - **2026-11-11 (Axe 5, incrément A)** : périmètre régionales/départementales/
