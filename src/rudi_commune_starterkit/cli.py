@@ -570,6 +570,37 @@ def _lire_mot_de_passe_repli_clair(url_noeud: str, usr: str) -> str | None:
     return conf.get("pwd")
 
 
+def _resoudre_conf_mot_de_passe_profil(profil: dict) -> dict | None:
+    """Résout le mot de passe d'un profil déjà enregistré (trousseau, avec
+    confirmation pour un backend non reconnu -> repli fichier en clair -> saisie
+    manuelle) et construit ``conf`` — commun à :func:`_executer_depuis_profil` et
+    :func:`_vider_commune_interactif`. Retourne ``None`` si le mot de passe n'a pas
+    pu être obtenu (message déjà affiché à l'appelant) : celui-ci doit alors
+    renvoyer ``EXIT_ECHEC_TOTAL`` sans rien tenter d'autre."""
+    url_noeud, usr = profil["url_noeud"], profil["usr"]
+    try:
+        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
+    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
+        print(f"  {e}")
+        pwd = None
+    if pwd is None:
+        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
+    if pwd is None:
+        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
+        try:
+            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
+        except AbsenceTerminalError as e:
+            print(f"  {e}")
+            return None
+
+    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
+    if profil.get("url_catalog"):
+        conf["url_catalog"] = profil["url_catalog"]
+    if profil.get("url_portail"):
+        conf["url_portail"] = profil["url_portail"]
+    return conf
+
+
 def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
     """Reprend une commune déjà enregistrée : le mot de passe est résolu via le
     trousseau (clé ``(url_noeud, usr)``, jamais stocké dans le profil lui-même), le
@@ -585,27 +616,9 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
         print(f"  Erreur réseau : {e}")
         return EXIT_ECHEC_TOTAL
 
-    url_noeud, usr = profil["url_noeud"], profil["usr"]
-    try:
-        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
-    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
-        print(f"  {e}")
-        pwd = None
-    if pwd is None:
-        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
-    if pwd is None:
-        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
-        try:
-            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
-        except AbsenceTerminalError as e:
-            print(f"  {e}")
-            return EXIT_ECHEC_TOTAL
-
-    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
-    if profil.get("url_catalog"):
-        conf["url_catalog"] = profil["url_catalog"]
-    if profil.get("url_portail"):
-        conf["url_portail"] = profil["url_portail"]
+    conf = _resoudre_conf_mot_de_passe_profil(profil)
+    if conf is None:
+        return EXIT_ECHEC_TOTAL
 
     organisation_producteur = profil["mode_producteur"]
     organisation_par_jdd = profil.get("organisation_par_jdd")
@@ -699,27 +712,9 @@ def _vider_commune_interactif(profil: dict, chemin_profils: str) -> int:
     :func:`vider_commune` au lieu de relancer la moisson."""
     print(f"\n→ Vidage de {profil['nom']} ({profil['code_insee']}) sur {profil['url_noeud']}\n")
 
-    url_noeud, usr = profil["url_noeud"], profil["usr"]
-    try:
-        pwd = _lire_mot_de_passe_trousseau_avec_confirmation(url_noeud, usr)
-    except (TrousseauEnClairError, TrousseauIndisponibleError) as e:
-        print(f"  {e}")
-        pwd = None
-    if pwd is None:
-        pwd = _lire_mot_de_passe_repli_clair(url_noeud, usr)
-    if pwd is None:
-        print("  Mot de passe introuvable dans le trousseau pour ce profil.")
-        try:
-            pwd = lire_mot_de_passe(f"Mot de passe pour {usr}@{url_noeud} : ")
-        except AbsenceTerminalError as e:
-            print(f"  {e}")
-            return EXIT_ECHEC_TOTAL
-
-    conf = {"url": url_noeud, "usr": usr, "pwd": pwd}
-    if profil.get("url_catalog"):
-        conf["url_catalog"] = profil["url_catalog"]
-    if profil.get("url_portail"):
-        conf["url_portail"] = profil["url_portail"]
+    conf = _resoudre_conf_mot_de_passe_profil(profil)
+    if conf is None:
+        return EXIT_ECHEC_TOTAL
 
     supprimer_organisation = _demander_oui_non(
         "Supprimer aussi l'organisation de la commune (si aucune autre donnée du nœud "
