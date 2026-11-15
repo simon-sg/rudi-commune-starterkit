@@ -380,6 +380,9 @@ L'outil publie alors chaque donnée, une par une, et affiche à la fin un rappor
 - **sauté (hors couverture)** / **sauté (vide)** : la donnée ne concerne pas votre
   commune ou n'existe pas pour elle à ce jour (ex. délibérations hors Bretagne) — pas
   une erreur à corriger.
+- **sauté (organisation en attente)** : la donnée est prête mais patiente, le temps que
+  la nouvelle organisation de la commune soit validée par l'animateur du portail — voir
+  l'encart ci-dessous, pas une erreur à corriger.
 - **échec** : voir [En cas de problème](depannage.md).
 
 !!! info "Cas particulier : « en attente de validation »"
