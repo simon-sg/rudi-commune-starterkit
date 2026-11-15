@@ -56,6 +56,98 @@ from .interaction import confirmer
 from .resolution_noeud import organisation_existante
 
 
+def _supprimer_jdd_locaux(conf: dict, local_ids: list[str], etat: dict, rapport: dict, chemin_etat: str) -> dict:
+    """Supprime chaque JDD suivi par l'état local (nœud + relais portail automatique
+    — voir le commentaire plus bas sur supprimer_dataset()), met à jour
+    ``rapport['jdd_supprimes']``/``rapport['jdd_echecs']`` en place, et retourne
+    l'état mis à jour (sauvegardé sur disque si au moins un JDD a été traité)."""
+    for local_id in local_ids:
+        global_id = global_id_pour_local_id(conf, local_id)
+        if global_id is None:
+            # Déjà absent du nœud (suppression précédente, ou jamais vraiment publié
+            # malgré l'entrée locale) — rien à faire, traité comme un succès idempotent.
+            rapport["jdd_supprimes"].append(local_id)
+            etat.pop(local_id, None)
+            continue
+
+        if supprimer_dataset(conf, global_id):
+            # Pas d'appel séparé au portail : confirmé par le code source du nœud
+            # (rudi-catalog/genericController.js::deleteSingleObject) que cette
+            # suppression déclenche déjà le relais portail automatiquement, avec
+            # l'identité propre du nœud — supprimer_dataset_portail() (OAuth2 direct,
+            # nécessite un vrai compte ROBOT portail) est redondante ici.
+            rapport["jdd_supprimes"].append(local_id)
+            etat.pop(local_id, None)
+        else:
+            rapport["jdd_echecs"].append(local_id)
+
+    if local_ids:
+        sauvegarder_etat(chemin_etat, etat)
+    return etat
+
+
+def _traiter_jdd_tiers_restants(conf: dict, nom_org_commune: str, rapport: dict, confirmer_fn) -> bool:
+    """Détecte et, si confirmé, supprime les JDD non suivis par ce socle qui
+    référencent encore ``nom_org_commune`` sur le nœud — préalable obligatoire à la
+    suppression de l'organisation (voir :func:`vider_commune`). Met à jour
+    ``rapport`` en place. Retourne ``False`` si le traitement doit s'arrêter ici
+    (``rapport`` déjà renseigné avec un statut terminal, l'appelant doit alors
+    renvoyer ``rapport`` directement), ``True`` pour poursuivre vers le traitement
+    de l'organisation elle-même."""
+    # .get("local_id") plutôt que d["local_id"] : le nœud héberge aussi des JDD d'autres
+    # outils (ex. moissonneuse-batteuse, même nœud local partagé, ou un test manuel) qui
+    # n'ont pas forcément ce champ — optionnel dans le schéma RUDI, contrairement à
+    # global_id (toujours présent), seul identifiant garanti pour les supprimer.
+    restants = [
+        d for d in toutes_metadonnees_rudi(conf)
+        if (d.get("producer") or {}).get("organization_name") == nom_org_commune
+    ]
+    if not restants:
+        return True
+
+    print(f"[vidage] {len(restants)} JDD non suivis par ce socle référencent encore "
+          f"« {nom_org_commune} » sur le nœud :")
+    for d in restants:
+        identifiant = d.get("local_id") or d.get("global_id", "?")
+        titre = d.get("resource_title") or "(titre inconnu)"
+        print(f"  - {identifiant} — {titre}")
+
+    if not confirmer_fn(
+        f"Supprimer ces {len(restants)} JDD non suivis (nœud + portail) pour "
+        f"pouvoir traiter l'organisation « {nom_org_commune} ».",
+        mot_attendu="SUPPRIMER",
+    ):
+        rapport["organisation"] = "refus_jdd_restants"
+        rapport["message"] = (
+            f"Suppression d'organisation refusée : {len(restants)} JDD non suivis "
+            f"référencent encore « {nom_org_commune} » sur le nœud : " + ", ".join(
+                d.get("local_id") or d.get("global_id", "?") for d in restants
+            ) + "."
+        )
+        return False
+
+    for d in restants:
+        global_id = d.get("global_id")
+        identifiant = d.get("local_id") or global_id or "?"
+        if not global_id:
+            rapport["jdd_tiers_echecs"].append(identifiant)
+            continue
+        if supprimer_dataset(conf, global_id):
+            rapport["jdd_tiers_supprimes"].append(identifiant)
+        else:
+            rapport["jdd_tiers_echecs"].append(identifiant)
+
+    if rapport["jdd_tiers_echecs"]:
+        rapport["organisation"] = "refus_jdd_restants"
+        rapport["message"] = (
+            f"Suppression d'organisation refusée : échec de la suppression de "
+            f"{len(rapport['jdd_tiers_echecs'])} JDD non suivis référençant encore "
+            f"« {nom_org_commune} » : {', '.join(rapport['jdd_tiers_echecs'])}."
+        )
+        return False
+    return True
+
+
 def vider_commune(
     conf: dict,
     code_insee: str,
@@ -138,28 +230,7 @@ def vider_commune(
         rapport["message"] = "Annulé (confirmation non obtenue)."
         return rapport
 
-    for local_id in local_ids:
-        global_id = global_id_pour_local_id(conf, local_id)
-        if global_id is None:
-            # Déjà absent du nœud (suppression précédente, ou jamais vraiment publié
-            # malgré l'entrée locale) — rien à faire, traité comme un succès idempotent.
-            rapport["jdd_supprimes"].append(local_id)
-            etat.pop(local_id, None)
-            continue
-
-        if supprimer_dataset(conf, global_id):
-            # Pas d'appel séparé au portail : confirmé par le code source du nœud
-            # (rudi-catalog/genericController.js::deleteSingleObject) que cette
-            # suppression déclenche déjà le relais portail automatiquement, avec
-            # l'identité propre du nœud — supprimer_dataset_portail() (OAuth2 direct,
-            # nécessite un vrai compte ROBOT portail) est redondante ici.
-            rapport["jdd_supprimes"].append(local_id)
-            etat.pop(local_id, None)
-        else:
-            rapport["jdd_echecs"].append(local_id)
-
-    if local_ids:
-        sauvegarder_etat(chemin_etat, etat)
+    etat = _supprimer_jdd_locaux(conf, local_ids, etat, rapport, chemin_etat)
 
     if not supprimer_organisation:
         return rapport
@@ -176,55 +247,8 @@ def vider_commune(
 
     nom_org_commune = organisations.organisation_commune(commune)["organization_name"]
 
-    # .get("local_id") plutôt que d["local_id"] : le nœud héberge aussi des JDD d'autres
-    # outils (ex. moissonneuse-batteuse, même nœud local partagé, ou un test manuel) qui
-    # n'ont pas forcément ce champ — optionnel dans le schéma RUDI, contrairement à
-    # global_id (toujours présent), seul identifiant garanti pour les supprimer.
-    restants = [
-        d for d in toutes_metadonnees_rudi(conf)
-        if (d.get("producer") or {}).get("organization_name") == nom_org_commune
-    ]
-    if restants:
-        print(f"[vidage] {len(restants)} JDD non suivis par ce socle référencent encore "
-              f"« {nom_org_commune} » sur le nœud :")
-        for d in restants:
-            identifiant = d.get("local_id") or d.get("global_id", "?")
-            titre = d.get("resource_title") or "(titre inconnu)"
-            print(f"  - {identifiant} — {titre}")
-
-        if not confirmer_fn(
-            f"Supprimer ces {len(restants)} JDD non suivis (nœud + portail) pour "
-            f"pouvoir traiter l'organisation « {nom_org_commune} ».",
-            mot_attendu="SUPPRIMER",
-        ):
-            rapport["organisation"] = "refus_jdd_restants"
-            rapport["message"] = (
-                f"Suppression d'organisation refusée : {len(restants)} JDD non suivis "
-                f"référencent encore « {nom_org_commune} » sur le nœud : " + ", ".join(
-                    d.get("local_id") or d.get("global_id", "?") for d in restants
-                ) + "."
-            )
-            return rapport
-
-        for d in restants:
-            global_id = d.get("global_id")
-            identifiant = d.get("local_id") or global_id or "?"
-            if not global_id:
-                rapport["jdd_tiers_echecs"].append(identifiant)
-                continue
-            if supprimer_dataset(conf, global_id):
-                rapport["jdd_tiers_supprimes"].append(identifiant)
-            else:
-                rapport["jdd_tiers_echecs"].append(identifiant)
-
-        if rapport["jdd_tiers_echecs"]:
-            rapport["organisation"] = "refus_jdd_restants"
-            rapport["message"] = (
-                f"Suppression d'organisation refusée : échec de la suppression de "
-                f"{len(rapport['jdd_tiers_echecs'])} JDD non suivis référençant encore "
-                f"« {nom_org_commune} » : {', '.join(rapport['jdd_tiers_echecs'])}."
-            )
-            return rapport
+    if not _traiter_jdd_tiers_restants(conf, nom_org_commune, rapport, confirmer_fn):
+        return rapport
 
     organisation = organisation_existante(conf, nom_org_commune)
     if organisation is None:
