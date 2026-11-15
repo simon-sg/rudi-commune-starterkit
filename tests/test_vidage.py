@@ -5,8 +5,6 @@ import tempfile
 import unittest
 from unittest import mock
 
-from rudi_harvest_toolkit.rudi_client import EtatPortailIndisponibleError
-
 from rudi_commune_starterkit import vidage
 
 _CONF = {"url": "https://noeud", "usr": "u", "pwd": "p", "url_portail": "https://portail"}
@@ -60,7 +58,6 @@ class TestViderCommuneEtatAbsentMaisOrganisationDemandee(unittest.TestCase):
              mock.patch("rudi_commune_starterkit.vidage.resoudre_commune", return_value=_GEVEZE), \
              mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail", return_value=None), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
@@ -262,124 +259,49 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         self.assertEqual(rapport["organisation"], "echec_demande_detachement")
         m_sup_noeud.assert_not_called()
 
-    def test_detachement_en_cours_narrete_avant_larchivage(self):
+    def test_detachement_en_cours_narrete_avant_de_toucher_au_noeud(self):
         """Bug réel rencontré le 2026-11-14 (test E2E automatisé, cf.
         NodeLinkedProducerStatus côté Java) : ``IN_PROGRESS``/``DETACH_IN_PROGRESS``
         (détachement demandé mais pas encore validé) n'est pas la même chose que
-        ``DISENGAGED`` (détachement validé) — foncer vers l'archivage dans cet état
-        fait échouer le portail en 409. Ne jamais appeler
-        ``demander_archivage_organisation()`` tant que ce détachement n'est pas
-        validé."""
+        ``DISENGAGED`` (détachement validé) — ne jamais nettoyer la copie nœud tant
+        que ce détachement n'est pas validé."""
         for statut in ("IN_PROGRESS", "DETACH_IN_PROGRESS"):
             with self.subTest(statut=statut):
                 org = {"organization_id": "org-1", "linked_producer_status": statut}
                 with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
                      mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-                     mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail") as m_etat, \
-                     mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation") as m_archivage, \
                      mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
                     rapport = vidage.vider_commune(
                         _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
                     )
                 self.assertEqual(rapport["organisation"], "attente_validation_detachement")
-                m_etat.assert_not_called()
-                m_archivage.assert_not_called()
                 m_sup_noeud.assert_not_called()
 
-    def test_detachee_archivage_deja_valide_supprime_le_noeud(self):
-        """Confirmé en conditions réelles le 2026-11-14 (organisation disposable, cycle
-        complet) : une fois l'archivage validé par l'animateur du portail, l'organisation
-        disparaît de ``GET /strukture/v1/organizations/{uuid}`` côté portail
-        (``etat_tache_organisation_portail`` renvoie ``None``) — ne reste plus qu'à
-        nettoyer la copie locale du nœud, jamais faite automatiquement (aucun handler
-        ``Method.DELETE`` côté nœud, confirmé par le code source)."""
+    def test_detachee_nettoie_directement_le_noeud(self):
+        """Correction du 2026-11-15 : une fois le producteur détaché (ou jamais
+        rattaché), ce socle ne demande plus l'archivage portail (identifiants PROVIDER
+        du raccordement nœud↔portail qu'un agent municipal n'a jamais, voir la
+        docstring de vider_commune()) — il nettoie directement la copie locale du
+        nœud, sans étape intermédiaire ni appel portail."""
         org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail", return_value=None), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation") as m_archivage, \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True) as m_sup_noeud:
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
         self.assertEqual(rapport["organisation"], "supprimee")
         m_sup_noeud.assert_called_once_with(_CONF, "org-1")
-        m_archivage.assert_not_called()
 
-    def test_etat_portail_indisponible_narrete_avant_de_toucher_au_noeud(self):
-        """Bug réel corrigé le 2026-11-14 côté toolkit (EtatPortailIndisponibleError) :
-        un 401/500 transitoire ou un échec réseau ne doit JAMAIS être traité comme une
-        confirmation d'archivage — l'organisation peut très bien être toujours vivante
-        côté portail, supprimer la copie nœud serait alors une vraie perte de donnée."""
+    def test_detachee_echec_suppression_noeud_rapporte_lechec(self):
         org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail",
-                        side_effect=EtatPortailIndisponibleError("401 inattendu")), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation") as m_archivage, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
+             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=False):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
             )
-        self.assertEqual(rapport["organisation"], "etat_portail_indisponible")
-        m_archivage.assert_not_called()
-        m_sup_noeud.assert_not_called()
-
-    def test_detachee_tache_archivage_en_attente_narrete_avant_noeud(self):
-        """Une demande d'archivage précédente est toujours en attente de validation
-        (``status == "PENDING"`` côté portail) : ne jamais en redéposer une 2e (aucune
-        vérification côté portail de l'absence d'une tâche en cours), ni toucher au
-        nœud avant validation."""
-        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
-        with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
-             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail",
-                        return_value={"status": "PENDING"}), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation") as m_archivage, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
-            rapport = vidage.vider_commune(
-                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
-            )
-        self.assertEqual(rapport["organisation"], "attente_validation_archivage")
-        m_archivage.assert_not_called()
-        m_sup_noeud.assert_not_called()
-
-    def test_detachee_demande_archivage_quand_rien_en_cours(self):
-        """Pas de tâche en attente côté portail : demande d'archivage envoyée
-        automatiquement (plus de geste manuel animateur dans l'UI Strukture, contrairement
-        à l'ancien comportement) — relancer une fois validée."""
-        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
-        with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
-             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail",
-                        return_value={"status": "VALIDATED"}), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation",
-                        return_value=True) as m_archivage, \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
-            rapport = vidage.vider_commune(
-                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
-            )
-        self.assertEqual(rapport["organisation"], "archivage_demande")
-        m_archivage.assert_called_once_with(_CONF, "org-1", "Commune de Gévezé")
-        m_sup_noeud.assert_not_called()
-
-    def test_detachee_echec_demande_archivage(self):
-        """Le portail refuse la demande d'archivage (ex. JDD encore publiés, y compris
-        des brouillons orphelins) : rapporté distinctement, jamais confondu avec une
-        attente de validation."""
-        org = {"organization_id": "org-1", "linked_producer_status": "DETACHED"}
-        with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
-             mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail",
-                        return_value={"status": "VALIDATED"}), \
-             mock.patch("rudi_commune_starterkit.vidage.demander_archivage_organisation",
-                        return_value=False), \
-             mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud") as m_sup_noeud:
-            rapport = vidage.vider_commune(
-                _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,
-            )
-        self.assertEqual(rapport["organisation"], "echec_demande_archivage")
-        m_sup_noeud.assert_not_called()
+        self.assertEqual(rapport["organisation"], "echec_suppression_noeud")
 
     def test_statut_linked_producer_manquant_traite_comme_detache(self):
         # Pas VALIDATED -> on tente la suite (toute valeur autre que VALIDATED, y compris
@@ -387,7 +309,6 @@ class TestViderCommuneSuppressionOrganisation(unittest.TestCase):
         org = {"organization_id": "org-1"}
         with mock.patch("rudi_commune_starterkit.vidage.toutes_metadonnees_rudi", return_value=[]), \
              mock.patch("rudi_commune_starterkit.vidage.organisation_existante", return_value=org), \
-             mock.patch("rudi_commune_starterkit.vidage.etat_tache_organisation_portail", return_value=None), \
              mock.patch("rudi_commune_starterkit.vidage.supprimer_organisation_noeud", return_value=True):
             rapport = vidage.vider_commune(
                 _CONF, "35120", supprimer_organisation=True, confirmer_fn=_toujours_confirmer,

@@ -7,8 +7,11 @@ par le code source du nœud (2026-11-08,
 déclenche déjà, automatiquement et avec sa propre identité, le relais de suppression
 portail (Kalim) — exactement le même principe que le relais de
 ``demander_creation_organisation()``/``demander_detachement_producteur()``. Un appel
-direct au portail (``supprimer_dataset_portail()``, écarté ici) nécessiterait un vrai
-compte ROBOT enregistré côté ACL du portail, que ce socle n'a jamais eu besoin d'avoir.
+direct au portail (``supprimer_dataset_portail()``, écarté ici) nécessiterait les
+identifiants PROVIDER du raccordement nœud↔portail lui-même (voir
+``rudi-harvest-toolkit/README.md`` § 4 — **il n'existe que 2 comptes dans tout ce
+schéma, l'utilisateur du nœud et l'animateur du portail**, ce PROVIDER n'est ni l'un ni
+l'autre), que ce socle n'a jamais eu besoin d'avoir.
 
 **Pas de journal persistant** : le nœud/portail est la source de vérité, la reprise se
 fait en redemandant simplement l'état courant à chaque appel — une suppression déjà
@@ -40,10 +43,7 @@ from rudi_harvest_toolkit.commune import (
     resoudre_commune,
 )
 from rudi_harvest_toolkit.rudi_client import (
-    EtatPortailIndisponibleError,
-    demander_archivage_organisation,
     demander_detachement_producteur,
-    etat_tache_organisation_portail,
     global_id_pour_local_id,
     supprimer_dataset,
     supprimer_organisation as supprimer_organisation_noeud,
@@ -77,7 +77,8 @@ def _supprimer_jdd_locaux(conf: dict, local_ids: list[str], etat: dict, rapport:
             # (rudi-catalog/genericController.js::deleteSingleObject) que cette
             # suppression déclenche déjà le relais portail automatiquement, avec
             # l'identité propre du nœud — supprimer_dataset_portail() (OAuth2 direct,
-            # nécessite un vrai compte ROBOT portail) est redondante ici.
+            # nécessite les identifiants PROVIDER du raccordement nœud↔portail) est
+            # redondante ici.
             rapport["jdd_supprimes"].append(local_id)
             etat.pop(local_id, None)
         else:
@@ -181,17 +182,31 @@ def vider_commune(
     séparément, uniquement si ``supprimer_organisation``), ``organisation`` (``None`` si
     non demandé, sinon un statut parmi ``"supprimee"``/``"deja_absente"``/
     ``"detachement_demande"``/``"echec_demande_detachement"``/
-    ``"attente_validation_detachement"``/``"refus_jdd_restants"``/``"archivage_demande"``/
-    ``"attente_validation_archivage"``/``"echec_demande_archivage"``/
-    ``"echec_suppression_noeud"``/``"etat_portail_indisponible"``) et ``message`` (texte
-    explicatif, toujours renseigné sauf succès silencieux).
+    ``"attente_validation_detachement"``/``"refus_jdd_restants"``/
+    ``"echec_suppression_noeud"``) et ``message`` (texte explicatif, toujours renseigné
+    sauf succès silencieux).
 
-    La suppression d'organisation est désormais **entièrement automatisable**
-    (confirmé de bout en bout le 2026-11-14) : détachement du producteur → validation
-    animateur → demande d'archivage → validation animateur → nettoyage de la copie
-    locale du nœud. Chaque étape nécessite un nouvel appel à cette fonction une fois
+    **Détachement du producteur (``demander_detachement_producteur()``, via le nœud,
+    identifiants du nœud habituels) → validation animateur → nettoyage de la copie
+    locale du nœud.** Chaque étape nécessite un nouvel appel à cette fonction une fois
     l'étape précédente validée côté portail (pas de boucle d'attente ici — le plan
     d'ensemble, pas cette fonction, décide quand relancer).
+
+    **Correction du 2026-11-15** : une version précédente ajoutait une étape
+    supplémentaire de « demande d'archivage » après le détachement
+    (``demander_archivage_organisation()``, toolkit) pour faire aussi disparaître
+    l'organisation du catalogue Strukture côté portail. Retirée : cet appel exige
+    ``conf["usr_portail"]``/``conf["pwd_portail"]``, les identifiants OAuth2 du
+    raccordement nœud↔portail lui-même (rôle ``PROVIDER``) — **il n'existe que 2
+    comptes dans tout ce schéma, l'utilisateur du nœud et l'animateur du portail**, ce
+    PROVIDER n'est ni l'un ni l'autre et un agent municipal (le public de ce socle) n'y
+    a jamais accès. Aucun relais nœud équivalent n'existe pour cette action (vérifié
+    dans ``rudi-catalog/src/routes/routes.js``, qui ne relaie que
+    ``attach``/``detach``/``has_task`` pour les organisations, sur 3 branches dont celle
+    de production RM/R7). Une fois le producteur détaché et la copie locale du nœud
+    nettoyée, la suppression effective de l'organisation du catalogue public du portail,
+    si elle est souhaitée, reste à la discrétion de qui administre le nœud/portail —
+    hors de portée de ce socle (voir ``rudi-harvest-toolkit/README.md`` § 4).
     """
     chemin_etat = chemin_etat or f".etat_rudi_commune_starterkit/{code_insee}.json"
     rapport: dict = {
@@ -293,68 +308,30 @@ def vider_commune(
         return rapport
 
     # Détachement validé ou organisation jamais rattachée (``DISENGAGED``/
-    # ``CANCELLED``/``DRAFT``/absent) : demander
-    # l'archivage portail — confirmé de bout en bout le 2026-11-14 (identité PROVIDER
-    # du nœud, pas de compte animateur requis) comme la vraie route fonctionnelle de
-    # suppression d'une organisation côté portail (voir rudi-harvest-toolkit/README.md
-    # § demander_archivage_organisation). Remplace l'ancienne étape manuelle dans l'UI
-    # Strukture. Le nœud ne reflète JAMAIS cet archivage une fois validé (rapport
-    # Method.DELETE non géré côté nœud, confirmé par le code source) — on doit donc lire
-    # l'état réel côté portail pour savoir où on en est, plutôt que linked_producer_status
-    # (qui ne change plus à partir d'ici).
-    try:
-        etat_portail = etat_tache_organisation_portail(conf, organization_id)
-    except EtatPortailIndisponibleError as e:
-        # Jamais traiter une erreur (réseau, auth, 401/500 transitoire) comme une
-        # confirmation d'archivage : l'organisation peut très bien être toujours
-        # vivante côté portail — supprimer_organisation_noeud() serait alors une
-        # vraie perte de donnée, pas un nettoyage de copie obsolète.
-        rapport["organisation"] = "etat_portail_indisponible"
+    # ``CANCELLED``/``DRAFT``/absent) : plus rien que ce socle puisse légitimement
+    # demander côté portail — pas de relais nœud pour l'archivage (seuls
+    # attach/detach/has_task existent, voir rudi-catalog/src/routes/routes.js), et la
+    # route portail directe (demander_archivage_organisation()) exige les identifiants
+    # PROVIDER du raccordement nœud↔portail, qu'un agent municipal n'a jamais (voir la
+    # docstring de cette fonction, et rudi-harvest-toolkit/README.md § 4). Le producteur
+    # étant détaché (ou n'ayant jamais été rattaché), nettoyer la copie locale du nœud
+    # est sûr — ce qui se passe ensuite côté catalogue public du portail (archivage
+    # effectif de l'organisation, à la discrétion de qui l'administre) est hors de
+    # portée de ce socle.
+    ok_noeud = supprimer_organisation_noeud(conf, organization_id)
+    if not ok_noeud:
+        rapport["organisation"] = "echec_suppression_noeud"
         rapport["message"] = (
-            f"Impossible de vérifier l'état de « {nom_org_commune} » côté portail "
-            f"({e}) — rien n'a été supprimé, relancer plus tard."
-        )
-        return rapport
-    if etat_portail is None:
-        # Organisation disparue du portail : archivage déjà validé lors d'un appel
-        # précédent — ne reste que le nettoyage de la copie locale du nœud.
-        ok_noeud = supprimer_organisation_noeud(conf, organization_id)
-        if not ok_noeud:
-            rapport["organisation"] = "echec_suppression_noeud"
-            rapport["message"] = (
-                f"Organisation « {nom_org_commune} » archivée côté portail (confirmé), "
-                "échec de la suppression côté nœud."
-            )
-            return rapport
-        rapport["organisation"] = "supprimee"
-        rapport["message"] = f"Organisation « {nom_org_commune} » supprimée (portail + nœud)."
-        return rapport
-
-    if etat_portail.get("status") == "PENDING":
-        # Une tâche organization-process est déjà en attente (demande d'archivage
-        # précédente non encore traitée) — ne jamais en redéposer une 2e : POST
-        # /organizations/tasks ne vérifie pas lui-même l'absence d'une tâche en cours.
-        rapport["organisation"] = "attente_validation_archivage"
-        rapport["message"] = (
-            f"Demande d'archivage de « {nom_org_commune} » déjà en attente de "
-            "validation par l'animateur du portail — relancer une fois validée."
+            f"Producteur « {nom_org_commune} » détaché, échec de la suppression de la "
+            "copie locale du nœud."
         )
         return rapport
 
-    resultat_archivage = demander_archivage_organisation(conf, organization_id, nom_org_commune)
-    if not resultat_archivage:
-        rapport["organisation"] = "echec_demande_archivage"
-        rapport["message"] = (
-            f"Demande d'archivage refusée par le portail pour « {nom_org_commune} » — "
-            "voir le journal ci-dessus pour la raison exacte (souvent : des JDD liés "
-            "encore publiés côté portail, y compris des brouillons orphelins)."
-        )
-        return rapport
-
-    rapport["organisation"] = "archivage_demande"
+    rapport["organisation"] = "supprimee"
     rapport["message"] = (
-        f"Demande d'archivage envoyée pour « {nom_org_commune} » — relancer une fois "
-        "validée par l'animateur du portail, pour nettoyer aussi la copie locale du nœud."
+        f"Organisation « {nom_org_commune} » détachée et sa copie locale du nœud "
+        "supprimée. Sa suppression complète du catalogue public du portail, si "
+        "souhaitée, reste à la discrétion de qui administre le nœud/portail."
     )
     return rapport
 

@@ -731,14 +731,14 @@ class TestExecuterScriptableViderCommune(unittest.TestCase):
             code = cli.executer_scriptable(args)
         self.assertEqual(code, cli.EXIT_SUCCES)
 
-    def test_echec_demande_archivage_rapporte_echecs_partiels(self):
+    def test_echec_suppression_noeud_rapporte_echecs_partiels(self):
         args = cli._construire_parser().parse_args([
             "--code-insee", "35120", "--rudi-conf", "conf.json", "--vider-commune",
             "--supprimer-organisation", "--url-portail", "https://portail",
             "--confirmer", "SUPPRIMER",
         ])
         rapport = {"jdd_supprimes": ["lid-1"], "jdd_echecs": [], "jdd_tiers_supprimes": [], "jdd_tiers_echecs": [],
-                   "organisation": "echec_demande_archivage", "message": "refusé"}
+                   "organisation": "echec_suppression_noeud", "message": "refusé"}
         with mock.patch("rudi_commune_starterkit.cli._resoudre_conf_scriptable", return_value=dict(_CONF)), \
              mock.patch("rudi_commune_starterkit.cli.vider_commune", return_value=rapport):
             code = cli.executer_scriptable(args)
@@ -1199,26 +1199,21 @@ class TestViderCommuneInteractifAttenteDetachement(unittest.TestCase):
         self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         self.assertEqual(m_vider.call_count, 3)
 
-    def test_boucle_aussi_sur_les_statuts_dattente_darchivage(self):
-        """La boucle d'attente (ajoutée pour le détachement) doit continuer aussi sur
-        les 3 statuts d'attente introduits par l'automatisation de l'archivage
-        (``archivage_demande``/``attente_validation_archivage``/
-        ``attente_validation_detachement``) — pas seulement ``detachement_demande``,
-        sans quoi elle sortirait immédiatement dès la 1ère de ces étapes."""
-        for statut in (
-            "archivage_demande", "attente_validation_archivage", "attente_validation_detachement",
-        ):
-            with self.subTest(statut=statut):
-                rapport_en_attente = {**self._RAPPORT_EN_ATTENTE, "organisation": statut}
-                with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
-                     mock.patch(
-                         "rudi_commune_starterkit.cli.vider_commune",
-                         side_effect=[rapport_en_attente, self._RAPPORT_SUPPRIMEE],
-                     ) as m_vider, \
-                     mock.patch("builtins.input", side_effect=["o", "", "n"]):
-                    code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
-                self.assertEqual(code, cli.EXIT_SUCCES)
-                self.assertEqual(m_vider.call_count, 2)
+    def test_boucle_aussi_sur_attente_validation_detachement(self):
+        """La boucle d'attente (ajoutée pour ``detachement_demande``) doit continuer
+        aussi sur ``attente_validation_detachement`` (détachement demandé mais pas
+        encore validé, statut distinct introduit le 2026-11-14) — sans quoi elle
+        sortirait immédiatement dès cette étape."""
+        rapport_en_attente = {**self._RAPPORT_EN_ATTENTE, "organisation": "attente_validation_detachement"}
+        with mock.patch("rudi_commune_starterkit.cli.lire_mot_de_passe_trousseau", return_value="pwd"), \
+             mock.patch(
+                 "rudi_commune_starterkit.cli.vider_commune",
+                 side_effect=[rapport_en_attente, self._RAPPORT_SUPPRIMEE],
+             ) as m_vider, \
+             mock.patch("builtins.input", side_effect=["o", "", "n"]):
+            code = cli._vider_commune_interactif(_PROFIL_GEVEZE, cli.CHEMIN_PROFILS_DEFAUT)
+        self.assertEqual(code, cli.EXIT_SUCCES)
+        self.assertEqual(m_vider.call_count, 2)
 
 
 class TestExecuterInteractifNouvelleCommuneUrlPortail(unittest.TestCase):

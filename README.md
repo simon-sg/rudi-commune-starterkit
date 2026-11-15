@@ -99,15 +99,17 @@ avec `--supprimer-organisation`, l'organisation de la commune :
    suppression est détectée et **proposée** séparément (confirmation `SUPPRIMER`
    dédiée) plutôt que de bloquer sans recours.
 2. Si le producteur est encore rattaché (`linked_producer_status: VALIDATED`), un
-   détachement est demandé — la suite nécessite la validation de l'animateur du
-   portail dans l'UI Strukture, puis un nouveau run.
-3. Une fois détaché, une demande d'archivage est envoyée automatiquement au portail
-   (identité `PROVIDER` du nœud — confirmé de bout en bout le 2026-11-14, plus de
-   geste manuel dans l'UI Strukture). Elle nécessite elle aussi la validation de
-   l'animateur du portail ; tant qu'elle n'est pas validée, un nouveau run détecte la
-   demande déjà en cours et ne la redépose pas (`"attente_validation_archivage"`).
-   Une fois validée, le run suivant nettoie la copie locale du nœud
-   (jamais automatique côté nœud) et rapporte `"supprimee"`.
+   détachement est demandé (via le nœud, identifiants nœud habituels) — la suite
+   nécessite la validation de l'animateur du portail dans l'UI Strukture, puis un
+   nouveau run.
+3. Une fois détaché, la copie locale du nœud est nettoyée directement et le run
+   rapporte `"supprimee"`. **Pas de demande d'archivage portail** : cette action
+   existe (`demander_archivage_organisation()` côté toolkit) mais exige les
+   identifiants OAuth2 du raccordement nœud↔portail lui-même (rôle `PROVIDER`) —
+   jamais ceux d'un simple utilisateur du nœud (le public de ce socle). Si
+   l'organisation doit aussi disparaître du catalogue public du portail, c'est à qui
+   administre le nœud/portail de le faire — hors de portée de ce socle (voir
+   `rudi-harvest-toolkit/README.md` § 4).
 
 Aussi disponible depuis l'assistant interactif : en reprenant une commune du
 registre, un choix *« Lancer la moisson / Vider cette commune »* propose le vidage

@@ -705,13 +705,10 @@ def _executer_depuis_profil(profil: dict, chemin_profils: str) -> int:
 # injoignable) — jamais un échec, un rendez-vous à reprendre plus tard.
 _STATUTS_ORGANISATION_EN_ATTENTE = (
     "detachement_demande", "attente_validation_detachement",
-    "archivage_demande", "attente_validation_archivage",
-    "etat_portail_indisponible",
 )
 # Statuts "organisation" qui sont, eux, de vrais échecs.
 _STATUTS_ORGANISATION_ECHEC = (
-    "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_archivage",
-    "echec_demande_detachement",
+    "refus_jdd_restants", "echec_suppression_noeud", "echec_demande_detachement",
 )
 
 

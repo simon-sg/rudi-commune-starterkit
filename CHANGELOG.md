@@ -1,5 +1,34 @@
 # Changelog
 
+## Non publié
+
+### Correction de comportement — suppression d'organisation
+
+- **Retrait de la demande d'archivage automatique côté portail** (ajoutée le
+  2026-11-14, retirée le lendemain). Elle exigeait `conf["usr_portail"]`/
+  `conf["pwd_portail"]` — les identifiants OAuth2 du raccordement nœud↔portail
+  lui-même (rôle `PROVIDER`), jamais ceux d'un simple utilisateur du nœud. **Il
+  n'existe que 2 comptes dans tout ce schéma : l'utilisateur du nœud et l'animateur
+  du portail qui valide les tâches BPMN** — ce PROVIDER n'est ni l'un ni l'autre, et
+  un agent municipal (le public de ce socle) n'y a jamais accès ni ne doit s'en voir
+  demander. Résultat réel constaté : `vider_commune(..., supprimer_organisation=True)`
+  échouait systématiquement après le détachement, avec un message qui parlait à tort
+  d'un « compte ROBOT portail ». `vider_commune()` nettoie désormais directement la
+  copie locale du nœud une fois le détachement validé, sans tenter l'archivage —
+  statuts de rapport retirés : `"archivage_demande"`/`"attente_validation_archivage"`/
+  `"echec_demande_archivage"`/`"etat_portail_indisponible"`. La suppression complète
+  de l'organisation du catalogue public du portail, si elle est souhaitée, reste à la
+  discrétion de qui administre le nœud/portail (voir `rudi-harvest-toolkit/README.md`
+  § 4).
+- Le prompt d'attente de validation animateur de `--vider-commune` (`'q'`) disait à
+  tort « pour revenir au menu » alors qu'il ne fait que sortir de la boucle d'attente
+  (la remontée au menu se fait ensuite via le prompt de `packaging/entrypoint.py`) —
+  aligné sur le texte déjà utilisé par le pendant publication (« quitter et relancer
+  plus tard »).
+- `packaging/entrypoint.py` affichait « Échec (ou succès partiel) » même quand le
+  code de sortie signifiait seulement « en attente d'une validation animateur »
+  (`EXIT_EN_ATTENTE_VALIDATION`) — message désormais distinct et correct pour ce cas.
+
 ## 0.7.3 — 2026-11-15 (revue de code, migration print() -> logging du toolkit)
 
 ### Dépendance
