@@ -498,11 +498,14 @@ Si vous avez publié des données à titre d'essai et souhaitez les retirer, l'o
 propose de « vider » une commune : cela supprime les données déjà publiées par cet
 outil pour cette commune (et, si vous le demandez, l'organisation elle-même).
 
-!!! warning "Nécessite l'adresse du portail renseignée au moment de la publication"
-    Cette fonction a besoin de l'adresse du portail notée à l'étape 3 du
-    [pas-à-pas](pas-a-pas.md). Si vous ne l'aviez pas renseignée, reprenez le profil
-    de la commune (voir [Relancer et mettre à jour](relancer.md)) et ajoutez-la avant
-    de continuer — l'assistant propose de corriger ce champ.
+!!! warning "Nécessite l'adresse du portail"
+    Cette fonction a besoin de l'adresse du portail du nœud — normalement déjà
+    connue : l'assistant la déduit automatiquement de l'adresse du nœud dès l'étape 3
+    du [pas-à-pas](pas-a-pas.md) (ou vous l'aviez confirmée/saisie à la main si la
+    détection automatique n'avait pas fonctionné sur ce nœud). Si elle manque malgré
+    tout, reprenez le profil de la commune (voir [Relancer et mettre à
+    jour](relancer.md)) et ajoutez-la avant de continuer — l'assistant propose de
+    corriger ce champ.
 
 ## Marche à suivre
 
