@@ -1,6 +1,7 @@
 """Tests de datasets/elus.py — FILE copie, allowlist de colonnes personnelles."""
 import csv
 import io
+import os
 import tempfile
 import unittest
 from unittest import mock
@@ -77,6 +78,13 @@ class TestMoissonnerElus(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.dossier = self._tmp.name
+        # DOSSIER_CACHE_RNE est désormais partagé (pas sous dossier_sortie, voir le
+        # module) : isoler chaque test dans son propre dossier de cache temporaire
+        # pour ne jamais lire un fichier mis en cache par un autre test.
+        patcher = mock.patch.object(
+            elus, "DOSSIER_CACHE_RNE", os.path.join(self._tmp.name, ".cache_rne"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_publiable_filtre_sur_la_commune(self):
         session = mock.Mock()

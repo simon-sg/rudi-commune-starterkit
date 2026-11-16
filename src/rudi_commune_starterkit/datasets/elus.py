@@ -10,6 +10,12 @@ seules ``nom``, ``prénom``, ``fonction`` et ``date de début de mandat`` sont r
 ``date de naissance``, ``catégorie socio-professionnelle`` et ``code sexe`` — **jamais**
 republiées ici, même si elles sont déjà publiques côté source : ce n'est pas notre rôle
 d'amplifier leur diffusion.
+
+**Cache partagé, pas par commune** (``DOSSIER_CACHE_RNE``, à la racine du projet, pas sous
+``dossier_sortie`` — bug réel trouvé le 2026-11-16, 8,6 Go déjà dupliqués sur plusieurs
+communes avant correction, voir ``marches_publics.py`` qui avait déjà ce bon réflexe) :
+fichier national, donc partagé par TOUTES les communes, pas seulement celles d'un même
+département.
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ DESCRIPTION_PATRON = (
 FREQUENCE_MAJ = "mensuelle"
 
 _DATASET_ID = "repertoire-national-des-elus-1"
+DOSSIER_CACHE_RNE = ".cache_rne"
 
 _COLONNE_COMMUNE = "Code de la commune"
 _COLONNES_CONSERVEES = (
@@ -97,7 +104,7 @@ def moissonner(
         metadata = get_dataset_metadata(_DATASET_ID, session_http=session_http)
         ressource = selectionner_ressource(metadata, motif_nom=r"conseiller[s]?-municipa")
         chemin_cache = telecharger(
-            ressource["url"], dossier=os.path.join(dossier_sortie, ".cache_rne"),
+            ressource["url"], dossier=DOSSIER_CACHE_RNE,
             session_http=session_http,
         )
         lignes, _entetes = lire_csv_filtre(chemin_cache, _COLONNE_COMMUNE, code_insee)

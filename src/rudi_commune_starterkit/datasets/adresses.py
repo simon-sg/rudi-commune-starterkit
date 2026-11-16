@@ -13,6 +13,12 @@ tels quels, aucune traduction nécessaire.
 Le fichier départemental est mis en cache (``rudi_harvest_toolkit.download_cache``) pour
 ne pas le retélécharger à chaque run tant qu'il n'a pas changé.
 
+**Cache partagé, pas par commune** (``DOSSIER_CACHE_BAN``, à la racine du projet, pas sous
+``dossier_sortie`` — bug réel trouvé le 2026-11-16, 8,6 Go déjà dupliqués sur plusieurs
+communes avant correction, voir ``marches_publics.py`` qui avait déjà ce bon réflexe) :
+toutes les communes d'un même département partagent le même fichier départemental, zéro
+raison de le retélécharger par commune.
+
 **GeoJSON par ligne (Axe 3, v4)** : second média FILE, construit localement depuis les
 colonnes natives ``lon``/``lat`` du CSV BAN (aucune inconnue technique — premier module
 câblé, zéro parsing local additionnel au-delà de ce qui existe déjà). Propriétés
@@ -48,6 +54,7 @@ DESCRIPTION_PATRON = (
 FREQUENCE_MAJ = "mensuelle"
 
 _BAN_URL_PATRON = "https://adresse.data.gouv.fr/data/ban/adresses/latest/csv/adresses-{dep}.csv.gz"
+DOSSIER_CACHE_BAN = ".cache_ban"
 
 
 def _description_enrichie(commune: dict, code_insee: str) -> str:
@@ -91,7 +98,7 @@ def moissonner(
 
     try:
         chemin_cache = telecharger(
-            url_dep, dossier=os.path.join(dossier_sortie, ".cache_ban"),
+            url_dep, dossier=DOSSIER_CACHE_BAN,
             session_http=session_http,
         )
         lignes, entetes = lire_csv_filtre(chemin_cache, "code_insee", code_insee)

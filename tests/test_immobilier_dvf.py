@@ -3,6 +3,7 @@ nationale unique, filtrage par commune, dates dérivées de date_mutation."""
 import csv
 import gzip
 import io
+import os
 import tempfile
 import unittest
 from unittest import mock
@@ -62,6 +63,13 @@ class TestMoissonnerImmobilierDvf(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.dossier = self._tmp.name
+        # DOSSIER_CACHE_DVF est désormais partagé (pas sous dossier_sortie, voir le
+        # module) : isoler chaque test dans son propre dossier de cache temporaire
+        # pour ne jamais lire un fichier mis en cache par un autre test.
+        patcher = mock.patch.object(
+            immobilier_dvf, "DOSSIER_CACHE_DVF", os.path.join(self._tmp.name, ".cache_dvf"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _session(self, lignes_source, entetes=_ENTETES):
         session = mock.Mock()

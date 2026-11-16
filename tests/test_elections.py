@@ -209,6 +209,13 @@ class TestMoissonnerElections(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.dossier = self._tmp.name
+        # DOSSIER_CACHE_ELECTIONS est désormais partagé (pas sous dossier_sortie, voir
+        # le module) : isoler chaque test dans son propre dossier de cache temporaire
+        # pour ne jamais lire un fichier mis en cache par un autre test.
+        patcher = mock.patch.object(
+            elections, "DOSSIER_CACHE_ELECTIONS", os.path.join(self._tmp.name, ".cache_elections"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_publiable_deux_elections(self):
         session = mock.Mock()

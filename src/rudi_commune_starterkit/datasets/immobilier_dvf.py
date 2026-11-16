@@ -19,6 +19,13 @@ virgule**, pas point-virgule (contrairement à la plupart des autres sources de 
 chemin) — l'URL est donc résolue à chaque run via
 ``datagouv.get_dataset_metadata()``/``selectionner_ressource()``, pas une constante.
 
+**Cache partagé, pas par commune** (``DOSSIER_CACHE_DVF``, à la racine du projet, pas sous
+``dossier_sortie`` — bug réel trouvé et corrigé le 2026-11-16 : malgré l'intention
+affichée ci-dessus (« un seul téléchargement/une seule entrée de cache »), le cache était
+en fait placé sous ``dossier_sortie``, donc retéléchargé en entier — 609 Mo — à CHAQUE
+commune. 8,6 Go déjà dupliqués sur ce poste avant correction, voir ``marches_publics.py``
+qui avait déjà ce bon réflexe.)
+
 Plus de sondage par année ni d'union de schéma : un seul fichier, un seul appel réseau. Le
 « millésime » n'est plus un concept de la source (c'était un artefact du découpage par
 exercice) — les années réellement couvertes pour une commune sont dérivées des valeurs
@@ -74,6 +81,7 @@ _MOTIF_RESSOURCE = r"fichier unique"
 _FORMAT_RESSOURCE = "csv.gz"
 _COLONNE_COMMUNE = "code_commune"
 _COLONNE_DATE_MUTATION = "date_mutation"
+DOSSIER_CACHE_DVF = ".cache_dvf"
 
 _GLOSSAIRE_CODES = {
     "id_mutation": (
@@ -138,7 +146,7 @@ def moissonner(
         )
         url = ressource["url"]
         chemin_cache = telecharger(
-            url, dossier=os.path.join(dossier_sortie, ".cache_dvf"),
+            url, dossier=DOSSIER_CACHE_DVF,
             session_http=session_http,
         )
         lignes, _entetes = lire_csv_filtre(

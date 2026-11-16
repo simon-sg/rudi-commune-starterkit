@@ -31,6 +31,13 @@ conf/organisation_par_jdd*.json
 # jamais versionné
 .cache_rne/
 
+# Caches partagés BAN/DVF/élections (corrigés le 2026-11-16 — étaient par erreur sous
+# dossier_sortie, donc dupliqués par commune, 8,6 Go constatés sur un poste de dev avant
+# correction) — fichiers départementaux/nationaux, jamais par commune, jamais versionnés
+.cache_ban/
+.cache_dvf/
+.cache_elections/
+
 # Registre de communes (emails de contact, pas de mot de passe — reste local quand même)
 .rudi_commune_starterkit/
 

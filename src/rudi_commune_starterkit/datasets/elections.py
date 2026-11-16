@@ -19,10 +19,15 @@ séparément, les deux fichiers sources n'ayant pas la même granularité de col
 utilisées ici : elles restent disponibles pour un éventuel futur scrutin publié dans ce
 format.
 
-**Volumétrie assumée, pas un gain** : 232 Mo téléchargés par commune et par run
-(Parquet, ~12x plus léger que les CSV sources — 2,38 Go — mais ~16x plus que l'ancien
-JDD mono-scrutin, 14 Mo). ``pyarrow`` est désormais une dépendance obligatoire du
-toolkit (``rudi_harvest_toolkit.tabular.lire_parquet_filtre()``).
+**Volumétrie** : ~232 Mo (Parquet, ~12x plus léger que les CSV sources — 2,38 Go — mais
+~16x plus que l'ancien JDD mono-scrutin, 14 Mo). ``pyarrow`` est désormais une dépendance
+obligatoire du toolkit (``rudi_harvest_toolkit.tabular.lire_parquet_filtre()``).
+
+**Cache partagé, pas par commune** (``DOSSIER_CACHE_ELECTIONS``, à la racine du projet,
+pas sous ``dossier_sortie`` — corrigé le 2026-11-16 : le fichier est national, filtré
+localement par ``code_insee`` après téléchargement, donc ces 232 Mo étaient en fait
+retéléchargés intégralement à **chaque** commune et par run avant correction — 8,6 Go
+déjà dupliqués sur ce poste, voir ``marches_publics.py`` qui avait déjà ce bon réflexe).
 
 **Limites de couverture** (voir BACKLOG.md « Limites de couverture connues ») :
 municipales 2008 partielles (communes >3500 hab. seulement), pas de second tour pour
@@ -84,6 +89,7 @@ _COLONNE_COMMUNE = "code_commune"
 # tout le run si cette source est indisponible, la fusion (incrément A) reste publiable
 # sans elle.
 _DATASET_ID_MUNICIPALES_2026 = "elections-municipales-2026-resultats-du-premier-tour"
+DOSSIER_CACHE_ELECTIONS = ".cache_elections"
 _MOTIF_RESSOURCE_MUNICIPALES_2026 = r"^Municipales 2026 - R[ée]sultats - Communes_"
 _COLONNE_COMMUNE_MUNICIPALES_2026 = "Code commune"
 _RE_BLOC_LISTE_MUNICIPALES = re.compile(r"^Libellé de liste (\d+)$")
@@ -314,7 +320,7 @@ def moissonner(
         ressource_candidats = selectionner_ressource(
             metadata, motif_nom=r"^Résultats par candidat$", format="parquet",
         )
-        dossier_cache = os.path.join(dossier_sortie, ".cache_elections")
+        dossier_cache = DOSSIER_CACHE_ELECTIONS
         chemin_general = telecharger(ressource_generale["url"], dossier=dossier_cache, session_http=session_http)
         chemin_candidats = telecharger(ressource_candidats["url"], dossier=dossier_cache, session_http=session_http)
         lignes_generales, _ = lire_parquet_filtre(
