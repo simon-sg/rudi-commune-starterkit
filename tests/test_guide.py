@@ -108,7 +108,7 @@ class TestAntiDeriveWizard(unittest.TestCase):
         # cli.py pour le wizard interactif lui-même, vidage.py pour les messages de
         # "vider une commune" (JDD tiers non suivis...) qu'il affiche en les relayant.
         source = inspect.getsource(cli) + inspect.getsource(vidage)
-        for citation in c.CITATIONS_WIZARD_A_VERIFIER:
+        for citation in c.CITATIONS_CLI_A_VERIFIER:
             self.assertIn(
                 citation, source,
                 f"citation absente de cli.py/vidage.py (reformulée sans mettre à jour "
@@ -120,11 +120,36 @@ class TestAntiDeriveWizard(unittest.TestCase):
         # pour le premier lancement, relancer.md pour la reprise d'un profil...) — pas
         # seulement pas-a-pas.md.
         texte_guide_complet = "\n".join(c.PAGES_GUIDE.values())
-        for citation in c.CITATIONS_WIZARD_A_VERIFIER:
+        for citation in c.CITATIONS_CLI_A_VERIFIER:
             self.assertIn(
                 citation, texte_guide_complet,
-                f"citation listée dans CITATIONS_WIZARD_A_VERIFIER mais absente du "
+                f"citation listée dans CITATIONS_CLI_A_VERIFIER mais absente du "
                 f"texte réel du tutoriel : {citation!r}",
+            )
+
+
+class TestAvanceCouvreTousLesFlags(unittest.TestCase):
+    """guide/avance.md documente le mode scriptable option par option — si une option
+    est ajoutée/retirée dans _construire_parser() sans toucher à cette page, un agent
+    technique s'y fierait pour une liste incomplète ou obsolète. Un flag absent d'ici
+    casse ce test plutôt que de rester silencieusement non documenté (ou documenté
+    après avoir été retiré du code)."""
+
+    def test_chaque_option_scriptable_est_documentee(self):
+        parser = cli._construire_parser()
+        flags = {
+            option
+            for action in parser._actions  # noqa: SLF001 - pas d'API publique pour lister les options
+            for option in action.option_strings
+            if option.startswith("--") and option != "--help"
+        }
+        self.assertIn("--code-insee", flags, "sanity check : la liste de flags extraite est vide/cassée")
+        for flag in flags:
+            self.assertIn(
+                flag, c.PAGES_GUIDE["avance.md"],
+                f"{flag} existe dans _construire_parser() mais n'est documenté nulle "
+                "part dans guide/avance.md (ajouté sans mettre à jour le guide, ou "
+                "guide écrit avec un nom de flag différent de celui du code réel)",
             )
 
 

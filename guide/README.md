@@ -31,16 +31,19 @@ mkdocs serve               # http://127.0.0.1:8000, rechargement automatique
 
 ## Points d'attention pour une future session
 
-- `mkdocs.yml` liste les 7 pages du tutoriel **en dur** dans sa section `nav`
-  (volontaire) ; les 13 fiches de données, elles, ne sont **jamais** listées en dur —
-  seul `donnees/index.md` est dans la nav, les fiches sont atteintes depuis cet index
-  et par la recherche. Ajouter/retirer un JDD dans `registre.py` n'implique donc
+- `mkdocs.yml` liste les 8 pages du tutoriel/référence **en dur** dans sa section
+  `nav` (volontaire) ; les 13 fiches de données, elles, ne sont **jamais** listées en
+  dur — seul `donnees/index.md` est dans la nav, les fiches sont atteintes depuis cet
+  index et par la recherche. Ajouter/retirer un JDD dans `registre.py` n'implique donc
   jamais de toucher `mkdocs.yml`.
 - `tests/test_guide.py::TestAntiDeriveWizard` vérifie mot pour mot que les citations
-  du wizard (`cli.py`) reprises dans `pas-a-pas.md`/`relancer.md` existent toujours
-  dans les deux fichiers. Une reformulation d'une invite du wizard sans mettre à jour
-  `CITATIONS_WIZARD_A_VERIFIER` (ou le texte du tutoriel) fait échouer ce test —
-  c'est voulu, pas un faux positif à contourner.
+  du wizard et des options scriptables (`cli.py`/`vidage.py`) reprises dans
+  `pas-a-pas.md`/`relancer.md`/`vider.md` existent toujours dans le code réel. Une
+  reformulation sans mettre à jour `CITATIONS_CLI_A_VERIFIER` (ou le texte du
+  tutoriel) fait échouer ce test — c'est voulu, pas un faux positif à contourner.
+- `tests/test_guide.py::TestAvanceCouvreTousLesFlags` vérifie qu'`avance.md`
+  mentionne bien chaque option de `_construire_parser()` (par son nom de flag, pas
+  mot pour mot) — un flag ajouté/retiré sans toucher cette page casse ce test.
 - Déploiement : `.github/workflows/deploy-docs.yml`, déclenchement manuel
   (`workflow_dispatch`), même convention que `build-executable.yml`. Nécessite
   d'activer Pages une fois dans Settings du dépôt GitHub (source = GitHub Actions) —
