@@ -15,9 +15,12 @@ dans un worktree) :
   du guide sur GitHub Pages). Il reste à déclenchement manuel par design
   (voir le commentaire en tête du fichier) ; c'est l'orchestrateur qui le
   lance, après revue.
-- **Avant de terminer votre job**, si vous avez committé quoi que ce soit
-  dans ce repo, envoyez un message (`SendMessage`) à la session
-  **"orchestration starterkit"** avec :
+- **En début de job**, envoyez un message (`SendMessage`) à la session
+  **"orchestration starterkit"** pour indiquer sur quoi vous allez
+  travailler (sujet, fichiers/zone concernés).
+- **À chaque commit**, et avant de terminer votre job si vous avez committé
+  quoi que ce soit dans ce repo, envoyez un message (`SendMessage`) à la
+  session **"orchestration starterkit"** avec :
   - les commits concernés (hash + résumé),
   - si le changement touche le comportement utilisateur, le CLI ou toute
     API/sortie dont dépend le guide HTML (`docs/`, `guide/`) ou
