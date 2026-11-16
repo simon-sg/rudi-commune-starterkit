@@ -864,7 +864,22 @@ def _demander_urls_noeud_wizard() -> tuple[str, str | None, str | None]:
                 except UrlNoeudNonSecurisee as e2:
                     print(f"  {e2}")
 
-    url_catalog_auto, url_portail_auto = resoudre_urls_automatiquement(url_noeud)
+    erreur_resolution_auto: dict = {}
+    url_catalog_auto, url_portail_auto = resoudre_urls_automatiquement(
+        url_noeud, erreur_sortie=erreur_resolution_auto,
+    )
+    if not (url_catalog_auto or url_portail_auto) and erreur_est_certificat_tls(erreur_resolution_auto):
+        if confirmer(
+            "\n  Certificat de sécurité (TLS) non reconnu pour ce nœud lors de la "
+            "détection automatique des URLs catalogue/portail — souvent un nœud de "
+            "test avec un certificat auto-signé. Continuer SANS le vérifier est "
+            "risqué : une tierce personne sur le même réseau pourrait alors "
+            "intercepter vos identifiants et vos données. N'acceptez que si vous "
+            "faites confiance à ce nœud.",
+            mot_attendu="ACCEPTER",
+        ):
+            desactiver_verification_tls_noeud()
+            url_catalog_auto, url_portail_auto = resoudre_urls_automatiquement(url_noeud, verify=False)
     if url_catalog_auto or url_portail_auto:
         print("  Détection automatique auprès du nœud :")
         if url_catalog_auto:

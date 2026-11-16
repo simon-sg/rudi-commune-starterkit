@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.7.6 — 2026-11-16 (fix détection automatique des URLs sur certificat TLS auto-signé)
+
+### Correction de bug — détection automatique des URLs catalogue/portail (v0.7.5)
+
+- **La v0.7.5 ne fonctionnait pas du tout sur un nœud au certificat TLS non reconnu**
+  (nœud de test/preprod avec certificat auto-signé — cas courant, confirmé en
+  conditions réelles le 2026-11-16 avec le `.exe` sur une vraie machine Windows) :
+  `resoudre_urls_automatiquement()` (`resolution_noeud.py`) faisait un `requests.get()`
+  isolé vers `/manager/conf`, **avant** l'étape du wizard qui propose d'ignorer un
+  certificat non reconnu (`_tester_connexion_avec_repli_tls()`, qui n'intervient que
+  plus tard, au test de connexion) — l'exception `SSLError` était avalée comme
+  n'importe quel autre échec (nœud injoignable, etc.), sans aucune distinction.
+  L'agent municipal se retrouvait donc à ressaisir manuellement catalogue ET portail
+  à chaque nouvelle commune sur un tel nœud, exactement ce que la v0.7.5 devait
+  supprimer — et, en aval, `vider_commune()` refusait ensuite de vider la commune
+  (« `conf['url_portail']` requis ») puisque le profil n'avait jamais reçu cette URL.
+  Reproduit à l'identique avec un serveur mock HTTPS local à certificat auto-signé
+  avant correction.
+- Corrigé : `resoudre_urls_automatiquement()` accepte désormais `verify`/
+  `erreur_sortie` ; `_demander_urls_noeud_wizard()` (`cli.py`) détecte ce cas précis
+  via `erreur_est_certificat_tls()` et propose la **même confirmation explicite**
+  `ACCEPTER` que pour le test de connexion, avant de retenter avec `verify=False` —
+  jamais par défaut. Un échec non lié au certificat (nœud injoignable, timeout...)
+  garde le repli silencieux d'origine, sans prompt superflu.
+- Vérifié de bout en bout (pas seulement via des tests mockés) : exécution réelle du
+  wizard contre un serveur mock HTTPS auto-signé, chemins « ACCEPTER » et « refus »
+  tous deux confirmés.
+
 ## 0.7.5 — 2026-11-15 (détection automatique des URLs catalogue/portail)
 
 ### Simplification — wizard interactif

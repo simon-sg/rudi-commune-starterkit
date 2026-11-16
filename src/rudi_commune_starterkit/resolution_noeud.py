@@ -65,7 +65,9 @@ def organisation_existante(conf: dict, organization_name: str) -> dict | None:
 TIMEOUT_RESOLUTION_AUTO_URLS_S = 5
 
 
-def resoudre_urls_automatiquement(url_noeud: str) -> tuple[str | None, str | None]:
+def resoudre_urls_automatiquement(
+    url_noeud: str, *, verify: bool = True, erreur_sortie: dict | None = None,
+) -> tuple[str | None, str | None]:
     """Tente de déduire l'URL catalogue et l'URL portail du nœud à partir de la seule
     URL du Manager, via sa route publique ``/manager/conf`` (aucune authentification
     requise — vérifié en conditions réelles le 2026-11-15 sur une instance preprod et
@@ -76,14 +78,31 @@ def resoudre_urls_automatiquement(url_noeud: str) -> tuple[str | None, str | Non
     moindre échec (nœud injoignable, version trop ancienne sans cette route, réponse
     inattendue) — l'appelant doit toujours prévoir le repli existant (saisie
     manuelle), notamment pour les nœuds hébergés par un tiers avec une disposition
-    non standard."""
+    non standard.
+
+    Bug réel corrigé le 2026-11-16 : sur un nœud dont le certificat TLS n'est pas
+    reconnu (ex. certificat auto-signé, nœud de test/preprod — confirmé en
+    reproduisant l'échec avec un serveur mock local), cette fonction échouait
+    **toujours** silencieusement (``requests.exceptions.SSLError`` avalée comme
+    n'importe quel autre échec), avant même que le wizard propose d'ignorer le
+    certificat (:func:`cli._tester_connexion_avec_repli_tls`, qui n'intervient que
+    plus tard, à l'étape du test de connexion) — l'agent municipal se retrouvait
+    donc à ressaisir manuellement catalogue ET portail sur chaque nœud de test,
+    alors que c'est précisément ce que cette fonction doit éviter. ``verify`` et
+    ``erreur_sortie`` permettent à l'appelant (``cli._demander_urls_noeud_wizard``)
+    de distinguer ce cas précis (via :func:`erreur_est_certificat_tls`) et de
+    proposer la même confirmation explicite ``ACCEPTER`` que pour le test de
+    connexion, puis de retenter avec ``verify=False`` — jamais par défaut."""
     try:
         reponse = requests.get(
             f"{url_noeud.rstrip('/')}/manager/conf", timeout=TIMEOUT_RESOLUTION_AUTO_URLS_S,
+            verify=verify,
         )
         reponse.raise_for_status()
         conf = reponse.json()
-    except Exception:  # noqa: BLE001 - confort seulement, jamais bloquant pour le wizard
+    except Exception as e:  # noqa: BLE001 - confort seulement, jamais bloquant pour le wizard
+        if erreur_sortie is not None:
+            erreur_sortie["exception"] = e
         return None, None
     return conf.get("catalogPubUrl") or None, conf.get("portalUrl") or None
 

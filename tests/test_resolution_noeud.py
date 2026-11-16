@@ -148,7 +148,7 @@ class TestResoudreUrlsAutomatiquement(unittest.TestCase):
             url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x/")
         self.assertEqual(url_catalog, "https://x/catalog")
         self.assertEqual(url_portail, "https://portail.fr")
-        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY)
+        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY, verify=True)
 
     def test_url_noeud_trailing_slash_retiree(self):
         reponse = mock.Mock()
@@ -156,7 +156,7 @@ class TestResoudreUrlsAutomatiquement(unittest.TestCase):
         with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
                          return_value=reponse) as m:
             resolution_noeud.resoudre_urls_automatiquement("https://x///")
-        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY)
+        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY, verify=True)
 
     def test_champs_absents_de_la_reponse(self):
         reponse = mock.Mock()
@@ -193,6 +193,47 @@ class TestResoudreUrlsAutomatiquement(unittest.TestCase):
             url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement("https://x")
         self.assertIsNone(url_catalog)
         self.assertIsNone(url_portail)
+
+    def test_certificat_tls_non_reconnu_renvoie_none_none_et_remplit_erreur_sortie(self):
+        # Bug réel corrigé le 2026-11-16 : avant, cette exception était avalée sans
+        # distinction (comme un nœud injoignable) — aucun moyen pour l'appelant de
+        # proposer d'ignorer le certificat comme pour le test de connexion
+        # (cli._tester_connexion_avec_repli_tls). Reproduit en conditions réelles
+        # contre un serveur mock HTTPS à certificat auto-signé avant correction.
+        erreur: dict = {}
+        exception = requests.exceptions.SSLError("certificat non reconnu")
+        with mock.patch(
+            "rudi_commune_starterkit.resolution_noeud.requests.get", side_effect=exception,
+        ):
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement(
+                "https://x", erreur_sortie=erreur,
+            )
+        self.assertIsNone(url_catalog)
+        self.assertIsNone(url_portail)
+        self.assertIs(erreur.get("exception"), exception)
+
+    def test_verify_false_transmis_a_requests_get(self):
+        reponse = mock.Mock()
+        reponse.json.return_value = {
+            "catalogPubUrl": "https://x/catalog", "portalUrl": "https://portail.fr",
+        }
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse) as m:
+            url_catalog, url_portail = resolution_noeud.resoudre_urls_automatiquement(
+                "https://x", verify=False,
+            )
+        self.assertEqual(url_catalog, "https://x/catalog")
+        self.assertEqual(url_portail, "https://portail.fr")
+        m.assert_called_once_with("https://x/manager/conf", timeout=mock.ANY, verify=False)
+
+    def test_erreur_sortie_non_rempli_si_succes(self):
+        reponse = mock.Mock()
+        reponse.json.return_value = {"catalogPubUrl": "https://x/catalog"}
+        erreur: dict = {}
+        with mock.patch("rudi_commune_starterkit.resolution_noeud.requests.get",
+                         return_value=reponse):
+            resolution_noeud.resoudre_urls_automatiquement("https://x", erreur_sortie=erreur)
+        self.assertEqual(erreur, {})
 
 
 if __name__ == "__main__":

@@ -5,4 +5,4 @@ Pas de résolution via ``importlib.metadata`` : l'exécutable PyInstaller (voir
 ce qui ferait échouer silencieusement ``--version`` dans le seul contexte où un
 agent municipal non technique pourrait avoir besoin de le vérifier."""
 
-__version__ = "0.7.5"
+__version__ = "0.7.6"

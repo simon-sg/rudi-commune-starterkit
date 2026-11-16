@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import requests
+
 from rudi_commune_starterkit import cli, organisations, securite
 from rudi_commune_starterkit.datasets import population
 from rudi_commune_starterkit.resultat import ResultatConnecteur, StatutConnecteur
@@ -1381,6 +1383,89 @@ class TestDemanderUrlsNoeudWizard(unittest.TestCase):
             (url_noeud, url_catalog, url_portail),
             ("https://x", "https://x/catalog", "https://portail-manuel.fr"),
         )
+
+    def test_detection_echoue_tls_propose_ignorer_certificat_puis_retente(self):
+        # Bug réel corrigé le 2026-11-16 : un certificat TLS non reconnu (nœud de
+        # test/preprod, cas courant) faisait échouer *silencieusement* la détection
+        # automatique (exception avalée sans distinction), repassant en saisie
+        # manuelle complète des deux URLs alors que /manager/conf les avait bien
+        # renvoyées — reproduit en conditions réelles contre un serveur mock HTTPS à
+        # certificat auto-signé. Corrigé en proposant la même confirmation
+        # ``ACCEPTER`` que pour le test de connexion (:func:`cli.
+        # _tester_connexion_avec_repli_tls`), puis en retentant avec
+        # ``verify=False``, jamais par défaut.
+        appels_verify = []
+
+        def faux_resoudre(url_noeud, *, verify=True, erreur_sortie=None):
+            appels_verify.append(verify)
+            if verify:
+                if erreur_sortie is not None:
+                    erreur_sortie["exception"] = requests.exceptions.SSLError("certificat non reconnu")
+                return None, None
+            return "https://x/catalog", "https://portail.fr"
+
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement", side_effect=faux_resoudre,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.confirmer", return_value=True,
+        ) as m_confirmer, mock.patch(
+            "rudi_commune_starterkit.cli.desactiver_verification_tls_noeud",
+        ) as m_desactiver, mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "o", ""],  # url_noeud, confirmer détection, portail (défaut)
+        ):
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual(
+            (url_noeud, url_catalog, url_portail),
+            ("https://x", "https://x/catalog", "https://portail.fr"),
+        )
+        self.assertEqual(m_confirmer.call_args.kwargs.get("mot_attendu"), "ACCEPTER")
+        m_desactiver.assert_called_once()
+        self.assertEqual(appels_verify, [True, False])
+
+    def test_detection_echoue_tls_refusee_repasse_en_saisie_manuelle(self):
+        # Jamais de désactivation TLS sans confirmation explicite : un refus doit
+        # revenir exactement au comportement précédent (saisie manuelle complète).
+        def faux_resoudre(url_noeud, *, verify=True, erreur_sortie=None):
+            if erreur_sortie is not None:
+                erreur_sortie["exception"] = requests.exceptions.SSLError("certificat non reconnu")
+            return None, None
+
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement", side_effect=faux_resoudre,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.confirmer", return_value=False,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.desactiver_verification_tls_noeud",
+        ) as m_desactiver, mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "https://manuel/catalog", "https://portail-manuel.fr"],
+        ):
+            url_noeud, url_catalog, url_portail = cli._demander_urls_noeud_wizard()
+        self.assertEqual(
+            (url_noeud, url_catalog, url_portail),
+            ("https://x", "https://manuel/catalog", "https://portail-manuel.fr"),
+        )
+        m_desactiver.assert_not_called()
+
+    def test_detection_echoue_non_tls_ne_propose_pas_ignorer_certificat(self):
+        # Un échec non lié au certificat (nœud injoignable, timeout...) doit garder
+        # le repli silencieux d'origine — jamais de prompt ACCEPTER hors de propos.
+        def faux_resoudre(url_noeud, *, verify=True, erreur_sortie=None):
+            if erreur_sortie is not None:
+                erreur_sortie["exception"] = requests.exceptions.ConnectionError("injoignable")
+            return None, None
+
+        with mock.patch(
+            "rudi_commune_starterkit.cli.resoudre_urls_automatiquement", side_effect=faux_resoudre,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.confirmer",
+        ) as m_confirmer, mock.patch(
+            "builtins.input",
+            side_effect=["https://x", "https://manuel/catalog", "https://portail-manuel.fr"],
+        ):
+            cli._demander_urls_noeud_wizard()
+        m_confirmer.assert_not_called()
 
 
 if __name__ == "__main__":
