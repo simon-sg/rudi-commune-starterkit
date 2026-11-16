@@ -47,6 +47,7 @@ nav:
   - FAQ: faq.md
   - Glossaire: glossaire.md
   - Licences et réutilisation: licences.md
+  - "Avancé : ligne de commande": guide/avance.md
 
 markdown_extensions:
   - admonition

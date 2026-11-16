@@ -170,15 +170,20 @@ ensuite le mot de passe (trousseau système en priorité), le mode de publicatio
 | `--depuis-registre` [`--url-noeud`] | Résout nœud/identifiants/mode/contact depuis le registre local plutôt que depuis les flags suivants ; `--url-noeud` désambiguïse si plusieurs nœuds existent pour le même code INSEE. |
 | `--url-noeud` / `--usr` / `--rudi-conf` / `--utiliser-trousseau` | Identifiants du nœud, en alternative au registre. |
 | `--autoriser-backend-trousseau-non-reconnu` | Accepte un backend de trousseau système non reconnu comme sûr (ni dans la liste blanche des backends natifs connus, ni connu pour stocker en clair) — à utiliser seulement si vous savez que ce backend est légitime. |
+| `--ignorer-certificat-tls` | Accepte un certificat TLS non reconnu (ex. certificat auto-signé sur un nœud de test) — risqué (interception possible), à n'utiliser que pour un nœud de confiance connu. |
+| `--autoriser-http-local` | Accepte une URL (nœud ou portail) en `http://` si et seulement si son hôte est `localhost`/`127.0.0.1`/`::1` — même règle que le mode interactif. |
 | `--organisation-producteur {source,commune,par-jdd}` | Mode de publication (défaut `source`). |
 | `--organisation-par-jdd` | Fichier JSON JDD → `commune`\|`source`, pour le mode `par-jdd`. |
 | `--contact-commune` | Email de contact, obligatoire si au moins un JDD publie au nom de la commune. |
 | `--only` / `--skip` | Clés de JDD séparées par des virgules, pour limiter la moisson. |
 | `--forcer-maj` | Republie même les JDD inchangés. |
 | `--dry-run` | Aucun appel réseau mutant (RUDI) — rapporte ce qui serait fait. |
+| `--dossier-sortie` | Dossier des fichiers intermédiaires, par défaut `.sortie_rudi_commune_starterkit/<code_insee>/`. |
 | `--etat` | Fichier d'état JSON (hash par `local_id`), par défaut `.etat_rudi_commune_starterkit/<code_insee>.json`. |
 | `--url-portail` | URL du portail — requis par `--vider-commune`/`--supprimer-organisation`. |
 | `--vider-commune` [`--supprimer-organisation`] [`--confirmer SUPPRIMER`] | Voir « Vider une commune » ci-dessus. |
+
+Référence complète, avec un exemple par option : [guide utilisateur, page « Avancé : utilisation en ligne de commande »](https://simon-sg.github.io/rudi-commune-starterkit/guide/avance/).
 
 Exemple, moisson complète d'une commune déjà enregistrée :
 

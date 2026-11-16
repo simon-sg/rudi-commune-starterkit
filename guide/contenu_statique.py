@@ -302,9 +302,22 @@ une publication de test plus tard) [https://...] :
 ```
 
 Il suffit d'appuyer sur Entrée pour confirmer les deux valeurs détectées et pour
-accepter le portail déjà pré-rempli. **Cas plus rare** : si cette détection ne
-trouve rien (nœud ancien, ou hébergé de façon non standard par un tiers), l'outil
-demande alors ces deux adresses à la main :
+accepter le portail déjà pré-rempli.
+
+!!! warning "Cas particulier : certificat de sécurité non reconnu pendant la détection"
+    Si le nœud utilise un certificat de sécurité que Windows ne reconnaît pas
+    (fréquent sur un nœud de test), la détection automatique ci-dessus peut d'abord
+    échouer silencieusement, puis afficher un avertissement détaillé et demander de
+    taper `ACCEPTER` en toutes lettres pour réessayer malgré tout — même
+    avertissement, et même prudence requise, qu'à l'étape [Test de
+    connexion](#6-test-de-connexion) un peu plus loin : **n'acceptez que si vous
+    savez que ce nœud est bien celui de votre territoire.** Si vous répondez
+    autrement, l'outil demande alors les deux adresses à la main plutôt que de les
+    détecter (voir ci-dessous).
+
+**Cas plus rare** : si la détection ne trouve rien du tout (nœud ancien, ou hébergé
+de façon non standard par un tiers), l'outil demande alors ces deux adresses à la
+main :
 
 ```text
 URL catalogue (si l'administrateur du nœud vous en a transmis une, indiquez-la
@@ -574,6 +587,218 @@ administre votre nœud RUDI (celle qui vous a fourni les identifiants à l'étap
 [Prérequis](prerequis.md)) — elle pourra vérifier l'état du nœud de son côté.
 """
 
+_PAGE_AVANCE = """# Avancé : utilisation en ligne de commande
+
+Cette page ne concerne pas l'agent municipal qui utilise l'exécutable `.exe` au
+quotidien — tout ce qu'il lui faut est dans les pages précédentes. Elle s'adresse à
+qui est à l'aise avec un terminal (un service informatique, une personne technique de
+la structure qui héberge le nœud) et veut **automatiser** des publications
+récurrentes — par exemple relancer la publication de plusieurs communes chaque mois
+depuis une tâche planifiée (cron) ou une CI, sans repasser par les questions du
+wizard.
+
+## Deux modes, jamais mélangés
+
+- **Mode interactif** : celui du reste de ce guide. Lancé sans aucun argument, il
+  pose des questions à l'écran.
+- **Mode scriptable** : dès qu'**un seul** argument de ligne de commande est fourni,
+  l'outil bascule entièrement en mode non interactif — **plus aucune question n'est
+  posée**, et tout ce qui manque pour agir (identifiants, code INSEE...) provoque une
+  erreur explicite plutôt qu'une question. Pensé pour tourner sans surveillance.
+
+## Installation
+
+```bash
+pip install --user --break-system-packages \\
+  "rudi-commune-starterkit @ git+https://github.com/simon-sg/rudi-commune-starterkit.git"
+```
+
+Installe la commande `rudi-commune-starterkit`, équivalente à l'exécutable `.exe`
+mais disponible sur Linux/macOS/Windows partout où Python est installé. Voir le
+`README.md` du dépôt pour une installation de développement (modification du code
+en parallèle).
+
+## Identifier la commune
+
+| Option | Rôle |
+|---|---|
+| `--code-insee` | **Obligatoire** en mode scriptable. Code INSEE de la commune cible. |
+
+```bash
+rudi-commune-starterkit --code-insee 35120 [...autres options ci-dessous]
+```
+
+## D'où viennent les identifiants du nœud
+
+Trois façons mutuellement exclusives de les fournir — choisissez-en une.
+
+| Option | Rôle |
+|---|---|
+| `--depuis-registre` | Résout nœud, identifiants, mode de publication et contact depuis le registre local (celui que le mode interactif remplit) plutôt que depuis les options ci-dessous. `--url-noeud` sert uniquement à désambiguïser si la commune a un profil sur plusieurs nœuds. |
+| `--rudi-conf` | Fichier JSON `{"url": ..., "url_catalog": ..., "usr": ..., "pwd": ...}`. Voir `conf/rudi_node.example.json` dans le dépôt. |
+| `--url-noeud` / `--usr` / `--utiliser-trousseau` | Identifiants fournis directement ; le mot de passe est lu dans le trousseau système (jamais en argument de ligne de commande, pour ne pas finir dans l'historique du shell ou les journaux). |
+
+**Reprendre une commune déjà publiée depuis l'interactif, la façon la plus simple** :
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120
+```
+
+**Un fichier de configuration** (pour une automatisation qui ne passe jamais par le
+registre local) :
+
+```bash
+rudi-commune-starterkit --code-insee 35120 --rudi-conf conf/rudi_node.json
+```
+
+**Identifiants directs, mot de passe déjà enregistré dans le trousseau** (voir
+l'étape 5 du [pas-à-pas](pas-a-pas.md) pour l'y avoir mis une première fois) :
+
+```bash
+rudi-commune-starterkit --code-insee 35120 \\
+  --url-noeud https://noeud.exemple.fr --usr usr_geveze --utiliser-trousseau
+```
+
+## Cas particuliers de sécurité (à n'utiliser qu'en connaissance de cause)
+
+| Option | Rôle |
+|---|---|
+| `--autoriser-backend-trousseau-non-reconnu` | Accepte un gestionnaire de mots de passe système non reconnu comme sûr (ex. un gestionnaire de secrets d'entreprise pas encore répertorié) — sans effet sur un backend connu pour stocker en clair, toujours refusé. |
+| `--ignorer-certificat-tls` | Accepte un certificat de sécurité (TLS) non reconnu, par exemple un certificat auto-signé sur un nœud de test — **risqué** (une tierce personne sur le même réseau pourrait intercepter identifiants et données), à réserver à un nœud de confiance connu. |
+| `--autoriser-http-local` | Accepte une adresse (nœud ou portail) en `http://` seulement si son hôte est `localhost`/`127.0.0.1`/`::1` — utile pour développer/tester contre un nœud local, jamais pour un nœud distant. |
+
+```bash
+rudi-commune-starterkit --code-insee 35120 --rudi-conf conf/rudi_node_test.json \\
+  --ignorer-certificat-tls
+```
+
+```bash
+rudi-commune-starterkit --code-insee 35120 \\
+  --url-noeud http://localhost:3000 --usr dev --utiliser-trousseau \\
+  --autoriser-http-local
+```
+
+## Qui est l'auteur des données publiées
+
+| Option | Rôle |
+|---|---|
+| `--organisation-producteur {source,commune,par-jdd}` | Mode de publication (défaut `source`, voir l'étape 7 du [pas-à-pas](pas-a-pas.md) pour le détail des 3 choix). |
+| `--contact-commune` | Email de contact de la commune — obligatoire si au moins un JDD publie au nom de la commune (modes `commune` ou `par-jdd` avec au moins une donnée en `commune`). |
+| `--organisation-par-jdd` | Fichier JSON `{"budget": "commune", "population": "source", ...}` associant chaque clé de JDD à `commune` ou `source` — uniquement pour le mode `par-jdd`. |
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 \\
+  --organisation-producteur commune --contact-commune contact@mairie-geveze.fr
+```
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 \\
+  --organisation-producteur par-jdd --organisation-par-jdd conf/organisation_par_jdd.json \\
+  --contact-commune contact@mairie-geveze.fr
+```
+
+## Limiter ou forcer la moisson
+
+| Option | Rôle |
+|---|---|
+| `--only` | Clés de JDD séparées par des virgules — ne publie que celles-ci. Une clé inconnue fait échouer l'appel plutôt que d'être silencieusement ignorée. |
+| `--skip` | Clés de JDD séparées par des virgules — publie tout sauf celles-ci. |
+| `--forcer-maj` | Republie même les JDD qui n'ont pas changé depuis la dernière fois (plus lent, rarement nécessaire — voir l'étape 9 du [pas-à-pas](pas-a-pas.md)). |
+| `--dry-run` | Aucun appel réseau qui modifie quoi que ce soit sur RUDI — affiche ce qui serait fait sans rien publier ni supprimer. Utile pour vérifier une configuration avant un premier run réel. |
+
+Les clés valides (voir [Les données publiées](../donnees/index.md)) : `entreprises`,
+`associations`, `budget`, `marches_publics`, `deliberations`, `population`,
+`eau_potable`, `etablissements_scolaires`, `adresses`, `elus`, `elections`,
+`immobilier_dvf`, `irve`.
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 --only population,budget
+```
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 \\
+  --skip immobilier_dvf,elections
+```
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 --forcer-maj
+```
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 --dry-run
+```
+
+## Fichiers de travail
+
+| Option | Rôle |
+|---|---|
+| `--dossier-sortie` | Dossier des fichiers intermédiaires (jamais les données publiées elles-mêmes, qui vont directement sur le nœud) — par défaut `.sortie_rudi_commune_starterkit/<code_insee>/`. |
+| `--etat` | Fichier JSON qui mémorise ce qui a déjà été publié (pour ne republier que ce qui a changé) — par défaut `.etat_rudi_commune_starterkit/<code_insee>.json`. |
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 \\
+  --dossier-sortie /var/tmp/rudi-starterkit/35120 \\
+  --etat /var/lib/rudi-starterkit/etat-35120.json
+```
+
+## Annuler une publication de test (équivalent de la page [Annuler une publication de test](vider.md))
+
+| Option | Rôle |
+|---|---|
+| `--vider-commune` | Supprime les JDD de `--code-insee` déjà publiés par cet outil, au lieu d'en republier. |
+| `--supprimer-organisation` | Avec `--vider-commune` : supprime aussi l'organisation de la commune si plus aucun JDD du nœud ne la référence. |
+| `--url-portail` | URL du portail — requise par `--vider-commune`/`--supprimer-organisation` si elle n'est pas déjà connue du registre. |
+| `--confirmer SUPPRIMER` | **Obligatoire** avec `--vider-commune` en mode scriptable : sans terminal, l'outil ne demande jamais de confirmation à l'écran (voir [Annuler une publication de test](vider.md#marche-a-suivre)) — il faut la fournir explicitement ici, exactement `SUPPRIMER`. |
+
+```bash
+rudi-commune-starterkit --depuis-registre --code-insee 35120 \\
+  --vider-commune --supprimer-organisation --confirmer SUPPRIMER
+```
+
+!!! danger "Toujours irréversible, scriptable ou pas"
+    `--confirmer SUPPRIMER` remplace la confirmation tapée à l'écran en mode
+    interactif — ça n'en fait pas une opération plus sûre. Ne placez cette commande
+    dans un script automatisé qu'en toute connaissance de cause de ce qu'elle
+    supprime.
+
+## Divers
+
+| Option | Rôle |
+|---|---|
+| `--version` | Affiche la version installée et quitte, sans rien publier. |
+
+```bash
+rudi-commune-starterkit --version
+```
+
+## Codes de sortie
+
+Pensés pour qu'une tâche planifiée ou une CI puisse réagir sans avoir à analyser le
+texte affiché :
+
+| Code | Signification |
+|---|---|
+| `0` | Tout s'est bien passé (y compris les JDD sautés sans erreur : hors couverture, déjà à jour). |
+| `1` | Échecs partiels — au moins un JDD a échoué, au moins un autre a réussi. |
+| `2` | Échec total, ou erreur de configuration/arguments (ex. `--code-insee` absent, clé `--only`/`--skip` inconnue). |
+| `3` | En attente d'une validation par l'animateur du portail — **pas un échec** (voir l'encart dédié de l'étape 10 du [pas-à-pas](pas-a-pas.md#10-lancement-et-rapport-final)) : relancer la même commande plus tard une fois validée. |
+
+## Exemple complet : republier plusieurs communes chaque mois
+
+```bash
+#!/bin/bash
+# Exécuté le 1er de chaque mois par cron, une ligne par commune déjà enregistrée.
+set -euo pipefail
+for code_insee in 35120 35238 35047; do
+    rudi-commune-starterkit --depuis-registre --code-insee "$code_insee" \\
+        || echo "Échec ou attente de validation pour $code_insee (code $?)"
+done
+```
+
+Chaque commune garde son propre fichier d'état (`--etat`, par défaut) : seules les
+données réellement changées depuis le mois précédent sont republiées.
+"""
+
 PAGES_GUIDE: dict[str, str] = {
     "prerequis.md": _PAGE_PREREQUIS,
     "telecharger.md": _PAGE_TELECHARGER,
@@ -582,13 +807,15 @@ PAGES_GUIDE: dict[str, str] = {
     "relancer.md": _PAGE_RELANCER,
     "vider.md": _PAGE_VIDER,
     "depannage.md": _PAGE_DEPANNAGE,
+    "avance.md": _PAGE_AVANCE,
 }
 
-# Citations exactes du wizard (cli.py) reprises dans _PAGE_PAS_A_PAS — vérifiées mot
-# pour mot par tests/test_guide.py pour détecter toute dérive future entre le texte
-# réel du wizard et ce tutoriel. Ne pas reformuler ici sans reformuler aussi cli.py
-# (ou l'inverse), sous peine de faire échouer ce test.
-CITATIONS_WIZARD_A_VERIFIER = [
+# Citations exactes du wizard et des options scriptables (cli.py/vidage.py) reprises
+# dans _PAGE_PAS_A_PAS/_PAGE_VIDER/_PAGE_AVANCE — vérifiées mot pour mot par
+# tests/test_guide.py pour détecter toute dérive future entre le texte réel du code et
+# ce tutoriel. Ne pas reformuler ici sans reformuler aussi le code (ou l'inverse), sous
+# peine de faire échouer ce test.
+CITATIONS_CLI_A_VERIFIER = [
     "Avant de commencer, un aperçu rapide de ce qui pourra être publié pour votre",
     "URL du nœud RUDI (https://...) — l'adresse transmise par l'administrateur",
     "URL catalogue (si l'administrateur du nœud vous en a transmis une,",
@@ -690,8 +917,8 @@ organisation — jamais sans cette double confirmation explicite.
 
 Oui — l'exécutable décrit par ce guide est un simple emballage du même outil en ligne
 de commande (`pip install` puis `rudi-commune-starterkit`), qui propose aussi un mode
-scriptable (sans aucune question posée, pour une automatisation régulière). Voir le
-fichier `README.md` du projet sur GitHub pour cette voie technique.
+scriptable (sans aucune question posée, pour une automatisation régulière). Voir
+[Avancé : utilisation en ligne de commande](guide/avance.md).
 """
 
 
