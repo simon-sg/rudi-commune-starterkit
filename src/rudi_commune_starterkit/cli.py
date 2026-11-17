@@ -225,6 +225,7 @@ def executer_run(
     dossier_sortie: str,
     chemin_etat: str,
     confirmer_creation_organisation: bool = True,
+    organisation_creation_deja_tentee: bool = False,
 ) -> int:
     """Boucle sur les 13 JDD, publie, rapporte. Retourne le code de sortie.
 
@@ -232,6 +233,26 @@ def executer_run(
     confirmation avant de créer l'organisation de la commune si elle n'existe pas
     encore — c'est un acte sur un portail partagé, pas une création silencieuse.
     ``False`` (mode scriptable) la crée directement, cohérent avec l'absence de prompt.
+
+    ``organisation_creation_deja_tentee`` : ``True`` si un appel précédent, dans le
+    **même processus** (voir :func:`_executer_run_avec_attente_validation`), a déjà
+    demandé la création de l'organisation de la commune. Empêche alors une 2e demande
+    tant qu'on reste dans cette boucle d'attente, même si la vérification ci-dessous la
+    revoit comme « absente ».
+
+    **Bug réel corrigé le 2026-11-17** (commune de Grand-Fougeray, nœud preprod
+    rudi-univ-rennes1) : ``_etat_organisation_commune()`` vérifie l'existence de
+    l'organisation via ``GET /v1/organizations``, un endpoint public qui ne liste que
+    les organisations déjà validées — une organisation tout juste créée, encore en
+    attente de validation par l'animateur, y est invisible, indiscernable d'une
+    organisation qui n'existe pas du tout. ``_executer_run_avec_attente_validation()``
+    rappelle cette fonction en entier à chaque « [Entrée] pour vérifier » : sans ce
+    paramètre, chaque vérification avant la validation recrée donc une organisation
+    distincte. Le garde-fou par id déterministe (``rudi_harvest_toolkit``) ne protège
+    pas contre ce cas : confirmé en conditions réelles que ce nœud n'honore pas
+    l'``organization_id`` proposé dans le ``POST`` (il assigne le sien), donc aucune
+    des 2 tentatives ne retombe sur le même id — 2 organisations bien distinctes sont
+    créées, pas une seule détectée en double.
     """
     code_insee = commune["code_insee"]
     modules = _valider_et_filtrer_modules(only, skip)
@@ -281,7 +302,13 @@ def executer_run(
                   f"({e}) — JDD concernés bloqués par précaution (garde-fou fail-closed).")
             etat_org = "en_attente"
 
-        if etat_org == "absente":
+        if etat_org == "absente" and organisation_creation_deja_tentee:
+            print(f"[cli] Organisation « {nom_org_commune} » déjà demandée plus tôt dans "
+                  "cette session (toujours invisible ou pas encore validée) — pas de "
+                  "nouvelle tentative de création, pour éviter un doublon ; relancer une "
+                  "fois validée.")
+            organisation_en_attente = True
+        elif etat_org == "absente":
             if dry_run:
                 print(f"[cli] [dry-run] organisation « {nom_org_commune} » serait créée.")
                 organisation_en_attente = True
@@ -563,9 +590,17 @@ def _executer_run_avec_attente_validation(**kwargs) -> int:
     en rappelant ``executer_run()`` avec les **mêmes** paramètres : grâce au hash
     d'état (``doit_republier()``), les JDD déjà publiés sans changement sont sautés
     à ce 2e appel, seuls ceux bloqués par l'organisation sont réellement traités. Pas
-    une relance complète, même si l'appel ressemble à la 1ère."""
+    une relance complète, même si l'appel ressemble à la 1ère.
+
+    **Bug réel corrigé le 2026-11-17** : dès qu'un premier appel renvoie
+    ``EXIT_EN_ATTENTE_VALIDATION`` (organisation créée ou déjà en attente), les appels
+    suivants de cette boucle passent ``organisation_creation_deja_tentee=True`` — sans
+    quoi chaque « [Entrée] pour vérifier » avant la validation animateur redemandait la
+    création de l'organisation (voir la docstring de :func:`executer_run`), créant un
+    vrai doublon sur un nœud qui n'honore pas l'id déterministe proposé."""
     code = executer_run(**kwargs)
     while code == EXIT_EN_ATTENTE_VALIDATION:
+        kwargs["organisation_creation_deja_tentee"] = True
         reponse = input(
             "\n  [Entrée] pour vérifier si l'animateur a validé et reprendre, "
             "'q' pour quitter et relancer plus tard : "

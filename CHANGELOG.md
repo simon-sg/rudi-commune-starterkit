@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.7 — 2026-11-17 (fix doublon d'organisation pendant l'attente de validation)
+
+### Correction de bug — création en double de l'organisation de la commune
+
+- **Un doublon réel de l'organisation « Commune de Grand-Fougeray » a été créé sur le
+  nœud preprod `rudi-univ-rennes1.fr` pendant un seul lancement du wizard.** Cause
+  confirmée en conditions réelles (requêtes directes contre le nœud) : `GET
+  /v1/organizations`, l'endpoint public utilisé pour détecter si l'organisation existe
+  déjà (`_etat_organisation_commune()`), ne liste **que** les organisations déjà
+  validées par l'animateur du portail — une organisation tout juste créée, encore en
+  attente, y est invisible et indiscernable d'une organisation qui n'existe pas du
+  tout. Le mode interactif (« `[Entrée]` pour vérifier si l'animateur a validé »,
+  `_executer_run_avec_attente_validation()`) rappelle l'intégralité de la vérification
+  à chaque pression : sans ce correctif, chaque vérification avant la validation
+  recréait donc une organisation distincte.
+- Le garde-fou par id déterministe du `rudi-harvest-toolkit` ne protégeait pas contre
+  ce cas précis : confirmé que ce nœud **n'honore pas** l'`organization_id` proposé
+  dans le `POST /organizations` (il assigne le sien) — aucune des 2 tentatives ne
+  retombe donc sur le même id, et 2 organisations réellement distinctes sont créées
+  plutôt qu'une seule détectée en double.
+- Corrigé : `executer_run()` accepte désormais `organisation_creation_deja_tentee`,
+  transmis à `True` par `_executer_run_avec_attente_validation()` dès qu'un 1er appel
+  a déjà renvoyé `EXIT_EN_ATTENTE_VALIDATION` — plus aucune nouvelle tentative de
+  création tant qu'on reste dans la même boucle d'attente interactive.
+- Vérifié en conditions réelles (vrai serveur HTTP local, pas de mock de
+  `requests.get`) : une organisation absente de la liste du nœud reste vue comme
+  « absente » à chaque appel — confirme la cause racine avant correction. Suite de
+  tests complète (550) repassée après correction.
+
 ## 0.7.6 — 2026-11-16 (fix détection automatique des URLs sur certificat TLS auto-signé)
 
 ### Correction de bug — détection automatique des URLs catalogue/portail (v0.7.5)

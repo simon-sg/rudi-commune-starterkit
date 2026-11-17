@@ -83,6 +83,48 @@ class TestOrganisationExistante(unittest.TestCase):
         m.assert_called_once_with({"url": "https://x"}, "Commune de Gévezé")
 
 
+class TestOrganisationExistanteE2EReel(unittest.TestCase):
+    """Vrai serveur HTTP local (pas de mock de requests.get) — reproduit le
+    comportement constaté le 2026-11-17 sur le nœud preprod rudi-univ-rennes1 :
+    GET /v1/organizations ne liste que les organisations déjà validées, donc une
+    organisation tout juste créée mais encore en attente de validation animateur y
+    est invisible. Confirme que ``organisation_existante()`` retombe systématiquement
+    (et pas juste parfois) sur « introuvable » dans ce cas, même rappelée plusieurs
+    fois — la cause racine du garde-fou ``organisation_creation_deja_tentee`` ajouté à
+    ``cli.executer_run()``."""
+
+    def setUp(self):
+        import http.server
+        import json
+        import threading
+
+        class FauxNoeud(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                corps = json.dumps([]).encode()  # jamais d'organisation en attente listée
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(corps)))
+                self.end_headers()
+                self.wfile.write(corps)
+
+            def log_message(self, *args):  # silence les logs d'accès dans la sortie pytest
+                pass
+
+        self.serveur = http.server.HTTPServer(("127.0.0.1", 0), FauxNoeud)
+        self.port = self.serveur.server_address[1]
+        self.thread = threading.Thread(target=self.serveur.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.serveur.shutdown)
+        self.conf = {"url": f"http://127.0.0.1:{self.port}",
+                     "url_catalog": f"http://127.0.0.1:{self.port}/catalog"}
+
+    def test_organisation_en_attente_toujours_vue_comme_absente(self):
+        premier = resolution_noeud.organisation_existante(self.conf, "Commune de Grand-Fougeray")
+        second = resolution_noeud.organisation_existante(self.conf, "Commune de Grand-Fougeray")
+        self.assertIsNone(premier)
+        self.assertIsNone(second)
+
+
 class TestNormaliserNomOrganisation(unittest.TestCase):
     def test_casse_et_accents_ignores(self):
         a = resolution_noeud.normaliser_nom_organisation("Commune de Gévezé")

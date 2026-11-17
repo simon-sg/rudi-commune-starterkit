@@ -217,6 +217,28 @@ class TestExecuterRunGardeFouOrganisation(TestExecuterRun):
         patcher_organisation.start()
         self.addCleanup(patcher_organisation.stop)
 
+    def test_organisation_deja_tentee_ne_recree_pas(self):
+        """Bug réel corrigé le 2026-11-17 (Grand-Fougeray, nœud preprod
+        rudi-univ-rennes1) : l'organisation en attente de validation est invisible
+        via GET /v1/organizations (endpoint public, ne liste que les organisations
+        déjà validées) — vue comme « absente » à chaque nouvel appel. Sans ce
+        paramètre, une 2e vérification recréait donc une organisation distincte sur
+        un nœud qui n'honore pas l'id déterministe proposé."""
+        with mock.patch(
+            "rudi_commune_starterkit.cli.organisation_existante", return_value=None,
+        ), mock.patch(
+            "rudi_commune_starterkit.cli.demander_creation_organisation",
+        ) as m_creer, mock.patch("builtins.input") as m_input, mock.patch.object(
+            population, "moissonner",
+        ) as m_moissonner:
+            code = self._executer(contact_email_commune="mairie@geveze.fr",
+                                   confirmer_creation_organisation=False,
+                                   organisation_creation_deja_tentee=True)
+        self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
+        m_creer.assert_not_called()
+        m_input.assert_not_called()
+        m_moissonner.assert_not_called()
+
     def test_organisation_absente_scriptable_cree_sans_prompt(self):
         with mock.patch(
             "rudi_commune_starterkit.cli.organisation_existante", return_value=None,
@@ -1073,8 +1095,8 @@ class TestExecuterRunAvecAttenteValidation(unittest.TestCase):
             code = cli._executer_run_avec_attente_validation(**self._KWARGS)
         self.assertEqual(code, cli.EXIT_SUCCES)
         self.assertEqual(m_run.call_count, 2)
-        for appel in m_run.call_args_list:
-            self.assertEqual(appel.kwargs, self._KWARGS)
+        # 1er appel : kwargs d'origine, sans le flag (pas encore de tentative connue).
+        self.assertEqual(m_run.call_args_list[0].kwargs, self._KWARGS)
 
     def test_toujours_en_attente_redemande_jusquau_q(self):
         with mock.patch(
@@ -1084,6 +1106,21 @@ class TestExecuterRunAvecAttenteValidation(unittest.TestCase):
             code = cli._executer_run_avec_attente_validation(**self._KWARGS)
         self.assertEqual(code, cli.EXIT_EN_ATTENTE_VALIDATION)
         self.assertEqual(m_run.call_count, 3)
+
+    def test_appels_suivants_signalent_la_tentative_deja_faite(self):
+        """Bug réel corrigé le 2026-11-17 (Grand-Fougeray, nœud preprod) : sans ce
+        paramètre, chaque « [Entrée] pour vérifier » avant la validation animateur
+        redemandait la création de l'organisation — doublon sur un nœud qui n'honore
+        pas l'id déterministe proposé. Dès le 1er EXIT_EN_ATTENTE_VALIDATION, tous les
+        appels suivants doivent porter ``organisation_creation_deja_tentee=True``."""
+        with mock.patch(
+            "rudi_commune_starterkit.cli.executer_run",
+            return_value=cli.EXIT_EN_ATTENTE_VALIDATION,
+        ) as m_run, mock.patch("builtins.input", side_effect=["", "", "q"]):
+            cli._executer_run_avec_attente_validation(**self._KWARGS)
+        self.assertEqual(m_run.call_args_list[0].kwargs.get("organisation_creation_deja_tentee"), None)
+        for appel in m_run.call_args_list[1:]:
+            self.assertTrue(appel.kwargs["organisation_creation_deja_tentee"])
 
 
 class TestViderCommuneInteractif(unittest.TestCase):
