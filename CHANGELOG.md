@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.8 — 2026-11-17 (fix plantage console Windows dès la 1re interaction)
+
+### Correction de bug critique — crash systématique sur Windows
+
+- **Trouvé en testant pour la première fois l'exécutable sur une vraie machine
+  Windows 11 (fr-FR, via VM)** — jusqu'ici, seuls Linux/macOS et une émulation Wine
+  peu fiable avaient pu être testés. Le wizard plantait **systématiquement dès la
+  confirmation du code INSEE**, la toute première vraie interaction, avec
+  `UnicodeEncodeError: 'charmap' codec can't encode character '→'`.
+- Cause : la console Windows encode sa sortie avec le codepage OEM/ANSI actif
+  (`cp850`/`cp1252`), pas UTF-8, sauf configuration explicite. Ce codepage ne couvre
+  pas tous les caractères d'habillage utilisés par ce programme (ex. la flèche « → »
+  de `cli.py`) — contrairement aux lettres accentuées françaises courantes, qui *sont*
+  couvertes et n'avaient donc jamais révélé le problème plus tôt, y compris en test
+  automatisé (qui mocke `print()`, jamais l'encodage réel d'un flux).
+- Corrigé : `console_windows.forcer_utf8_console()`, appelée au tout début de
+  `main()` et de `packaging/entrypoint.py` (avant même son 1er `print()`), force
+  l'encodage UTF-8 en sortie quel que soit le codepage actif de la console.
+- Vérifié avec un vrai flux texte encodé en `cp1252` (pas un mock) + suite de tests
+  complète (554 tests), puis sur la vraie VM Windows en reproduisant exactement le
+  scénario qui plantait avant correction.
+
 ## 0.7.7 — 2026-11-17 (fix doublon d'organisation pendant l'attente de validation)
 
 ### Correction de bug — création en double de l'organisation de la commune

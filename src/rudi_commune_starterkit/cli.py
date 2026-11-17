@@ -36,6 +36,7 @@ from rudi_harvest_toolkit.publish import publier_si_configue
 from rudi_harvest_toolkit.state import charger_etat, sauvegarder_etat
 
 from . import __version__, organisations, registre
+from .console_windows import forcer_utf8_console
 from .description_commune import construire_description_commune
 from .etat_hash import doit_republier, enregistrer_publication, hash_contenu_jdd
 from .interaction import confirmer
@@ -1345,6 +1346,7 @@ def executer_scriptable(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    forcer_utf8_console()
     configurer_sortie_console()
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
