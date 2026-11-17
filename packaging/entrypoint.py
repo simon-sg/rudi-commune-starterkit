@@ -11,6 +11,16 @@ le résultat (succès, échec partiel, ou erreur).
 
 import sys
 
+# Doit s'exécuter avant le premier print() ci-dessous : bug réel corrigé le
+# 2026-11-17, la console Windows (codepage OEM/ANSI, pas UTF-8 par défaut) fait
+# planter print() sur certains caractères d'habillage (ex. « → ») dès la 1re vraie
+# interaction du wizard — voir console_windows.py pour le détail. Import léger
+# (juste `sys`), placé ici avant le gros import de cli ci-dessous pour ne pas
+# retarder l'affichage de "Chargement des ressources...".
+from rudi_commune_starterkit.console_windows import forcer_utf8_console
+
+forcer_utf8_console()
+
 # Affiché avant l'import ci-dessous, qui déclenche le chargement de pandas/pyarrow
 # (via registre.py -> modules JDD) — la partie la plus lente du démarrage une fois
 # l'exécutable lui-même décompressé par le bootloader PyInstaller. Ce message

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rudi-commune-starterkit"
-version = "0.7.7"
+version = "0.7.8"
 description = "Moissonneur générique : à partir d'un code INSEE, peuple un nœud RUDI avec un socle de 13 JDD communaux de base."
 readme = "README.md"
 requires-python = ">=3.10"
